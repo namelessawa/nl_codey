@@ -19,6 +19,21 @@ export {
 } from "./compressor.js";
 export { evaluateVerification, type VerificationResult } from "./verifier.js";
 export {
+  evaluateCheck,
+  evaluateTask,
+  runEvalTask,
+  runEvalSuite,
+  seedWorkspace,
+  summarize,
+  formatReport,
+  type EvalCheck,
+  type EvalTask,
+  type EvalResult,
+  type EvalReport,
+  type EvalAgentRunner,
+} from "./eval/eval.js";
+export { EVAL_TASKS } from "./eval/tasks.js";
+export {
   analyzeRegressions,
   regressionNote,
   failureKey,

@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Eval framework + 10 tasks (Phase 2 Step 14)** — a deterministic evaluation harness for
+  the agent. Each `EvalTask` seeds a tiny workspace, states a prompt, and asserts the result
+  through reproducible, LLM-free checks (`file_exists` / `file_absent` / `file_contains` /
+  `file_not_contains` / `command_succeeds`). `runEvalSuite` isolates each task in its own
+  workspace, runs an **injected** agent runner (so the framework is unit-testable and
+  decoupled from AgentService/storage; a crashed run scores as failed rather than throwing),
+  and `summarize`/`formatReport` produce a pass-rate report. Ships `EVAL_TASKS`: 10 small
+  add/fix/rename/refactor/multi-file tasks. Core is fully unit-tested (10 tests).
 - **`find_symbol` tool + symbol index (Phase 2 Step 10)** — a new agent tool locates symbol
   declarations (functions, classes, interfaces, types, enums, structs, traits, consts) by
   name across the project, or lists all symbols in a single file — faster than `search_text`
