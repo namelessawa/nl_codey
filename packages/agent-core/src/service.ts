@@ -9,12 +9,13 @@ import type {
   ChatLLMProvider,
   LLMToolCall,
   RunCommandOutput,
+  TestFailureReport,
   ToolContext,
 } from "@coding-agent/shared";
 import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
 import type { Storage } from "@coding-agent/storage";
 import { detectProject } from "@coding-agent/project-indexer";
-import { listFilesTool, readFileTool, runCommandTool } from "@coding-agent/tools";
+import { listFilesTool, parseTestFailure, readFileTool, runCommandTool } from "@coding-agent/tools";
 import { extractFilePaths, isExplainTask } from "./intent.js";
 import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
@@ -23,6 +24,7 @@ import { AGENT_TOOL_SCHEMAS, createToolExecutor } from "./tools-registry.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
 import { SUMMARIZE_PROMPT } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
+import { analyzeRegressions, regressionNote } from "./regression.js";
 
 const EXPLAIN_PROMPT = `你是一个本地 Coding Agent。请阅读给定文件内容，用结构化的中文解释其执行流程、关键函数和数据流。不要修改任何文件，不要输出 diff。`;
 
@@ -54,6 +56,8 @@ export class AgentService {
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly approvals = new Map<string, Approval>();
+  /** Pristine test-failure baseline per run, for the regression guard. */
+  private readonly baselines = new Map<string, TestFailureReport | null>();
 
   constructor(deps: AgentDeps) {
     this.storage = deps.storage;
@@ -204,6 +208,9 @@ export class AgentService {
       { role: "user" as const, content: await this.buildInitialUserMessage(task, ctx) },
     ];
 
+    // Regression guard: snapshot the pristine test/build state before any edit.
+    await this.captureBaseline(runId, ctx, settings.allowShellExecution);
+
     try {
       const outcome = await runToolLoop(messages, {
         llm,
@@ -257,14 +264,57 @@ export class AgentService {
       this.controllers.delete(runId);
       this.approvals.delete(runId);
       this.pending.delete(runId);
+      this.baselines.delete(runId);
+    }
+  }
+
+  /** The command used for baseline + post-patch verification, if any. */
+  private verifyCommand(ctx: ToolContext): string | undefined {
+    return detectProject(ctx.workspaceRoot).suggestedCommands[0];
+  }
+
+  /**
+   * Regression guard: run the verification command once on the pristine project
+   * before any edit, and remember which tests already failed. A `null` baseline
+   * (shell disabled or no command) disables regression classification.
+   */
+  private async captureBaseline(
+    runId: string,
+    ctx: ToolContext,
+    allowShellExecution: boolean,
+  ): Promise<void> {
+    const command = this.verifyCommand(ctx);
+    if (!allowShellExecution || !command) {
+      this.baselines.set(runId, null);
+      return;
+    }
+    try {
+      const out = await runCommandTool.run({ command }, ctx);
+      const report = parseTestFailure({
+        command: out.command,
+        stdout: out.stdout,
+        stderr: out.stderr,
+        exitCode: out.exitCode ?? 1,
+      });
+      this.baselines.set(runId, report);
+      const n = report.failures.length;
+      this.addStep(
+        runId,
+        "message",
+        n === 0 ? `回归基线：\`${command}\` 初始通过。` : `回归基线：\`${command}\` 初始有 ${n} 个已存在的失败。`,
+      );
+    } catch (err) {
+      this.baselines.set(runId, null);
+      this.addStep(runId, "message", `无法建立回归基线（${asMessage(err)}），跳过回归检测。`);
     }
   }
 
   /**
    * Automatic post-patch verification: after an approved apply_patch writes,
    * run the project's verification command and feed the result back so the
-   * model can repair failures (the verify→repair loop). Returns null to skip
-   * (patch didn't actually apply, or shell execution is disabled).
+   * model can repair failures (the verify→repair loop). New failures absent
+   * from the baseline are flagged as regressions. Returns null to skip (patch
+   * didn't actually apply, or shell execution is disabled).
    */
   private async verifyPatch(
     runId: string,
@@ -278,7 +328,7 @@ export class AgentService {
       return "已应用补丁，但 shell 执行被禁用，无法自动验证。请在确认无误后向用户说明需要手动验证。";
     }
 
-    const command = detectProject(ctx.workspaceRoot).suggestedCommands[0];
+    const command = this.verifyCommand(ctx);
     if (!command) {
       this.addStep(runId, "message", "未检测到验证命令，跳过自动验证。");
       return null;
@@ -296,9 +346,21 @@ export class AgentService {
 
     this.addStep(runId, "command", formatCommandOutput(out));
     const verdict = evaluateVerification(out);
+
+    // Regression guard: classify current failures against the pristine baseline.
+    const current = parseTestFailure({
+      command: out.command,
+      stdout: out.stdout,
+      stderr: out.stderr,
+      exitCode: out.exitCode ?? 1,
+    });
+    const analysis = analyzeRegressions(this.baselines.get(runId) ?? null, current);
+    const note = regressionNote(analysis);
+    if (note) this.addStep(runId, "error", note);
+
     this.addStep(runId, verdict.passed ? "tool_result" : "error", verdict.message);
     this.setStatus(runId, verdict.passed ? "tool_use" : "repairing");
-    return verdict.message;
+    return note ? `${verdict.message}\n\n${note}` : verdict.message;
   }
 
   /** Summarize old conversation context via the LLM (compression callback). */

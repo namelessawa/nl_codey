@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Regression guard (Phase 2 Step 7)** — before the agent makes any edit, the run now
+  captures a pristine baseline by running the verification command once and recording which
+  tests already failed. After each post-patch verification, current failures are classified
+  against that baseline into regressions (newly broken — likely caused by this run), fixed,
+  and pre-existing. Regressions are surfaced as a prominent guard note appended to the
+  model's feedback so it must fix them before finishing, while pre-existing failures are
+  explicitly called out as not-this-run so the agent doesn't chase unrelated breakage. When
+  shell is disabled or no command is detected the baseline is `null` and classification is
+  skipped. Pure `analyzeRegressions`/`regressionNote` helpers are unit-tested.
 - **Verifier loop (Phase 2 Step 6)** — after an approved `apply_patch` writes to disk, the
   agent now automatically runs the project's verification command (the first detected
   test/build script) instead of relying on the model to remember. The run transitions the
