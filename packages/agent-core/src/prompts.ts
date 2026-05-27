@@ -10,7 +10,7 @@ export const SYSTEM_PROMPT = `你是一个本地 Coding Agent，运行在用户�
 - 保持现有代码风格，包括缩进、命名、注释风格。
 
 修改文件时：
-- 使用 apply_patch 工具，传入标准 unified diff。
+- 使用 apply_patch 工具。优先使用 V4A 格式（*** Begin Patch / *** Update File: / *** Add File: / *** Delete File: / *** End Patch），它按上下文定位、对行号容错；也兼容标准 unified diff。
 - 一次 patch 尽量只解决一个明确问题，大改动拆分成多次 patch。
 - apply_patch 需要用户批准后才会写入磁盘。
 

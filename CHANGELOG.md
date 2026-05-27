@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **V4A patch format (Phase 2 Step 12)** — `apply_patch` now accepts the context-based
+  V4A format (`*** Begin Patch` / `*** Update File:` / `*** Add File:` / `*** Delete File:`
+  / `*** End Patch`) in addition to unified diff. V4A locates edits by surrounding context
+  (line-number-free, more tolerant of model mistakes), supports add/update/delete across
+  multiple files in one patch, and applies transactionally — a context that can't be found
+  aborts before any write, so files are never corrupted. The format is auto-detected by the
+  envelope; unified diff remains the fallback.
 - **Live trace + budget GUI (Phase 2 Step 4)** — the agent now streams assistant text
   to the renderer token-by-token via a new `delta` agent event; the step stream shows the
   in-progress turn live instead of waiting for the turn to finish. A top-bar

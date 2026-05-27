@@ -59,11 +59,11 @@ export const AGENT_TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: "apply_patch",
     description:
-      "Apply a unified diff to the workspace. Requires user approval before writing. Snapshots files first so the change is reversible. Keep each patch focused on one problem.",
+      "Apply a patch to the workspace. Prefer the V4A format (*** Begin Patch / *** Update File: / *** Add File: / *** Delete File: / *** End Patch) which locates edits by context; unified diff is also accepted. Requires user approval before writing. Snapshots files first so the change is reversible. Keep each patch focused on one problem.",
     parameters: {
       type: "object",
       properties: {
-        patch: { type: "string", description: "A unified diff (git-style) to apply." },
+        patch: { type: "string", description: "A V4A patch (preferred) or a unified diff." },
       },
       required: ["patch"],
       additionalProperties: false,
