@@ -22,6 +22,7 @@ import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
 import { AGENT_TOOL_SCHEMAS, createToolExecutor } from "./tools-registry.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
 import { SUMMARIZE_PROMPT } from "./compressor.js";
+import { evaluateVerification } from "./verifier.js";
 
 const EXPLAIN_PROMPT = `你是一个本地 Coding Agent。请阅读给定文件内容，用结构化的中文解释其执行流程、关键函数和数据流。不要修改任何文件，不要输出 diff。`;
 
@@ -232,6 +233,8 @@ export class AgentService {
           onCompressed: (count) =>
             this.addStep(runId, "message", `已压缩 ${count} 条历史消息以节省上下文。`),
         },
+        verifyAfterPatch: (_call, result) =>
+          this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
         requiresApproval: (call) => call.name === "apply_patch",
         waitForApproval: (call) => this.awaitApproval(runId, call),
         onToolCall: (call) => {
@@ -255,6 +258,47 @@ export class AgentService {
       this.approvals.delete(runId);
       this.pending.delete(runId);
     }
+  }
+
+  /**
+   * Automatic post-patch verification: after an approved apply_patch writes,
+   * run the project's verification command and feed the result back so the
+   * model can repair failures (the verify→repair loop). Returns null to skip
+   * (patch didn't actually apply, or shell execution is disabled).
+   */
+  private async verifyPatch(
+    runId: string,
+    ctx: ToolContext,
+    allowShellExecution: boolean,
+    patchResult: string,
+  ): Promise<string | null> {
+    if (!patchApplied(patchResult)) return null;
+    if (!allowShellExecution) {
+      this.addStep(runId, "message", "补丁已应用，但 shell 执行被禁用，跳过自动验证。");
+      return "已应用补丁，但 shell 执行被禁用，无法自动验证。请在确认无误后向用户说明需要手动验证。";
+    }
+
+    const command = detectProject(ctx.workspaceRoot).suggestedCommands[0];
+    if (!command) {
+      this.addStep(runId, "message", "未检测到验证命令，跳过自动验证。");
+      return null;
+    }
+
+    this.setStatus(runId, "verifying");
+    this.addStep(runId, "tool_call", `verify $ ${command}`);
+    let out;
+    try {
+      out = await runCommandTool.run({ command }, ctx);
+    } catch (err) {
+      this.addStep(runId, "error", `自动验证无法运行：${asMessage(err)}`);
+      return `自动验证命令无法运行（${asMessage(err)}）。请检查后继续。`;
+    }
+
+    this.addStep(runId, "command", formatCommandOutput(out));
+    const verdict = evaluateVerification(out);
+    this.addStep(runId, verdict.passed ? "tool_result" : "error", verdict.message);
+    this.setStatus(runId, verdict.passed ? "tool_use" : "repairing");
+    return verdict.message;
   }
 
   /** Summarize old conversation context via the LLM (compression callback). */
@@ -403,6 +447,16 @@ function dedupe(items: string[]): string[] {
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** True when an apply_patch tool result reports a successful write. */
+function patchApplied(resultText: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(resultText);
+    return typeof parsed === "object" && parsed !== null && (parsed as { applied?: unknown }).applied === true;
+  } catch {
+    return false;
+  }
 }
 
 function patchArg(call: LLMToolCall): string {

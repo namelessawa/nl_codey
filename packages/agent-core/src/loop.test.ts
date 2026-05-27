@@ -105,6 +105,27 @@ describe("runToolLoop", () => {
     expect(assistantTurns).toBeGreaterThanOrEqual(2);
   });
 
+  it("runs verifyAfterPatch only after a successful apply_patch", async () => {
+    const verified: string[] = [];
+    await runToolLoop(
+      START,
+      deps({
+        executeTool: async (c) =>
+          c.name === "apply_patch"
+            ? JSON.stringify({ applied: true, changedFiles: ["a.ts"] })
+            : JSON.stringify({ ok: true }),
+        verifyAfterPatch: async (call, result) => {
+          verified.push(call.name);
+          expect(result).toContain("applied");
+          return "✅ verification passed";
+        },
+      }),
+    );
+
+    // The mock drives list_files then apply_patch; only the patch is verified.
+    expect(verified).toEqual(["apply_patch"]);
+  });
+
   it("compresses an oversized conversation before the first model turn", async () => {
     const big: LLMMessage[] = [
       { role: "system", content: "system" },

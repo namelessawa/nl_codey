@@ -86,6 +86,13 @@ export type ToolLoopDeps = {
   /** Record a completed tool result. */
   onToolResult?: (call: LLMToolCall, result: string) => void;
   /**
+   * Optional automatic verification after a successful `apply_patch` write.
+   * Runs the project's test/build command and returns feedback to append to
+   * the conversation (a pass note or a structured failure for the model to
+   * repair), or null to skip. Drives the verify→repair loop.
+   */
+  verifyAfterPatch?: (call: LLMToolCall, result: string) => Promise<string | null>;
+  /**
    * Optional context-window compression. When the conversation exceeds the
    * trigger ratio of `contextWindow`, the middle is folded into a summary
    * produced by `summarize` before the next model turn.
@@ -171,6 +178,12 @@ export async function runToolLoop(
       const result = await deps.executeTool(call);
       deps.onToolResult?.(call, result);
       messages.push({ role: "tool", toolCallId: call.id, content: result });
+
+      if (deps.verifyAfterPatch && call.name === "apply_patch") {
+        const feedback = await deps.verifyAfterPatch(call, result);
+        if (feedback) messages.push({ role: "user", content: feedback });
+        if (deps.signal?.aborted) return { state: "cancelled" };
+      }
     }
   }
 }

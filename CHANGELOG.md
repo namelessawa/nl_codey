@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Verifier loop (Phase 2 Step 6)** — after an approved `apply_patch` writes to disk, the
+  agent now automatically runs the project's verification command (the first detected
+  test/build script) instead of relying on the model to remember. The run transitions the
+  status to `verifying`; on success it returns to `tool_use` with a pass note, on failure it
+  enters `repairing` and feeds a structured failure summary (parsed via `parse_test_failure`:
+  framework + per-file/line failures) back to the model so it can make a minimal fix, which is
+  then verified again — the verify→repair loop. Skipped (with an explanatory note) when shell
+  execution is disabled or no command is detected. Pure `evaluateVerification` helper is
+  unit-tested; the loop gains an optional injected `verifyAfterPatch` hook. Cumulative
+  snapshots (one per applied patch, restored in reverse on rollback) make every iteration
+  reversible.
 - **Context compression (Phase 2 Step 13)** — long tool-use runs no longer blow the model's
   context window. When the estimated conversation size exceeds 60% of the model's context
   window (`contextWindowFor`), the loop folds the middle of the history into an LLM-generated

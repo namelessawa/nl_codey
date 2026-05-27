@@ -13,6 +13,7 @@ export const SYSTEM_PROMPT = `你是一个本地 Coding Agent，运行在用户�
 - 使用 apply_patch 工具。优先使用 V4A 格式（*** Begin Patch / *** Update File: / *** Add File: / *** Delete File: / *** End Patch），它按上下文定位、对行号容错；也兼容标准 unified diff。
 - 一次 patch 尽量只解决一个明确问题，大改动拆分成多次 patch。
 - apply_patch 需要用户批准后才会写入磁盘。
+- 补丁写入后系统会自动运行项目的验证命令（测试/构建）并把结果反馈给你。验证失败时，根据失败摘要做最小修复后再次提交 patch，不必自己重复调用 run_command 验证同一处改动。
 
 运行命令时：
 - 只能使用白名单中的命令，优先使用项目自己的 test/build 脚本。

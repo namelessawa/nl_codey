@@ -17,3 +17,4 @@ export {
   SUMMARIZE_PROMPT,
   type CompressionResult,
 } from "./compressor.js";
+export { evaluateVerification, type VerificationResult } from "./verifier.js";
