@@ -5,6 +5,8 @@ export { runCommandTool } from "./run-command.js";
 export { applyPatchTool } from "./apply-patch.js";
 export { writeFileTool } from "./write-file.js";
 export { parseTestFailure } from "./parse-test-failure.js";
+export { readFileRangeTool } from "./read-file-range.js";
+export { gitStatus, gitDiff, parseGitStatus } from "./git.js";
 export { isV4APatch, parseV4A, applyV4AHunks, type V4AOp, type V4AHunk } from "./v4a.js";
 export { readOnlyTools, type ReadOnlyToolName } from "./registry.js";
 export { ToolError, TOOL_CODES } from "./errors.js";

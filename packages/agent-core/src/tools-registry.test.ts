@@ -29,6 +29,10 @@ describe("AGENT_TOOL_SCHEMAS", () => {
       "search_text",
       "apply_patch",
       "run_command",
+      "read_file_range",
+      "git_status",
+      "git_diff",
+      "record_plan",
     ]);
   });
 });

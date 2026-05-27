@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **More agent tools (Phase 2 Step 11)** — `read_file_range` (inclusive 1-indexed slice,
+  max 500 lines, reports total line count), `git_status` (branch + modified/added/deleted/
+  untracked), `git_diff` (working-tree or staged unified diff, optional path), and
+  `record_plan` (advisory structured plan for the trace). Wired into the tool registry and
+  schemas. _(`ask_human` deferred — needs a free-text response IPC + GUI input.)_
 - **V4A patch format (Phase 2 Step 12)** — `apply_patch` now accepts the context-based
   V4A format (`*** Begin Patch` / `*** Update File:` / `*** Add File:` / `*** Delete File:`
   / `*** End Patch`) in addition to unified diff. V4A locates edits by surrounding context

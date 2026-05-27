@@ -33,6 +33,39 @@ export type ApplyPatchOutput = { applied: boolean; changedFiles: string[] };
 export type WriteFileInput = { runId: string; path: string; content: string };
 export type WriteFileOutput = { path: string; bytesWritten: number };
 
+// read_file_range
+export type ReadFileRangeInput = { path: string; startLine: number; endLine: number };
+export type ReadFileRangeOutput = {
+  path: string;
+  startLine: number;
+  endLine: number;
+  content: string;
+  /** Total lines in the file, so the model knows whether to keep reading. */
+  totalLines: number;
+};
+
+// git_status
+export type GitStatusOutput = {
+  branch: string;
+  modified: string[];
+  added: string[];
+  deleted: string[];
+  untracked: string[];
+};
+
+// git_diff
+export type GitDiffInput = { path?: string; staged?: boolean };
+export type GitDiffOutput = { diff: string };
+
+// record_plan (structured plan registration; advisory only)
+export type PlanStep = {
+  description: string;
+  expectedFiles?: string[];
+  expectedCommands?: string[];
+};
+export type RecordPlanInput = { steps: PlanStep[] };
+export type RecordPlanOutput = { recorded: number };
+
 // run_command
 export type RunCommandInput = { command: string; timeoutMs?: number };
 export type RunCommandOutput = {
@@ -84,6 +117,7 @@ export const TOOL_LIMITS = {
   maxSearchResults: 100,
   maxSearchContextChars: 300,
   maxReadFilesPerRun: 8,
+  maxReadRangeLines: 500,
   commandTimeoutMs: 60_000,
   maxCommandOutputBytes: 100 * 1024,
 } as const;

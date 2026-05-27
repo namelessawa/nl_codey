@@ -6,7 +6,10 @@ import type {
 } from "@coding-agent/shared";
 import {
   applyPatchTool,
+  gitDiff,
+  gitStatus,
   listFilesTool,
+  readFileRangeTool,
   readFileTool,
   runCommandTool,
   searchTextTool,
@@ -82,6 +85,61 @@ export const AGENT_TOOL_SCHEMAS: ToolSchema[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: "read_file_range",
+    description: "Read an inclusive 1-indexed line range from a text file (max 500 lines). Returns total line count.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Workspace-relative file path." },
+        startLine: { type: "number", description: "1-indexed first line (inclusive)." },
+        endLine: { type: "number", description: "1-indexed last line (inclusive)." },
+      },
+      required: ["path", "startLine", "endLine"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "git_status",
+    description: "Show the git working-tree status: branch and modified/added/deleted/untracked files.",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "git_diff",
+    description: "Show a unified diff of the working tree (or staged changes), optionally for a single path.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Optional file path to diff." },
+        staged: { type: "boolean", description: "Diff staged changes instead of the working tree." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "record_plan",
+    description: "Register a structured plan (advisory, for the trace). Optional — does not change files.",
+    parameters: {
+      type: "object",
+      properties: {
+        steps: {
+          type: "array",
+          description: "Ordered plan steps.",
+          items: {
+            type: "object",
+            properties: {
+              description: { type: "string" },
+              expectedFiles: { type: "array", items: { type: "string" } },
+              expectedCommands: { type: "array", items: { type: "string" } },
+            },
+            required: ["description"],
+          },
+        },
+      },
+      required: ["steps"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 /** Outcome of executing one tool call, with metadata for step recording/UI. */
@@ -145,6 +203,31 @@ export function createToolExecutor(
             patch,
             changedFiles: out.changedFiles,
           };
+        }
+        case "read_file_range": {
+          const path = stringArg(args.path);
+          const startLine = numberArg(args.startLine);
+          const endLine = numberArg(args.endLine);
+          if (!path || startLine === undefined || endLine === undefined) {
+            return err("read_file_range", "Requires path, startLine, and endLine");
+          }
+          const out = await readFileRangeTool.run({ path, startLine, endLine }, ctx);
+          return ok("read_file_range", JSON.stringify(out));
+        }
+        case "git_status": {
+          const out = await gitStatus(ctx);
+          return ok("git_status", JSON.stringify(out));
+        }
+        case "git_diff": {
+          const out = await gitDiff(
+            { ...(stringArg(args.path) ? { path: stringArg(args.path) } : {}), staged: args.staged === true },
+            ctx,
+          );
+          return ok("git_diff", JSON.stringify({ diff: truncate(out.diff) }));
+        }
+        case "record_plan": {
+          const steps = Array.isArray(args.steps) ? args.steps.length : 0;
+          return ok("record_plan", JSON.stringify({ recorded: steps }));
         }
         case "run_command": {
           const command = stringArg(args.command);
