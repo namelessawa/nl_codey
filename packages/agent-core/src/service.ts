@@ -11,7 +11,7 @@ import type {
   RunCommandOutput,
   ToolContext,
 } from "@coding-agent/shared";
-import { clampBudgetLimits, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
+import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
 import type { Storage } from "@coding-agent/storage";
 import { detectProject } from "@coding-agent/project-indexer";
 import { listFilesTool, readFileTool, runCommandTool } from "@coding-agent/tools";
@@ -21,6 +21,7 @@ import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
 import { AGENT_TOOL_SCHEMAS, createToolExecutor } from "./tools-registry.js";
 import { SYSTEM_PROMPT } from "./prompts.js";
+import { SUMMARIZE_PROMPT } from "./compressor.js";
 
 const EXPLAIN_PROMPT = `你是一个本地 Coding Agent。请阅读给定文件内容，用结构化的中文解释其执行流程、关键函数和数据流。不要修改任何文件，不要输出 diff。`;
 
@@ -225,6 +226,12 @@ export class AgentService {
           // Back to acting after each model turn (unless approval flips it).
           this.setStatus(runId, "tool_use");
         },
+        compression: {
+          contextWindow: contextWindowFor(llm.model),
+          summarize: (text) => this.summarizeContext(llm, text, controller.signal),
+          onCompressed: (count) =>
+            this.addStep(runId, "message", `已压缩 ${count} 条历史消息以节省上下文。`),
+        },
         requiresApproval: (call) => call.name === "apply_patch",
         waitForApproval: (call) => this.awaitApproval(runId, call),
         onToolCall: (call) => {
@@ -248,6 +255,23 @@ export class AgentService {
       this.approvals.delete(runId);
       this.pending.delete(runId);
     }
+  }
+
+  /** Summarize old conversation context via the LLM (compression callback). */
+  private async summarizeContext(
+    llm: ChatLLMProvider,
+    text: string,
+    signal: AbortSignal,
+  ): Promise<string> {
+    const out = await llm.complete({
+      messages: [
+        { role: "system", content: SUMMARIZE_PROMPT },
+        { role: "user", content: text },
+      ],
+      temperature: 0.2,
+      signal,
+    });
+    return out.text.trim();
   }
 
   /** Park the loop until the user approves/rejects the pending patch. */

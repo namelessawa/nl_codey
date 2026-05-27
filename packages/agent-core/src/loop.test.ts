@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BudgetLimits, LLMMessage } from "@coding-agent/shared";
 import { MockLLMProvider } from "@coding-agent/llm";
 import { BudgetController } from "./budget.js";
@@ -103,5 +103,35 @@ describe("runToolLoop", () => {
     expect(chunkTypes).toContain("text_delta");
     expect(chunkTypes).toContain("finish");
     expect(assistantTurns).toBeGreaterThanOrEqual(2);
+  });
+
+  it("compresses an oversized conversation before the first model turn", async () => {
+    const big: LLMMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "do a thing" },
+      ...Array.from({ length: 14 }, (_, i) => ({
+        role: "assistant" as const,
+        content: "x".repeat(400) + i,
+      })),
+    ];
+    const summarize = vi.fn(async () => "summary");
+    let compressedCount = 0;
+
+    const outcome = await runToolLoop(
+      big,
+      deps({
+        compression: {
+          contextWindow: 50,
+          summarize,
+          onCompressed: (n) => {
+            compressedCount = n;
+          },
+        },
+      }),
+    );
+
+    expect(summarize).toHaveBeenCalled();
+    expect(compressedCount).toBeGreaterThan(0);
+    expect(outcome.state).toBe("done");
   });
 });

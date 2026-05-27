@@ -8,6 +8,7 @@ import type {
   TokenUsage,
 } from "@coding-agent/shared";
 import type { BudgetController } from "./budget.js";
+import { compressConversation } from "./compressor.js";
 
 /** One consumed chat turn: streamed text, tool calls, finish reason, usage. */
 export type ConsumedTurn = {
@@ -84,6 +85,17 @@ export type ToolLoopDeps = {
   executeTool: (call: LLMToolCall) => Promise<string>;
   /** Record a completed tool result. */
   onToolResult?: (call: LLMToolCall, result: string) => void;
+  /**
+   * Optional context-window compression. When the conversation exceeds the
+   * trigger ratio of `contextWindow`, the middle is folded into a summary
+   * produced by `summarize` before the next model turn.
+   */
+  compression?: {
+    contextWindow: number;
+    summarize: (text: string) => Promise<string>;
+    /** Notify how many middle messages were folded into a summary. */
+    onCompressed?: (compressedCount: number) => void;
+  };
 };
 
 /**
@@ -98,7 +110,7 @@ export async function runToolLoop(
   initialMessages: LLMMessage[],
   deps: ToolLoopDeps,
 ): Promise<ToolLoopOutcome> {
-  const messages: LLMMessage[] = [...initialMessages];
+  let messages: LLMMessage[] = [...initialMessages];
 
   while (true) {
     const limit = deps.budget.exceeded();
@@ -106,6 +118,19 @@ export async function runToolLoop(
     if (deps.signal?.aborted) return { state: "cancelled" };
 
     deps.budget.incrementIteration();
+
+    if (deps.compression) {
+      const compressed = await compressConversation(
+        messages,
+        deps.compression.contextWindow,
+        deps.compression.summarize,
+      );
+      if (compressed) {
+        messages = compressed.messages;
+        deps.compression.onCompressed?.(compressed.compressedCount);
+      }
+      if (deps.signal?.aborted) return { state: "cancelled" };
+    }
 
     const turn = await consumeStream(
       deps.llm.chat({

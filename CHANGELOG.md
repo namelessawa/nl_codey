@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Context compression (Phase 2 Step 13)** — long tool-use runs no longer blow the model's
+  context window. When the estimated conversation size exceeds 60% of the model's context
+  window (`contextWindowFor`), the loop folds the middle of the history into an LLM-generated
+  summary before the next turn, preserving the system prompt, the original user task, and the
+  most recent 10 messages verbatim. The summarizer runs through the same provider via a new
+  `AgentService.summarizeContext` and a Chinese `SUMMARIZE_PROMPT` that keeps task goal,
+  explored files, attempted patches, and test failures while dropping full file bodies and
+  intermediate reasoning. A trace step reports how many messages were compressed. Compression
+  is an optional, injected dependency of `runToolLoop`, so it stays out of the way in tests.
 - **More agent tools (Phase 2 Step 11)** — `read_file_range` (inclusive 1-indexed slice,
   max 500 lines, reports total line count), `git_status` (branch + modified/added/deleted/
   untracked), `git_diff` (working-tree or staged unified diff, optional path), and

@@ -10,3 +10,10 @@ export {
 export { SYSTEM_PROMPT } from "./prompts.js";
 export { rollbackRun, type RollbackArgs } from "./rollback.js";
 export { isExplainTask, extractFilePaths } from "./intent.js";
+export {
+  compressConversation,
+  shouldCompress,
+  serializeMessages,
+  SUMMARIZE_PROMPT,
+  type CompressionResult,
+} from "./compressor.js";
