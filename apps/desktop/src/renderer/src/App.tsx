@@ -6,6 +6,8 @@ import { FileTree } from "./components/FileTree.js";
 import { RecentWorkspaces } from "./components/RecentWorkspaces.js";
 import { StepStream } from "./components/StepStream.js";
 import { TracePanel } from "./components/TracePanel.js";
+import { IterationTimeline } from "./components/IterationTimeline.js";
+import { ProjectCard } from "./components/ProjectCard.js";
 import { BudgetIndicator } from "./components/BudgetIndicator.js";
 import { DiffView } from "./components/DiffView.js";
 import { CommandOutput } from "./components/CommandOutput.js";
@@ -27,7 +29,7 @@ export function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [liveText, setLiveText] = useState<string>("");
-  const [centerView, setCenterView] = useState<"stream" | "trace">("stream");
+  const [centerView, setCenterView] = useState<"stream" | "trace" | "timeline">("stream");
 
   const runIdRef = useRef<string | null>(null);
   runIdRef.current = detail?.run.id ?? null;
@@ -185,6 +187,7 @@ export function App(): JSX.Element {
           activeId={workspace?.id ?? null}
           onSelect={(id) => void openRecent(id)}
         />
+        <ProjectCard files={files} />
         <FileTree files={files} selected={selectedFile} onSelect={(p) => void selectFile(p)} />
       </section>
 
@@ -230,13 +233,21 @@ export function App(): JSX.Element {
             >
               Trace
             </button>
+            <button
+              className={`tab ${centerView === "timeline" ? "tab-active" : ""}`}
+              onClick={() => setCenterView("timeline")}
+            >
+              Timeline
+            </button>
           </div>
         </div>
         <div className="panel-body">
           {centerView === "stream" ? (
             <StepStream steps={detail?.steps ?? []} liveText={liveText} />
-          ) : (
+          ) : centerView === "trace" ? (
             <TracePanel detail={detail} />
+          ) : (
+            <IterationTimeline detail={detail} />
           )}
         </div>
       </section>

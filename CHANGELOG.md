@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Iteration timeline (Phase 2 Step 8)** — a new **Timeline** tab in the center panel
+  visualizes the agent's edit→verify→repair cycles: one card per iteration with a status
+  marker (in-progress / verified / failed), a `patch` badge, a relative start offset, and the
+  step count. Iterations are derived purely from the step stream by `deriveIterations` (a new
+  patch opens a new iteration; verify pass/fail notes set its status), so it stays in sync
+  live with no new IPC. Unit-tested (4 tests).
+- **Project card (Phase 2 Step 9)** — the left panel now shows a compact card for the open
+  workspace: detected project kind (Node/TS, Python, Go, Rust, or unknown), the validation
+  commands the agent will prefer, total file count, and the top file extensions. Derived
+  client-side from the workspace file list via `deriveProjectCard` (filename heuristics
+  mirroring the main-process detector), so it needs no disk reads or IPC. Unit-tested
+  (5 tests).
 - **Eval framework + 10 tasks (Phase 2 Step 14)** — a deterministic evaluation harness for
   the agent. Each `EvalTask` seeds a tiny workspace, states a prompt, and asserts the result
   through reproducible, LLM-free checks (`file_exists` / `file_absent` / `file_contains` /

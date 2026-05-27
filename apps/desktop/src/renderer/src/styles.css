@@ -263,3 +263,36 @@ textarea.task {
   margin: 0; padding: 8px; background: var(--panel); border-top: 1px solid var(--border);
   font-family: var(--mono); font-size: 11px; white-space: pre-wrap; word-break: break-word;
 }
+
+/* --- iteration timeline --- */
+.timeline { overflow: auto; padding: 4px 2px; }
+.timeline-item { display: flex; gap: 10px; padding: 6px 4px; border-left: 2px solid var(--border); margin-left: 8px; }
+.timeline-item.iter-verified { border-left-color: #3fb950; }
+.timeline-item.iter-failed { border-left-color: #f85149; }
+.timeline-marker {
+  margin-left: -17px; width: 22px; height: 22px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; background: var(--panel-2); border: 1px solid var(--border); font-size: 12px;
+}
+.iter-verified .timeline-marker { color: #3fb950; border-color: #3fb950; }
+.iter-failed .timeline-marker { color: #f85149; border-color: #f85149; }
+.timeline-body { display: flex; flex-direction: column; gap: 2px; }
+.timeline-head { display: flex; align-items: center; gap: 8px; }
+.iter-badge { font-size: 10px; padding: 1px 7px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); }
+.iter-badge.iter-verified { color: #3fb950; }
+.iter-badge.iter-failed { color: #f85149; }
+.iter-badge.iter-patch { color: var(--accent); }
+.iter-meta { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+
+/* --- project card --- */
+.project-card { margin: 8px 0; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; }
+.project-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.kind-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+.kind-node { color: #58a6ff; }
+.kind-python { color: #f0c674; }
+.kind-go { color: #4dd0e1; }
+.kind-rust { color: #ff8a65; }
+.project-card-row { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.project-card-label { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.project-card-cmds { font-family: var(--mono); font-size: 11px; color: var(--text); }
+.project-card-exts { display: flex; flex-wrap: wrap; gap: 4px; }
+.ext-chip { font-size: 10px; font-family: var(--mono); padding: 1px 6px; border-radius: 6px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); }
