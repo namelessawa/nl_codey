@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Agent tool-use loop (Phase 2 Step 2)** — the agent core no longer runs the fixed
+  two-pass plan→diff pipeline. `runToolLoop` lets the model drive: it streams `chat()`
+  turns, selects tools (`list_files`/`read_file`/`search_text`/`apply_patch`/`run_command`)
+  via the tool-calling API, and continues until it stops, the budget trips, the user
+  cancels, or an error occurs. New states (`tool_use`, `budget_exceeded`) flow to the GUI.
+  `apply_patch` still pauses for explicit user approval (the loop parks on a promise that
+  the Apply/Reject IPC resolves), so nothing is written without consent, and rollback is
+  preserved. Per-turn token/cost/tool/iteration usage is persisted to the run. The explain
+  task keeps its read-only short-circuit. `AGENT_TOOL_SCHEMAS` + `createToolExecutor`
+  bridge the model's tool calls to the Phase 1 tools.
 - **Phase 2 foundation — streaming, tool-calling LLM layer** _(backend only; agent
   loop migration pending)_. New `ChatLLMProvider` interface with a streaming
   `chat()` that emits `text_delta` / `tool_call` / `finish` / `error` chunks, alongside
