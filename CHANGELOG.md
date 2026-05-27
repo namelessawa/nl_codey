@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Acceptance scenarios (Phase 2 Step 16)** — `docs/PHASE2_ACCEPTANCE.md` enumerates 14
+  acceptance scenarios (autonomous loop, patch approval, verify, verify→repair, regression
+  guard, snapshots/rollback, budget breaker, cancellation, compression, retries,
+  observability, project card, symbol navigation, eval suite), each mapped to its steps,
+  expected result, and verifying test. Backed by `acceptance.test.ts`, which drives the
+  assembled tool-use pipeline through a deterministic scripted provider end-to-end:
+  verify→repair→done (two gated patches, two verifications), patch rejection → cancelled, and
+  the budget circuit breaker. This closes out the Phase 2 dev-order steps.
 - **Iteration timeline (Phase 2 Step 8)** — a new **Timeline** tab in the center panel
   visualizes the agent's edit→verify→repair cycles: one card per iteration with a status
   marker (in-progress / verified / failed), a `patch` badge, a relative start offset, and the
