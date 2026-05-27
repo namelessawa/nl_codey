@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **`find_symbol` tool + symbol index (Phase 2 Step 10)** — a new agent tool locates symbol
+  declarations (functions, classes, interfaces, types, enums, structs, traits, consts) by
+  name across the project, or lists all symbols in a single file — faster than `search_text`
+  for jumping to a definition. Backed by a pure, dependency-free `extractSymbols` heuristic
+  that pattern-matches top-level declarations per language (TS/JS, Python, Go, Rust) with
+  line numbers, signatures, and an `exported` flag (JS `export` / Python non-underscore / Go
+  capitalization / Rust `pub`). Capped at 400 files scanned and 50 results, never escaping the
+  workspace. _(Deviation from spec: implemented as a regex heuristic rather than a tree-sitter
+  parse, to avoid adding a second native-module/ABI dependency alongside better-sqlite3; the
+  `symbols` table is reserved for a future persisted index.)_
 - **Resilient LLM requests (Phase 2 Step 15)** — both providers now retry transient failures
   instead of failing the whole run on the first hiccup. A new `postWithRetries` helper wraps
   every `/chat/completions` and `/v1/messages` POST with bounded exponential backoff

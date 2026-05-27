@@ -66,6 +66,38 @@ export type PlanStep = {
 export type RecordPlanInput = { steps: PlanStep[] };
 export type RecordPlanOutput = { recorded: number };
 
+// find_symbol
+export type SymbolKind =
+  | "function"
+  | "method"
+  | "class"
+  | "interface"
+  | "type"
+  | "enum"
+  | "struct"
+  | "const"
+  | "var";
+
+export type SymbolInfo = {
+  name: string;
+  kind: SymbolKind;
+  file: string;
+  /** 1-indexed line of the declaration. */
+  line: number;
+  /** Trimmed declaration line (the signature). */
+  signature: string;
+  exported: boolean;
+};
+
+export type FindSymbolInput = {
+  /** Symbol name to look up (exact match preferred, substring fallback). */
+  name?: string;
+  /** Restrict to a single file; with no name, lists all symbols in that file. */
+  path?: string;
+  maxResults?: number;
+};
+export type FindSymbolOutput = { symbols: SymbolInfo[]; truncated: boolean };
+
 // run_command
 export type RunCommandInput = { command: string; timeoutMs?: number };
 export type RunCommandOutput = {

@@ -6,6 +6,7 @@ import type {
 } from "@coding-agent/shared";
 import {
   applyPatchTool,
+  findSymbolTool,
   gitDiff,
   gitStatus,
   listFilesTool,
@@ -96,6 +97,20 @@ export const AGENT_TOOL_SCHEMAS: ToolSchema[] = [
         endLine: { type: "number", description: "1-indexed last line (inclusive)." },
       },
       required: ["path", "startLine", "endLine"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "find_symbol",
+    description:
+      "Find where a symbol (function/class/interface/type/const) is declared across the project by name, or list all symbols in a file. Faster than search_text for jumping to definitions.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Symbol name to find (exact preferred, substring fallback)." },
+        path: { type: "string", description: "Restrict to one file; with no name, lists that file's symbols." },
+        maxResults: { type: "number", description: "Maximum number of symbols to return." },
+      },
       additionalProperties: false,
     },
   },
@@ -213,6 +228,17 @@ export function createToolExecutor(
           }
           const out = await readFileRangeTool.run({ path, startLine, endLine }, ctx);
           return ok("read_file_range", JSON.stringify(out));
+        }
+        case "find_symbol": {
+          const out = await findSymbolTool.run(
+            {
+              ...(stringArg(args.name) ? { name: stringArg(args.name) } : {}),
+              ...(stringArg(args.path) ? { path: stringArg(args.path) } : {}),
+              ...(numberArg(args.maxResults) !== undefined ? { maxResults: numberArg(args.maxResults) } : {}),
+            },
+            ctx,
+          );
+          return ok("find_symbol", JSON.stringify(out));
         }
         case "git_status": {
           const out = await gitStatus(ctx);

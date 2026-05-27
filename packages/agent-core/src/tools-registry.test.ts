@@ -30,6 +30,7 @@ describe("AGENT_TOOL_SCHEMAS", () => {
       "apply_patch",
       "run_command",
       "read_file_range",
+      "find_symbol",
       "git_status",
       "git_diff",
       "record_plan",
@@ -54,5 +55,12 @@ describe("createToolExecutor guards", () => {
     const res = await executor(false)(call("run_command", { command: "pnpm test" }));
     expect(res.isError).toBe(true);
     expect(res.resultText).toContain("disabled");
+  });
+
+  it("runs find_symbol and returns a symbols payload", async () => {
+    const res = await executor(true)(call("find_symbol", { path: "src/symbols.ts", name: "extractSymbols" }));
+    expect(res.isError).toBe(false);
+    const parsed = JSON.parse(res.resultText) as { symbols: Array<{ name: string }> };
+    expect(Array.isArray(parsed.symbols)).toBe(true);
   });
 });
