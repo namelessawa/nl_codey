@@ -43,6 +43,41 @@ export type RunCommandOutput = {
   timedOut: boolean;
 };
 
+// parse_test_failure
+export type TestFramework =
+  | "vitest"
+  | "jest"
+  | "pytest"
+  | "tsc"
+  | "go-test"
+  | "cargo-test"
+  | "unknown";
+
+export type TestFailureItem = {
+  file: string;
+  line?: number;
+  column?: number;
+  testName?: string;
+  message: string;
+  stackTrace?: string;
+};
+
+export type ParseTestFailureInput = {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  command: string;
+};
+
+export type TestFailureReport = {
+  framework: TestFramework;
+  failures: TestFailureItem[];
+  summary: string;
+};
+
+/** Max characters of raw output kept in the `summary` when parsing fails. */
+export const MAX_FAILURE_SUMMARY_CHARS = 4000;
+
 export const TOOL_LIMITS = {
   maxListedFiles: 500,
   maxReadBytes: 200 * 1024,

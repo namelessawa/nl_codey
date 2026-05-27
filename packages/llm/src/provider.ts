@@ -1,4 +1,4 @@
-import type { LLMConfig, LLMProvider } from "@coding-agent/shared";
+import type { ChatLLMProvider, LLMConfig } from "@coding-agent/shared";
 import { OPENAI_COMPATIBLE_PROVIDERS } from "@coding-agent/shared";
 import { MockLLMProvider } from "./mock.js";
 import { OpenAICompatibleProvider } from "./openai-compatible.js";
@@ -9,7 +9,7 @@ import { AnthropicProvider } from "./anthropic.js";
  * Throws a readable error if required fields are missing — callers should
  * surface this to the user rather than crashing.
  */
-export function createLLMProvider(config: LLMConfig): LLMProvider {
+export function createLLMProvider(config: LLMConfig): ChatLLMProvider {
   if (config.provider === "anthropic") {
     return new AnthropicProvider({
       apiKey: config.apiKey,
@@ -40,7 +40,7 @@ export function createLLMProvider(config: LLMConfig): LLMProvider {
  * Legacy env-based factory, kept for headless/dev runs without configured
  * settings. `LLM_PROVIDER=mock` (default) needs no API key.
  */
-export function createLLMProviderFromEnv(env: NodeJS.ProcessEnv = process.env): LLMProvider {
+export function createLLMProviderFromEnv(env: NodeJS.ProcessEnv = process.env): ChatLLMProvider {
   const selected = (env.LLM_PROVIDER ?? "mock").toLowerCase();
   if (selected === "mock") return new MockLLMProvider();
   if (selected === "deepseek") {
