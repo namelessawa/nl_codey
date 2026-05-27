@@ -1,0 +1,38 @@
+{
+  "name": "@coding-agent/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "@coding-agent/agent-core": "workspace:*",
+    "@coding-agent/llm": "workspace:*",
+    "@coding-agent/project-indexer": "workspace:*",
+    "@coding-agent/sandbox": "workspace:*",
+    "@coding-agent/shared": "workspace:*",
+    "@coding-agent/storage": "workspace:*",
+    "@coding-agent/tools": "workspace:*",
+    "better-sqlite3": "^11.7.0",
+    "diff": "^7.0.0",
+    "@vscode/ripgrep": "^1.15.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

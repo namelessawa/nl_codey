@@ -1,0 +1,17 @@
+node_modules/
+dist/
+out/
+.vite/
+*.log
+.env
+.env.local
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+.DS_Store
+
+# App settings + encrypted API key live in the OS userData dir, never in the
+# repo. These guard against any stray local copy being committed.
+settings.json
+apikey.bin

@@ -1,0 +1,27 @@
+{
+  "name": "coding-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Windows GUI Coding Agent (Phase 1 MVP)",
+  "scripts": {
+    "dev": "pnpm --filter @coding-agent/desktop dev",
+    "build": "pnpm -r --filter ./packages/* build && pnpm --filter @coding-agent/desktop build",
+    "build:packages": "pnpm -r --filter ./packages/* build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "rebuild:native": "pnpm --filter @coding-agent/desktop exec electron-rebuild -f -w better-sqlite3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "electron", "esbuild"]
+  }
+}
