@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Resilient LLM requests (Phase 2 Step 15)** — both providers now retry transient failures
+  instead of failing the whole run on the first hiccup. A new `postWithRetries` helper wraps
+  every `/chat/completions` and `/v1/messages` POST with bounded exponential backoff
+  (3 attempts), retrying network errors and retryable HTTP statuses (408/409/425/429 and
+  5xx) while never retrying a deliberate abort. The final attempt's response is returned
+  intact so callers keep their status-specific, key-redacted error detail. This also wires up
+  the previously-dead `withRetries` helper. `isRetryableStatus`/`withRetries`/`postWithRetries`
+  are unit-tested (9 tests).
 - **Regression guard (Phase 2 Step 7)** — before the agent makes any edit, the run now
   captures a pristine baseline by running the verification command once and recording which
   tests already failed. After each post-patch verification, current failures are classified

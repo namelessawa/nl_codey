@@ -55,6 +55,44 @@ export async function withRetries<T>(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+/** HTTP statuses worth retrying: timeouts, rate limits, and transient 5xx. */
+export const RETRYABLE_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+
+export function isRetryableStatus(status: number): boolean {
+  return RETRYABLE_STATUS.has(status);
+}
+
+const DEFAULT_ATTEMPTS = 3;
+
+/**
+ * POST with a timeout, retrying transient network errors and retryable HTTP
+ * statuses with exponential backoff. The final attempt's response is returned
+ * even when not OK, so callers keep their status-specific error detail; only
+ * earlier retryable responses are discarded and retried. Aborts are never
+ * retried.
+ */
+export function postWithRetries(
+  doFetch: (signal: AbortSignal) => Promise<Response>,
+  opts: { timeoutSeconds: number; attempts?: number; baseDelayMs?: number; signal?: AbortSignal },
+): Promise<Response> {
+  const attempts = Math.max(1, opts.attempts ?? DEFAULT_ATTEMPTS);
+  return withRetries(
+    async (attempt) => {
+      const res = await withTimeout(doFetch, opts.timeoutSeconds, opts.signal);
+      if (!res.ok && isRetryableStatus(res.status) && attempt < attempts - 1) {
+        await res.text().catch(() => undefined); // drain body to free the socket
+        throw new Error(`Retryable HTTP ${res.status}`);
+      }
+      return res;
+    },
+    {
+      attempts,
+      ...(opts.baseDelayMs !== undefined ? { baseDelayMs: opts.baseDelayMs } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    },
+  );
+}
+
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === "AbortError";
 }

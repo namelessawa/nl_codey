@@ -9,7 +9,7 @@ import type {
   ToolSchema,
 } from "@coding-agent/shared";
 import { computeCostUsd, contextWindowFor, estimateMessageTokens, estimateTokens } from "@coding-agent/shared";
-import { withTimeout, redactError } from "./http.js";
+import { postWithRetries, redactError } from "./http.js";
 import { sseData } from "./stream.js";
 
 export type AnthropicConfig = {
@@ -228,7 +228,7 @@ export class AnthropicProvider implements ChatLLMProvider {
   }
 
   private post(url: string, body: unknown, signal?: AbortSignal): Promise<Response> {
-    return withTimeout(
+    return postWithRetries(
       (s) =>
         fetch(url, {
           method: "POST",
@@ -240,8 +240,7 @@ export class AnthropicProvider implements ChatLLMProvider {
           body: JSON.stringify(body),
           signal: s,
         }),
-      this.config.timeoutSeconds,
-      signal,
+      { timeoutSeconds: this.config.timeoutSeconds, ...(signal ? { signal } : {}) },
     );
   }
 }
