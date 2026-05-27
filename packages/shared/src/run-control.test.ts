@@ -11,12 +11,19 @@ describe("isRunActive", () => {
     expect(isRunActive("running_command")).toBe(true);
   });
 
+  it("is true for Phase 2 in-progress states", () => {
+    expect(isRunActive("tool_use")).toBe(true);
+    expect(isRunActive("verifying")).toBe(true);
+    expect(isRunActive("repairing")).toBe(true);
+  });
+
   it("is false for terminal and idle states", () => {
     expect(isRunActive("idle")).toBe(false);
     expect(isRunActive("waiting_for_user_approval")).toBe(false);
     expect(isRunActive("done")).toBe(false);
     expect(isRunActive("failed")).toBe(false);
     expect(isRunActive("cancelled")).toBe(false);
+    expect(isRunActive("budget_exceeded")).toBe(false);
   });
 });
 

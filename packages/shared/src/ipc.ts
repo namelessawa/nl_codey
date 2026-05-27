@@ -35,7 +35,9 @@ export const IPC_EVENT = "agent:event" as const;
 export type AgentEvent =
   | { kind: "run_updated"; run: AgentRun }
   | { kind: "step_added"; step: AgentStep }
-  | { kind: "patch_ready"; runId: string; patch: string };
+  | { kind: "patch_ready"; runId: string; patch: string }
+  /** Streaming assistant text for the in-progress turn (token-by-token). */
+  | { kind: "delta"; runId: string; text: string };
 
 export type RunAgentTaskArgs = { workspaceId: string; task: string };
 export type RunIdArgs = { runId: string };

@@ -9,8 +9,11 @@ const ACTIVE_RUN_STATES: ReadonlySet<AgentRunState> = new Set([
   "searching",
   "reading",
   "editing",
+  "tool_use",
   "applying_patch",
   "running_command",
+  "verifying",
+  "repairing",
 ]);
 
 /** True while a run is actively executing. */

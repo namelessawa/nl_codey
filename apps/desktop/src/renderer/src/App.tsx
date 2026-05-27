@@ -5,6 +5,8 @@ import { api } from "./api.js";
 import { FileTree } from "./components/FileTree.js";
 import { RecentWorkspaces } from "./components/RecentWorkspaces.js";
 import { StepStream } from "./components/StepStream.js";
+import { TracePanel } from "./components/TracePanel.js";
+import { BudgetIndicator } from "./components/BudgetIndicator.js";
 import { DiffView } from "./components/DiffView.js";
 import { CommandOutput } from "./components/CommandOutput.js";
 import { SettingsModal } from "./components/SettingsModal.js";
@@ -24,6 +26,8 @@ export function App(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [liveText, setLiveText] = useState<string>("");
+  const [centerView, setCenterView] = useState<"stream" | "trace">("stream");
 
   const runIdRef = useRef<string | null>(null);
   runIdRef.current = detail?.run.id ?? null;
@@ -56,6 +60,7 @@ export function App(): JSX.Element {
   const activateWorkspace = useCallback(async (ws: Workspace) => {
     setWorkspace(ws);
     setDetail(null);
+    setLiveText("");
     setSelectedFile(null);
     setPreview("");
     setAdhocOutput([]);
@@ -69,6 +74,16 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     return api.onAgentEvent((event: AgentEvent) => {
+      if (event.kind === "delta") {
+        setLiveText((prev) => prev + event.text);
+        return;
+      }
+      // A finalized assistant message (or a terminal run) ends the live stream.
+      if (event.kind === "step_added" && event.step.type === "message") {
+        setLiveText("");
+      } else if (event.kind === "run_updated" && isTerminalStatus(event.run.status)) {
+        setLiveText("");
+      }
       setDetail((prev) => reduceAgentDetail(prev, event));
     });
   }, []);
@@ -108,6 +123,7 @@ export function App(): JSX.Element {
       const preconditionError = runPreconditionError(Boolean(workspace), task);
       if (preconditionError) throw new Error(preconditionError);
       // workspace is non-null here: runPreconditionError guarantees it.
+      setLiveText("");
       setDetail(await api.runAgentTask(workspace!.id, task.trim()));
     });
 
@@ -189,9 +205,11 @@ export function App(): JSX.Element {
               Stop
             </button>
             <span className={`status-pill ${statusClass(status)}`}>{status}</span>
+            <div style={{ marginLeft: "auto" }}>
+              <BudgetIndicator run={detail?.run ?? null} />
+            </div>
             <button
               className="icon-btn settings-trigger"
-              style={{ marginLeft: "auto" }}
               title="设置 / Settings"
               aria-label="设置"
               onClick={() => setSettingsOpen(true)}
@@ -199,9 +217,27 @@ export function App(): JSX.Element {
               ⚙
             </button>
           </div>
+          <div className="row tabs" style={{ marginTop: 8 }}>
+            <button
+              className={`tab ${centerView === "stream" ? "tab-active" : ""}`}
+              onClick={() => setCenterView("stream")}
+            >
+              Steps
+            </button>
+            <button
+              className={`tab ${centerView === "trace" ? "tab-active" : ""}`}
+              onClick={() => setCenterView("trace")}
+            >
+              Trace
+            </button>
+          </div>
         </div>
         <div className="panel-body">
-          <StepStream steps={detail?.steps ?? []} />
+          {centerView === "stream" ? (
+            <StepStream steps={detail?.steps ?? []} liveText={liveText} />
+          ) : (
+            <TracePanel detail={detail} />
+          )}
         </div>
       </section>
 
@@ -276,7 +312,16 @@ export function App(): JSX.Element {
 
 function statusClass(status: string): string {
   if (status === "done") return "status-done";
-  if (status === "failed") return "status-failed";
+  if (status === "failed" || status === "budget_exceeded") return "status-failed";
   if (status === "waiting_for_user_approval") return "status-waiting";
   return "";
+}
+
+function isTerminalStatus(status: string): boolean {
+  return (
+    status === "done" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "budget_exceeded"
+  );
 }

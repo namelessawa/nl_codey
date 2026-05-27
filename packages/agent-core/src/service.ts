@@ -209,6 +209,11 @@ export class AgentService {
         budget,
         signal: controller.signal,
         temperature: 0.2,
+        onChunk: (chunk) => {
+          if (chunk.type === "text_delta") {
+            this.emit({ kind: "delta", runId, text: chunk.text });
+          }
+        },
         onAssistant: (text, _toolCalls, usage) => {
           if (text.trim()) this.addStep(runId, "message", text);
           this.storage.addRunUsage(runId, {

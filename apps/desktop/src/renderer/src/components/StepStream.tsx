@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { AgentStep } from "@coding-agent/shared";
 import { DiffView } from "./DiffView.js";
 
-type Props = { steps: AgentStep[] };
+type Props = { steps: AgentStep[]; liveText?: string };
 
 /** How close to the bottom (px) still counts as "stuck", so we keep auto-scrolling. */
 const STICK_THRESHOLD_PX = 48;
@@ -19,7 +19,7 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 }
 
 /** Renders the full AgentRun step stream and follows the latest output to the bottom. */
-export function StepStream({ steps }: Props): JSX.Element {
+export function StepStream({ steps, liveText }: Props): JSX.Element {
   const endRef = useRef<HTMLDivElement | null>(null);
   // Whether the user is parked near the bottom; only then do we follow new output.
   const stickToBottom = useRef(true);
@@ -41,11 +41,13 @@ export function StepStream({ steps }: Props): JSX.Element {
     if (stickToBottom.current) {
       endRef.current?.scrollIntoView({ block: "end" });
     }
-  }, [steps]);
+  }, [steps, liveText]);
+
+  const hasLive = Boolean(liveText && liveText.length > 0);
 
   return (
     <ul className="steps">
-      {steps.length === 0 ? (
+      {steps.length === 0 && !hasLive ? (
         <li className="empty">No steps yet. Enter a task and click Run.</li>
       ) : (
         steps.map((step) => (
@@ -58,6 +60,12 @@ export function StepStream({ steps }: Props): JSX.Element {
             )}
           </li>
         ))
+      )}
+      {hasLive && (
+        <li className="step message streaming">
+          <span className="badge">streaming</span>
+          <pre>{liveText}</pre>
+        </li>
       )}
       <div ref={endRef} aria-hidden="true" />
     </ul>

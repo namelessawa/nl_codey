@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Live trace + budget GUI (Phase 2 Step 4)** — the agent now streams assistant text
+  to the renderer token-by-token via a new `delta` agent event; the step stream shows the
+  in-progress turn live instead of waiting for the turn to finish. A top-bar
+  **BudgetIndicator** shows cost / iterations / tool-calls / elapsed time against the
+  limits, turning amber past 80% and red past 100%. A new **Trace** tab renders the full
+  step trace with relative timestamps, type icons, per-step durations, type filtering,
+  search, expand-to-detail, and JSON export. Run-control now treats `tool_use`/`verifying`/
+  `repairing` as active states so Run/Stop gate correctly. _(Pause/Resume and
+  Force-Approve-All buttons are deferred.)_
 - **Agent tool-use loop (Phase 2 Step 2)** — the agent core no longer runs the fixed
   two-pass plan→diff pipeline. `runToolLoop` lets the model drive: it streams `chat()`
   turns, selects tools (`list_files`/`read_file`/`search_text`/`apply_patch`/`run_command`)
