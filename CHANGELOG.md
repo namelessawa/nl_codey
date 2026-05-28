@@ -6,6 +6,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Notebook/runbook UI redesign (`ui/notebook-redesign` branch)** — replaces the 3-column dark
+  IDE renderer with a chat-centric notebook aesthetic from the
+  `claude.ai/design` handoff (`coding-agent/project/Coding Agent.html`). New shell: 48 px topbar
+  (brand · workspace chip · LLM-status pill · settings) + 268 px threads sidebar wired to
+  `listAgentRuns` (grouped today/yesterday/this-week, with status dots + awaiting/live pills) +
+  main viewport that switches between an A3 notebook-cover empty state, a `NewRunCompose`
+  serif prompt for workspaces with no active run, and a `ChatRunView` rendering `AgentStep[]`
+  as paired user/agent messages + collapsible tool cards + a derived 4-stage pipeline strip
+  (plan · explore · patch · verify). Approval is now a notebook-style sheet (`ApprovalSheet`)
+  with summary pills, file list, syntax-highlighted V4A/unified-diff excerpts, and a
+  signature-required Sign &amp; apply button — gated on initials. Warm-paper palette + Geist /
+  Geist Mono / Newsreader fonts (loaded via Google Fonts with CSP `style-src` and `font-src`
+  scoped to `fonts.googleapis.com` / `fonts.gstatic.com`). Legacy `FileTree`, `CommandOutput`,
+  `TracePanel`, `IterationTimeline`, and `Phase3Panel` are no longer wired into the main shell
+  (sources retained for re-surfacing later); `SettingsModal`, `Toast`, `BudgetIndicator`, and
+  `DiffView` carry over and inherit the new palette via compatibility CSS aliases. Typecheck
+  green across all 13 packages + the desktop app; `pnpm build` produces 314 kB renderer JS /
+  36 kB CSS. 389/393 vitest pass (the 4 failures are the pre-existing better-sqlite3 Node-ABI
+  mismatch in `storage.test.ts` documented in CLAUDE.md, not a regression).
+
+### Fixed
+- **Startup crash `SqliteError: no such column: iteration` on upgraded databases** —
+  `Storage`'s constructor ran `exec(SCHEMA_SQL)` (which created `idx_snapshots_run_iter ON
+  file_snapshots(run_id, iteration)`) *before* `migrate()` added the `iteration` column via
+  `COLUMN_MIGRATIONS`. On a pre-Phase-2 DB the `file_snapshots` table already existed without that
+  column, so the index creation threw. Split all `CREATE INDEX` statements out of `SCHEMA_SQL` into a
+  new `INDEX_SQL` block and reordered init to tables → migrations → indexes, so indexes referencing
+  migrated columns succeed on upgraded installs. Added a regression test that opens a legacy DB whose
+  `file_snapshots` lacks `iteration`. (Storage tests still require the Node-ABI better-sqlite3 build
+  to execute — see CLAUDE.md.)
+- **App load crash from un-bundled Phase 3 packages** — `apps/desktop/electron.vite.config.ts`
+  listed only the Phase 1/2 workspace packages in `workspacePackages`, so `externalizeDepsPlugin`
+  externalized the six Phase 3 packages (`semantic-index`, `memory`, `planner`, `orchestrator`,
+  `git-integration`, `web-tools`). At runtime Electron's Node tried to load their raw `.ts` source
+  and threw `ERR_UNKNOWN_FILE_EXTENSION` for `packages/semantic-index/src/index.ts`. Added all six
+  to the bundle list so every `@coding-agent/*` workspace package (13 total) is bundled. `pnpm build`
+  green; `out/main/index.js` now transforms 118 modules.
+
+### Added
 - **Phase 3 — long-term project entrustment (full module build, typecheck-green)**. New packages:
   `@coding-agent/memory` (cross-session memory: decision/preference/failure/fact entries,
   embedding+tag+recency retriever, decay, JSON export/import), `@coding-agent/semantic-index`
@@ -159,6 +198,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 - **Auto-scroll on LLM output** — the step stream now follows new output to the bottom as
   the agent streams, with stick-to-bottom detection that stops following when the user
   scrolls up and re-engages when they return to the bottom.
+- **Structured file tree** — the left panel renders the workspace as a collapsible
+  folder/file tree (directories first, expandable) built from the flat path list via a
+  pure `buildTree`, instead of a flat path list.
+- **Formatted LLM output** — agent `message` steps render as markdown (headings, bullet/
+  numbered lists, bold/italic, inline and fenced code) via a small dependency-free
+  `Markdown` renderer, instead of raw monospace text.
 
 ### Fixed
 - **Run button unresponsive** — Run is now clickable with no workspace open and the guard

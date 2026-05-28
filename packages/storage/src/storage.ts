@@ -23,7 +23,7 @@ import type {
   TaskNodeStatus,
   Workspace,
 } from "@coding-agent/shared";
-import { COLUMN_MIGRATIONS, SCHEMA_SQL } from "./schema.js";
+import { COLUMN_MIGRATIONS, INDEX_SQL, SCHEMA_SQL } from "./schema.js";
 import {
   chunkFromRow,
   chunkToBlob,
@@ -88,8 +88,12 @@ export class Storage {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
+    // Order matters: create tables, then add columns to pre-existing tables,
+    // then create indexes — some indexes reference migrated columns and would
+    // fail on an upgraded DB if created before migrate(). See schema.ts.
     this.db.exec(SCHEMA_SQL);
     this.migrate();
+    this.db.exec(INDEX_SQL);
   }
 
   /** Apply additive column migrations, ignoring already-present columns. */
