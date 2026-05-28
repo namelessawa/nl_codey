@@ -1,10 +1,9 @@
 import fs from "node:fs";
-import { BrowserWindow, dialog, ipcMain } from "electron";
+import { BrowserWindow, dialog } from "electron";
 import {
   IPC,
   validateSettings,
   type AppSettings,
-  type IpcResult,
   type ReadFileArgs,
   type RunAgentTaskArgs,
   type RunCommandArgs,
@@ -17,17 +16,8 @@ import { scanFiles } from "@coding-agent/project-indexer";
 import { testLLMConnection } from "@coding-agent/llm";
 import { readFileTool } from "@coding-agent/tools";
 import type { Services } from "./services.js";
-
-/** Wrap a handler so every IPC call returns a consistent { ok, ... } envelope. */
-function handle<T>(channel: string, fn: (...args: unknown[]) => Promise<T> | T): void {
-  ipcMain.handle(channel, async (_event, ...args): Promise<IpcResult<T>> => {
-    try {
-      return { ok: true, data: await fn(...args) };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-}
+import { handle } from "./ipc-handle.js";
+import { registerPhase3Ipc } from "./phase3-ipc.js";
 
 export function registerIpc(services: Services): void {
   const { storage, agent, settings } = services;
@@ -114,6 +104,8 @@ export function registerIpc(services: Services): void {
     const { config } = args as TestLLMConnectionArgs;
     return testLLMConnection(config);
   });
+
+  registerPhase3Ipc(services, requireWorkspaceRoot);
 }
 
 /** Broadcast an agent event to every open renderer window. */

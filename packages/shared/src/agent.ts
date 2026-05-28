@@ -12,12 +12,16 @@ export type AgentRunState =
   | "searching"
   | "reading"
   | "editing"
+  | "tool_use"
   | "waiting_for_user_approval"
   | "applying_patch"
   | "running_command"
+  | "verifying"
+  | "repairing"
   | "done"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "budget_exceeded";
 
 export type AgentRun = {
   id: string;
@@ -26,6 +30,17 @@ export type AgentRun = {
   status: AgentRunState;
   createdAt: number;
   updatedAt: number;
+  /** Cumulative token/cost/iteration accounting (Phase 2). Optional for
+   * backward compatibility with pre-Phase-2 run records and fixtures. */
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  toolCallCount?: number;
+  iterationCount?: number;
+  /** Model that executed the run, e.g. "gpt-4o". */
+  modelName?: string | null;
+  /** How the run ended, e.g. "done", "max_cost", "needs_human". */
+  exitReason?: string | null;
 };
 
 export type AgentStepType =
@@ -44,6 +59,14 @@ export type AgentStep = {
   createdAt: number;
 };
 
+/**
+ * When a snapshot was taken in a run's lifecycle:
+ * - `before_run`: original state before the first apply_patch
+ * - `before_iteration`: state before a repair iteration
+ * - `after_run`: final state after the run finished
+ */
+export type SnapshotType = "before_run" | "before_iteration" | "after_run";
+
 export type FileSnapshot = {
   id: string;
   runId: string;
@@ -51,6 +74,9 @@ export type FileSnapshot = {
   beforeContent: string;
   afterContent?: string;
   createdAt: number;
+  /** Repair-loop iteration this snapshot belongs to (0 = before first patch). */
+  iteration?: number;
+  snapshotType?: SnapshotType;
 };
 
 /** Structured plan the LLM returns during the planning phase. */

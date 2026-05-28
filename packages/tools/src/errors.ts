@@ -18,4 +18,5 @@ export const TOOL_CODES = {
   patchApplyFailed: "PATCH_APPLY_FAILED",
   fileChangedExternally: "FILE_CHANGED_EXTERNALLY",
   commandFailed: "COMMAND_FAILED",
+  invalidMemoryKind: "INVALID_MEMORY_KIND",
 } as const;
