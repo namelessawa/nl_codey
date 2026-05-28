@@ -4,9 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A local Windows desktop **coding agent**: open a project, type a task, and the agent plans → searches → reads code → proposes a **unified diff**. Nothing is written to disk until the user **approves** in the GUI. Every step is logged to SQLite, every change is snapshotted, and any run can be **rolled back**. All file/command access is confined to the workspace root.
+A local Windows desktop **coding agent**: open a project, type a task, and the agent drives an **autonomous tool-use loop** — reading code, searching, planning, and editing — proposing each change as a patch. Nothing is written to disk until the user **approves** in the GUI. Every step is logged to SQLite, every change is snapshotted, and any run can be **rolled back**. All file/command access is confined to the workspace root.
 
-Phase 1 scope intentionally excludes multi-agent, long-term memory, cloud execution, and semantic indexing. Safety = path isolation + command whitelist + timeout + output truncation + explicit user approval.
+The codebase spans three phases, all on `main`:
+
+- **Phase 1** — safe single-pass MVP: path isolation + command whitelist + timeout + output truncation + explicit approval.
+- **Phase 2** — autonomous tool-use loop with a budget breaker, automatic verify→repair cycle, regression guard, context compression, retry-with-backoff, the V4A context patch format, a symbol index, and an eval harness.
+- **Phase 3** — long-term project entrustment: cross-session memory, semantic index, task planning, multi-agent orchestration (Planner/Coder/Reviewer), git integration, web tools, and WSL/Docker sandbox runners.
 
 ## Commands
 
@@ -38,12 +42,18 @@ pnpm exec vitest run -t "masks all but the last 4 characters"
 ```
 apps/desktop          Electron app: src/main, src/preload, src/renderer (React)
 packages/shared       Types + IPC contract. The dependency hub — everything imports it.
-packages/sandbox      Path isolation, command whitelist, output truncation
-packages/storage      SQLite (better-sqlite3): workspaces/runs/steps/snapshots
+packages/sandbox      Path isolation, command whitelist/router, WSL + Docker runners
+packages/storage      SQLite (better-sqlite3): workspaces/runs/steps/snapshots + Phase 3 tables
 packages/project-indexer  File scan + ignore rules + project-type detection
-packages/llm          Provider abstraction + factory + testLLMConnection
-packages/tools        list_files, read_file, search_text, apply_patch, run_command, write_file
-packages/agent-core   AgentService orchestrator (state machine) + rollback
+packages/llm          Provider abstraction + factory: streaming chat() + complete(), testLLMConnection
+packages/tools        The agent's tools (list/read/search/patch/run/git/symbol/web/memory/task)
+packages/agent-core   AgentService + runToolLoop, budget, verifier, regression guard, compressor, eval, rollback
+packages/memory       Cross-session memory: decision/preference/failure/fact entries + retriever
+packages/semantic-index   Embedders, chunker, cosine vector search, incremental mtime reindex
+packages/planner      Dependency graph, DAG validation, scheduler waves, LLM decomposer
+packages/orchestrator Planner/Coder/Reviewer roles, message bus, lock manager, worker pool, coordinator
+packages/git-integration  Branch manager, conventional commit writer, PR generator, diff summarizer
+packages/web-tools    Domain whitelist, readability fetch, search backends
 ```
 
 Workspace packages ship **raw `.ts` source** (`main`/`module`/`types` all point at `src/index.ts`) — there is no per-package build output. `electron.vite.config.ts` therefore **bundles** them (via `externalizeDepsPlugin({ exclude: workspacePackages })`) instead of externalizing. Cross-package imports use the `@coding-agent/*` alias and **`.js` extension specifiers** even though the files are `.ts` (NodeNext/Bundler ESM convention — keep this when adding imports).
@@ -58,18 +68,15 @@ Workspace packages ship **raw `.ts` source** (`main`/`module`/`types` all point 
 4. `apps/desktop/src/renderer/src/api.ts` — add a wrapper that `unwrap`s the envelope into a value-or-throw.
 5. Consume `api.*` in renderer components.
 
-Live updates flow the other way: main calls `broadcast(IPC_EVENT, event)` → renderer's `api.onAgentEvent` handler. `AgentEvent` is a discriminated union (`run_updated` | `step_added` | `patch_ready`).
+Live updates flow the other way: main calls `broadcast(IPC_EVENT, event)` → renderer's `api.onAgentEvent` handler. `AgentEvent` is a discriminated union keyed on `kind`: `run_updated` | `step_added` | `patch_ready` | `delta` (token-by-token assistant text for the in-progress turn) | `task_updated` | `role_message` | `index_status` (the last three are Phase 3).
 
-### Agent run lifecycle (`packages/agent-core/src/service.ts`)
+### Agent run lifecycle (`packages/agent-core/src/service.ts` + `loop.ts`)
 
-`AgentService.runTask` is a single-pass pipeline driven by `AgentRunState`:
+`AgentService.runTask` no longer runs a fixed pipeline — it assembles the conversation, a `BudgetController`, and a tool executor, then hands control to **`runToolLoop`** (`loop.ts`). The model drives: it streams `chat()` turns, selects tools via the tool-calling API, and continues until it stops, the budget trips, the user cancels, or an error occurs. `AgentRunState` now includes `tool_use`, `verifying`, `repairing`, and `budget_exceeded` alongside the Phase 1 states.
 
-```
-planning → searching → reading → editing → waiting_for_user_approval
-   → (user approves) → applying_patch → running_command → done | failed | cancelled
-```
-
-- It builds a patch but **stops at `waiting_for_user_approval`** and stores it in an in-memory `pending` map (also recoverable from the last `diff` step). `applyPatch` runs only after the user approves; it snapshots before writing and optionally runs a validation command. `rollback` restores snapshots.
+- **Approval gate:** `apply_patch` still pauses for explicit user approval — the loop parks on a promise that the Apply/Reject IPC resolves, so nothing is written without consent. Snapshots are taken before each write; `rollback` restores them in reverse (cumulative, one per applied patch).
+- **Verify→repair:** after an approved patch, `verifyAfterPatch` runs the detected validation command; on failure the run enters `repairing` and feeds a structured failure summary (`parse_test_failure`) back to the model. A `regression` guard classifies failures against a pristine baseline captured before the first edit.
+- **Compression:** when estimated context exceeds ~60% of the model's window, `compressConversation` folds the middle of the history into an LLM summary (`SUMMARIZE_PROMPT`) before the next turn, preserving the system prompt, original task, and the most recent messages.
 - The LLM provider is **resolved per run** via the injected `resolveLLM()` (not held as a field), so settings changes take effect without restart. A missing API key surfaces as a readable error and falls back to the env mock provider.
 - Cancellation is an `AbortController` per run; `stop()` aborts it and `throwIfAborted` checkpoints between phases.
 - "Explain" tasks (`isExplainTask`) short-circuit: they read files and return prose, never entering the patch flow.
@@ -82,16 +89,17 @@ planning → searching → reading → editing → waiting_for_user_approval
 
 ### LLM providers (`packages/llm`)
 
-`createLLMProvider(config: LLMConfig)` is the factory. OpenAI / DeepSeek / OpenRouter / Gemini / Custom all share `OpenAICompatibleProvider` (`/chat/completions`, Bearer auth; Gemini via Google's OpenAI-compat base URL). Anthropic uses `AnthropicProvider` (`/v1/messages`, `x-api-key`). Providers use plain `fetch` (no SDKs) with a shared `withTimeout` helper. `createLLMProviderFromEnv` is the dev fallback (default `LLM_PROVIDER=mock`, needs no key, exercises the full approve/rollback loop).
+`createLLMProvider(config: LLMConfig)` is the factory. OpenAI / DeepSeek / OpenRouter / Gemini / Custom all share `OpenAICompatibleProvider` (`/chat/completions`, Bearer auth; Gemini via Google's OpenAI-compat base URL). Anthropic uses `AnthropicProvider` (`/v1/messages`, `x-api-key`). Providers use plain `fetch` (no SDKs) with a shared `withTimeout` helper. Both expose a streaming `chat()` (emits `text_delta` / `tool_call` / `finish` / `error` chunks, reassembling fragmented SSE tool calls) and the Phase 1 `complete()`, and wrap every POST in `postWithRetries` (bounded exponential backoff on network errors + retryable statuses 408/409/425/429/5xx, never on a deliberate abort). `createLLMProviderFromEnv` is the dev fallback (default `LLM_PROVIDER=mock`, needs no key; its `chat()` runs keyword-driven tool sequences with a repair branch so the full loop is exercisable offline).
 
 ### Sandbox invariants (`packages/sandbox`)
 
 - Every path is `resolve`d and checked to stay inside the workspace root, including `realpath` symlink-escape checks (`assertInsideWorkspace`).
-- Commands are **exact-matched** (after whitespace normalization) against `ALLOWED_COMMANDS` and screened against `DANGEROUS_PATTERNS` (chaining, substitution, redirection, `rm -rf`, `powershell`, etc.) before spawning. To allow a new validation command, add it to the whitelist — do not loosen the matcher. The current whitelist: `npm test`, `npm run test`, `npm run build`, `pnpm test`, `pnpm build`, `yarn test`, `yarn build`, `pytest`, `pytest .`, `go test ./...`, `cargo test`, `tsc --noEmit`, `npx tsc --noEmit`.
+- `run_command` routes through one of three `SandboxMode`s (Settings → Agent): **`whitelist`** (default, safest), **`wsl`** (WSL Ubuntu against a workspace copy), or **`docker`** (ephemeral container, workspace bind-mounted). WSL/Docker default to no network egress unless a command opts in, and sync changed files back to the host.
+- In `whitelist` mode, commands are **exact-matched** (after whitespace normalization) against `ALLOWED_COMMANDS` and screened against `DANGEROUS_PATTERNS` (chaining, substitution, redirection, `rm -rf`, `powershell`, etc.) before spawning. To allow a new validation command, add it to the whitelist — do not loosen the matcher. The current whitelist: `npm test`, `npm run test`, `npm run build`, `pnpm test`, `pnpm build`, `yarn test`, `yarn build`, `pytest`, `pytest .`, `go test ./...`, `cargo test`, `tsc --noEmit`, `npx tsc --noEmit`.
 
 ### Tool limits (`packages/tools`)
 
-Each tool enforces hard caps so a single step can't flood the model or escape the workspace: `list_files` ≤500 files (ignores `node_modules/.git/dist/build/target/.venv/__pycache__/.next/out`); `read_file` ≤200KB, rejects binary; `search_text` ripgrep, ≤100 matches, ≤300 chars context; `run_command` 60s timeout, 100KB output cap, cwd = workspace root; `apply_patch`/`write_file` snapshot before write and apply transactionally (no partial corruption). `ripgrep` is bundled via `@vscode/ripgrep` — no system install needed.
+Each tool enforces hard caps so a single step can't flood the model or escape the workspace. File/search/exec tools: `list_files` ≤500 files (ignores `node_modules/.git/dist/build/target/.venv/__pycache__/.next/out`); `read_file` ≤200KB, rejects binary; `read_file_range` ≤500-line slice; `search_text` ripgrep, ≤100 matches, ≤300 chars context; `find_symbol` ≤400 files / ≤50 results; `run_command` 60s timeout, 100KB output cap, cwd = workspace root; `apply_patch`/`write_file` snapshot before write and apply transactionally — `apply_patch` accepts both unified diff and the V4A context format, auto-detected by the envelope. Phase 2/3 tools (port-injected, registered in `agent-core/src/tools-registry.ts`): `git_status`/`git_diff`, `record_plan`, `semantic_search`, `web_fetch`/`web_search` (domain-whitelisted), `read_memory`/`write_memory`, `propose_task_breakdown`/`update_task_status`, and the Coder↔Reviewer messages `request_review`/`approve_change`/`request_changes`. `ripgrep` is bundled via `@vscode/ripgrep` — no system install needed.
 
 ## Conventions
 
