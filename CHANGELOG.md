@@ -159,6 +159,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 - **Auto-scroll on LLM output** — the step stream now follows new output to the bottom as
   the agent streams, with stick-to-bottom detection that stops following when the user
   scrolls up and re-engages when they return to the bottom.
+- **Structured file tree** — the left panel renders the workspace as a collapsible
+  folder/file tree (directories first, expandable) built from the flat path list via a
+  pure `buildTree`, instead of a flat path list.
+- **Formatted LLM output** — agent `message` steps render as markdown (headings, bullet/
+  numbered lists, bold/italic, inline and fenced code) via a small dependency-free
+  `Markdown` renderer, instead of raw monospace text.
 
 ### Fixed
 - **Run button unresponsive** — Run is now clickable with no workspace open and the guard

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { AgentStep } from "@coding-agent/shared";
 import { DiffView } from "./DiffView.js";
+import { Markdown } from "./Markdown.js";
 
 type Props = { steps: AgentStep[]; liveText?: string };
 
@@ -55,6 +56,8 @@ export function StepStream({ steps, liveText }: Props): JSX.Element {
             <span className="badge">{step.type}</span>
             {step.type === "diff" ? (
               <DiffView patch={step.content} />
+            ) : step.type === "message" ? (
+              <Markdown text={step.content} />
             ) : (
               <pre>{step.content}</pre>
             )}
