@@ -12,6 +12,12 @@ const workspacePackages = [
   "@coding-agent/tools",
   "@coding-agent/project-indexer",
   "@coding-agent/agent-core",
+  "@coding-agent/semantic-index",
+  "@coding-agent/memory",
+  "@coding-agent/planner",
+  "@coding-agent/orchestrator",
+  "@coding-agent/git-integration",
+  "@coding-agent/web-tools",
 ];
 
 export default defineConfig({

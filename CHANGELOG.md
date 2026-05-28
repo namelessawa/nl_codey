@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Fixed
+- **Startup crash `SqliteError: no such column: iteration` on upgraded databases** —
+  `Storage`'s constructor ran `exec(SCHEMA_SQL)` (which created `idx_snapshots_run_iter ON
+  file_snapshots(run_id, iteration)`) *before* `migrate()` added the `iteration` column via
+  `COLUMN_MIGRATIONS`. On a pre-Phase-2 DB the `file_snapshots` table already existed without that
+  column, so the index creation threw. Split all `CREATE INDEX` statements out of `SCHEMA_SQL` into a
+  new `INDEX_SQL` block and reordered init to tables → migrations → indexes, so indexes referencing
+  migrated columns succeed on upgraded installs. Added a regression test that opens a legacy DB whose
+  `file_snapshots` lacks `iteration`. (Storage tests still require the Node-ABI better-sqlite3 build
+  to execute — see CLAUDE.md.)
+- **App load crash from un-bundled Phase 3 packages** — `apps/desktop/electron.vite.config.ts`
+  listed only the Phase 1/2 workspace packages in `workspacePackages`, so `externalizeDepsPlugin`
+  externalized the six Phase 3 packages (`semantic-index`, `memory`, `planner`, `orchestrator`,
+  `git-integration`, `web-tools`). At runtime Electron's Node tried to load their raw `.ts` source
+  and threw `ERR_UNKNOWN_FILE_EXTENSION` for `packages/semantic-index/src/index.ts`. Added all six
+  to the bundle list so every `@coding-agent/*` workspace package (13 total) is bundled. `pnpm build`
+  green; `out/main/index.js` now transforms 118 modules.
+
 ### Added
 - **Phase 3 — long-term project entrustment (full module build, typecheck-green)**. New packages:
   `@coding-agent/memory` (cross-session memory: decision/preference/failure/fact entries,

@@ -1,4 +1,12 @@
-/** SQL schema. All statements are idempotent so init can run repeatedly. */
+/**
+ * Table definitions. All statements are idempotent so init can run repeatedly.
+ *
+ * Index creation lives in {@link INDEX_SQL}, not here, because some indexes
+ * reference columns that only exist on upgraded databases after
+ * {@link COLUMN_MIGRATIONS} runs (e.g. `file_snapshots.iteration`). Creating
+ * those indexes before the migration would fail with "no such column" on a
+ * pre-Phase-2 DB, so the constructor runs tables → migrations → indexes.
+ */
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY,
@@ -58,13 +66,6 @@ CREATE TABLE IF NOT EXISTS symbols (
   exported INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace ON agent_runs(workspace_id);
-CREATE INDEX IF NOT EXISTS idx_agent_steps_run ON agent_steps(run_id);
-CREATE INDEX IF NOT EXISTS idx_file_snapshots_run ON file_snapshots(run_id);
-CREATE INDEX IF NOT EXISTS idx_snapshots_run_iter ON file_snapshots(run_id, iteration);
-CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(workspace_id, name);
-CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(workspace_id, file_path);
-
 -- Phase 3: long-term memory
 CREATE TABLE IF NOT EXISTS memory_entries (
   id TEXT PRIMARY KEY,
@@ -79,7 +80,6 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   last_used_at INTEGER,
   usefulness INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_memory_workspace_kind ON memory_entries(workspace_id, kind);
 
 -- Phase 3: semantic index chunks
 CREATE TABLE IF NOT EXISTS semantic_chunks (
@@ -95,7 +95,6 @@ CREATE TABLE IF NOT EXISTS semantic_chunks (
   file_mtime INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_chunks_workspace_file ON semantic_chunks(workspace_id, file_path);
 
 -- Phase 3: sub-task DAG
 CREATE TABLE IF NOT EXISTS task_nodes (
@@ -111,7 +110,6 @@ CREATE TABLE IF NOT EXISTS task_nodes (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_task_nodes_run ON task_nodes(parent_run_id);
 
 -- Phase 3: inter-role messages
 CREATE TABLE IF NOT EXISTS role_messages (
@@ -123,7 +121,6 @@ CREATE TABLE IF NOT EXISTS role_messages (
   payload TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_role_messages_node ON role_messages(task_node_id);
 
 -- Phase 3: git actions
 CREATE TABLE IF NOT EXISTS git_actions (
@@ -134,6 +131,24 @@ CREATE TABLE IF NOT EXISTS git_actions (
   payload TEXT,
   created_at INTEGER NOT NULL
 );
+`;
+
+/**
+ * Index creation, run after {@link COLUMN_MIGRATIONS} so indexes that reference
+ * migrated columns (e.g. `file_snapshots.iteration`) succeed on upgraded DBs.
+ * All statements are idempotent.
+ */
+export const INDEX_SQL = `
+CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace ON agent_runs(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_agent_steps_run ON agent_steps(run_id);
+CREATE INDEX IF NOT EXISTS idx_file_snapshots_run ON file_snapshots(run_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_run_iter ON file_snapshots(run_id, iteration);
+CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(workspace_id, name);
+CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(workspace_id, file_path);
+CREATE INDEX IF NOT EXISTS idx_memory_workspace_kind ON memory_entries(workspace_id, kind);
+CREATE INDEX IF NOT EXISTS idx_chunks_workspace_file ON semantic_chunks(workspace_id, file_path);
+CREATE INDEX IF NOT EXISTS idx_task_nodes_run ON task_nodes(parent_run_id);
+CREATE INDEX IF NOT EXISTS idx_role_messages_node ON role_messages(task_node_id);
 CREATE INDEX IF NOT EXISTS idx_git_actions_run ON git_actions(run_id);
 `;
 
