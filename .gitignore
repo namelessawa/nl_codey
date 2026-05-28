@@ -15,3 +15,6 @@ data/*.db-shm
 # repo. These guard against any stray local copy being committed.
 settings.json
 apikey.bin
+
+# Local Claude Code guidance — kept on disk, not tracked.
+CLAUDE.md
