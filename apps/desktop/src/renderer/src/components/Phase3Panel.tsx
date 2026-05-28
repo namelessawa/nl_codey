@@ -1,0 +1,73 @@
+import { useState } from "react";
+import { MemoryPanel } from "./MemoryPanel.js";
+import { TaskTreeView } from "./TaskTreeView.js";
+import { RoleTimeline } from "./RoleTimeline.js";
+import { GitDiffPreview } from "./GitDiffPreview.js";
+import { FailureLibraryView } from "./FailureLibraryView.js";
+import { SandboxIndicator } from "./SandboxIndicator.js";
+
+interface Phase3PanelProps {
+  workspaceId: string;
+  runId: string | null;
+}
+
+type Phase3Tab = "memory" | "tasks" | "roles" | "git" | "failures";
+
+const TABS: { id: Phase3Tab; label: string }[] = [
+  { id: "memory", label: "Memory" },
+  { id: "failures", label: "Failures" },
+  { id: "tasks", label: "Tasks" },
+  { id: "roles", label: "Roles" },
+  { id: "git", label: "Git" },
+];
+
+/**
+ * Phase 3 surface: composes the long-term memory, task DAG, role timeline,
+ * git workflow, and failure-library views, with a sandbox-mode indicator in
+ * the header. Run-scoped views prompt to run a task when no run exists yet.
+ */
+export function Phase3Panel({ workspaceId, runId }: Phase3PanelProps): JSX.Element {
+  const [tab, setTab] = useState<Phase3Tab>("memory");
+
+  return (
+    <div className="phase3">
+      <div className="phase3-head">
+        <div className="row tabs">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              className={`tab ${tab === t.id ? "tab-active" : ""}`}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <SandboxIndicator workspaceId={workspaceId} />
+      </div>
+
+      <div className="phase3-body">
+        {tab === "memory" && <MemoryPanel workspaceId={workspaceId} />}
+        {tab === "failures" && <FailureLibraryView workspaceId={workspaceId} />}
+        {tab === "tasks" &&
+          (runId ? (
+            <TaskTreeView runId={runId} />
+          ) : (
+            <div className="empty">Run a task to see its breakdown.</div>
+          ))}
+        {tab === "roles" &&
+          (runId ? (
+            <RoleTimeline taskNodeId={runId} />
+          ) : (
+            <div className="empty">Run a task to see role messages.</div>
+          ))}
+        {tab === "git" &&
+          (runId ? (
+            <GitDiffPreview workspaceId={workspaceId} runId={runId} />
+          ) : (
+            <div className="empty">Run a task to inspect git state.</div>
+          ))}
+      </div>
+    </div>
+  );
+}

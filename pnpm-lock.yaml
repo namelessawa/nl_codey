@@ -23,15 +23,30 @@ importers:
       '@coding-agent/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@coding-agent/git-integration':
+        specifier: workspace:*
+        version: link:../../packages/git-integration
       '@coding-agent/llm':
         specifier: workspace:*
         version: link:../../packages/llm
+      '@coding-agent/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@coding-agent/orchestrator':
+        specifier: workspace:*
+        version: link:../../packages/orchestrator
+      '@coding-agent/planner':
+        specifier: workspace:*
+        version: link:../../packages/planner
       '@coding-agent/project-indexer':
         specifier: workspace:*
         version: link:../../packages/project-indexer
       '@coding-agent/sandbox':
         specifier: workspace:*
         version: link:../../packages/sandbox
+      '@coding-agent/semantic-index':
+        specifier: workspace:*
+        version: link:../../packages/semantic-index
       '@coding-agent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -41,6 +56,9 @@ importers:
       '@coding-agent/tools':
         specifier: workspace:*
         version: link:../../packages/tools
+      '@coding-agent/web-tools':
+        specifier: workspace:*
+        version: link:../../packages/web-tools
       '@vscode/ripgrep':
         specifier: ^1.15.9
         version: 1.18.0
@@ -110,12 +128,79 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
+  packages/git-integration:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
   packages/llm:
     dependencies:
       '@coding-agent/shared':
         specifier: workspace:*
         version: link:../shared
     devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/memory:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/orchestrator:
+    dependencies:
+      '@coding-agent/memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@coding-agent/planner':
+        specifier: workspace:*
+        version: link:../planner
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/planner:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -137,7 +222,27 @@ importers:
         version: 2.1.9(@types/node@22.19.19)
 
   packages/sandbox:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/semantic-index:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -191,6 +296,22 @@ importers:
       '@types/diff':
         specifier: ^6.0.0
         version: 6.0.0
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/web-tools:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

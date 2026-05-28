@@ -5,54 +5,59 @@ import type {
   AgentRunState,
   AgentSettings,
   AgentStepType,
-  LLMProvider,
+  BudgetLimits,
+  ChatLLMProvider,
+  LLMToolCall,
   RunCommandOutput,
+  TestFailureReport,
+  ToolContext,
 } from "@coding-agent/shared";
-import { TOOL_LIMITS } from "@coding-agent/shared";
+import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
 import type { Storage } from "@coding-agent/storage";
 import { detectProject } from "@coding-agent/project-indexer";
-import { isCommandAllowed } from "@coding-agent/sandbox";
-import {
-  CODING_AGENT_PLAN_PROMPT,
-  PATCH_GENERATION_PROMPT,
-  parsePlan,
-  stripDiffFences,
-} from "@coding-agent/llm";
-import {
-  applyPatchTool,
-  listFilesTool,
-  readFileTool,
-  runCommandTool,
-  searchTextTool,
-} from "@coding-agent/tools";
+import { listFilesTool, parseTestFailure, readFileTool, runCommandTool } from "@coding-agent/tools";
 import { extractFilePaths, isExplainTask } from "./intent.js";
 import { rollbackRun } from "./rollback.js";
+import { BudgetController } from "./budget.js";
+import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
+import { AGENT_TOOL_SCHEMAS, createToolExecutor } from "./tools-registry.js";
+import { SYSTEM_PROMPT } from "./prompts.js";
+import { SUMMARIZE_PROMPT } from "./compressor.js";
+import { evaluateVerification } from "./verifier.js";
+import { analyzeRegressions, regressionNote } from "./regression.js";
 
 const EXPLAIN_PROMPT = `你是一个本地 Coding Agent。请阅读给定文件内容，用结构化的中文解释其执行流程、关键函数和数据流。不要修改任何文件，不要输出 diff。`;
+
+const MAX_INITIAL_FILES = 200;
+const MAX_STEP_CONTENT = 4000;
 
 export type AgentDeps = {
   storage: Storage;
   /**
-   * Resolve the active LLM provider from current settings. Called once per run
-   * so saved configuration changes take effect without a restart. May throw a
-   * readable error (e.g. missing API key) which is surfaced to the user.
+   * Resolve the active streaming LLM provider from current settings. Called once
+   * per run so saved configuration changes take effect without a restart. May
+   * throw a readable error (e.g. missing API key) which is surfaced to the user.
    */
-  resolveLLM: () => LLMProvider;
+  resolveLLM: () => ChatLLMProvider;
   /** Read the latest agent settings (shell toggle, confirmation, etc.). */
   getAgentSettings: () => AgentSettings;
   emit: (event: AgentEvent) => void;
 };
 
 type Pending = { patch: string; command: string | null };
+type Approval = { resolve: (approved: boolean) => void };
 
 /** GUI-agnostic agent orchestrator. One instance per main process. */
 export class AgentService {
   private readonly storage: Storage;
-  private readonly resolveLLM: () => LLMProvider;
+  private readonly resolveLLM: () => ChatLLMProvider;
   private readonly getAgentSettings: () => AgentSettings;
   private readonly emit: (event: AgentEvent) => void;
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
+  private readonly approvals = new Map<string, Approval>();
+  /** Pristine test-failure baseline per run, for the regression guard. */
+  private readonly baselines = new Map<string, TestFailureReport | null>();
 
   constructor(deps: AgentDeps) {
     this.storage = deps.storage;
@@ -79,13 +84,25 @@ export class AgentService {
 
   stop(runId: string): AgentRunDetail {
     this.controllers.get(runId)?.abort();
+    // Unblock a loop that is parked waiting for approval so it can observe abort.
+    const approval = this.approvals.get(runId);
+    if (approval) {
+      this.approvals.delete(runId);
+      approval.resolve(false);
+    }
     return this.getDetail(runId);
   }
 
   rejectPatch(runId: string): AgentRunDetail {
+    const approval = this.approvals.get(runId);
     this.pending.delete(runId);
     this.addStep(runId, "message", "Patch rejected by user");
-    this.setStatus(runId, "cancelled");
+    if (approval) {
+      this.approvals.delete(runId);
+      approval.resolve(false); // loop ends as cancelled
+    } else {
+      this.setStatus(runId, "cancelled");
+    }
     return this.getDetail(runId);
   }
 
@@ -113,179 +130,352 @@ export class AgentService {
     return runCommandTool.run({ command }, { workspaceRoot: ws.rootPath, runId: "adhoc" });
   }
 
+  /**
+   * Start a run. Provider resolution and the explain short-circuit happen
+   * synchronously; the tool-use loop runs in the background and drives the UI
+   * via events, so this returns the initial detail immediately.
+   */
   async runTask(workspaceId: string, task: string): Promise<AgentRunDetail> {
     const ws = this.storage.getWorkspace(workspaceId);
     if (!ws) throw new Error("No workspace open");
     const run = this.storage.createRun(workspaceId, task);
     const controller = new AbortController();
     this.controllers.set(run.id, controller);
-    const ctx = { workspaceRoot: ws.rootPath, runId: run.id, signal: controller.signal };
 
+    let llm: ChatLLMProvider;
     try {
-      this.addStep(run.id, "message", `Task: ${task}`);
-      this.setStatus(run.id, "planning");
-
-      // Resolve the provider from current settings; surfaces a readable error
-      // (e.g. missing API key) before any tool work begins.
-      const llm = this.resolveLLM();
-
-      this.addStep(run.id, "tool_call", "list_files");
-      const { files } = await listFilesTool.run({}, ctx);
-      this.addStep(run.id, "tool_result", `Listed ${files.length} files`);
-      this.throwIfAborted(controller);
-
-      const plan = await this.makePlan(llm, task, files, controller.signal);
-      this.addStep(run.id, "message", `Plan: ${plan.summary}`);
-
-      if (isExplainTask(task)) {
-        await this.explain(llm, run.id, ctx.workspaceRoot, task, plan.likelyFiles, controller.signal);
-        return this.getDetail(run.id);
-      }
-
-      this.setStatus(run.id, "searching");
-      const searchPaths = await this.search(run.id, plan.searchQueries, ctx);
-      this.throwIfAborted(controller);
-
-      this.setStatus(run.id, "reading");
-      const fileBlocks = await this.readRelevant(
-        run.id,
-        dedupe([...plan.likelyFiles, ...searchPaths, ...extractFilePaths(task)]),
-        ctx,
-      );
-      this.throwIfAborted(controller);
-
-      this.setStatus(run.id, "editing");
-      const patch = await this.makePatch(llm, task, fileBlocks, controller.signal);
-      if (!patch) {
-        this.addStep(run.id, "error", "LLM returned no diff; nothing to apply");
-        this.setStatus(run.id, "failed");
-        return this.getDetail(run.id);
-      }
-
-      this.addStep(run.id, "diff", patch);
-      this.emit({ kind: "patch_ready", runId: run.id, patch });
-      this.pending.set(run.id, { patch, command: this.pickCommand(ctx.workspaceRoot, plan) });
-      this.setStatus(run.id, "waiting_for_user_approval");
-      return this.getDetail(run.id);
+      llm = this.resolveLLM();
     } catch (err) {
-      if (controller.signal.aborted) {
-        this.addStep(run.id, "message", "Run cancelled by user");
-        this.setStatus(run.id, "cancelled");
-      } else {
+      this.addStep(run.id, "error", asMessage(err));
+      this.setStatus(run.id, "failed");
+      this.controllers.delete(run.id);
+      return this.getDetail(run.id);
+    }
+
+    this.storage.setRunModel(run.id, llm.model);
+    this.addStep(run.id, "message", `Task: ${task}`);
+
+    if (isExplainTask(task)) {
+      this.setStatus(run.id, "reading");
+      void this.driveExplain(run.id, ws.rootPath, task, llm, controller).catch((err) => {
         this.addStep(run.id, "error", asMessage(err));
         this.setStatus(run.id, "failed");
-      }
+        this.controllers.delete(run.id);
+      });
       return this.getDetail(run.id);
-    } finally {
+    }
+
+    this.setStatus(run.id, "tool_use");
+    void this.driveLoop(run.id, ws.rootPath, task, llm, controller).catch((err) => {
+      this.addStep(run.id, "error", asMessage(err));
+      this.setStatus(run.id, "failed");
       this.controllers.delete(run.id);
+    });
+    return this.getDetail(run.id);
+  }
+
+  /** Approve the pending apply_patch, resuming the loop. */
+  async applyPatch(runId: string): Promise<AgentRunDetail> {
+    const approval = this.approvals.get(runId);
+    if (!approval) throw new Error("No pending patch to apply");
+    this.approvals.delete(runId);
+    this.pending.delete(runId);
+    this.setStatus(runId, "applying_patch");
+    approval.resolve(true);
+    return this.getDetail(runId);
+  }
+
+  // --- internal: the tool-use loop ---
+
+  private async driveLoop(
+    runId: string,
+    workspaceRoot: string,
+    task: string,
+    llm: ChatLLMProvider,
+    controller: AbortController,
+  ): Promise<void> {
+    const ctx: ToolContext = { workspaceRoot, runId, signal: controller.signal };
+    const settings = this.getAgentSettings();
+    const execute = createToolExecutor({
+      ctx,
+      storage: this.storage,
+      allowShellExecution: settings.allowShellExecution,
+    });
+    const budget = new BudgetController(this.budgetLimits());
+
+    const messages = [
+      { role: "system" as const, content: SYSTEM_PROMPT },
+      { role: "user" as const, content: await this.buildInitialUserMessage(task, ctx) },
+    ];
+
+    // Regression guard: snapshot the pristine test/build state before any edit.
+    await this.captureBaseline(runId, ctx, settings.allowShellExecution);
+
+    try {
+      const outcome = await runToolLoop(messages, {
+        llm,
+        tools: AGENT_TOOL_SCHEMAS,
+        budget,
+        signal: controller.signal,
+        temperature: 0.2,
+        onChunk: (chunk) => {
+          if (chunk.type === "text_delta") {
+            this.emit({ kind: "delta", runId, text: chunk.text });
+          }
+        },
+        onAssistant: (text, _toolCalls, usage) => {
+          if (text.trim()) this.addStep(runId, "message", text);
+          this.storage.addRunUsage(runId, {
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            costUsd: usage.costUsd,
+            iterations: 1,
+          });
+          // Back to acting after each model turn (unless approval flips it).
+          this.setStatus(runId, "tool_use");
+        },
+        compression: {
+          contextWindow: contextWindowFor(llm.model),
+          summarize: (text) => this.summarizeContext(llm, text, controller.signal),
+          onCompressed: (count) =>
+            this.addStep(runId, "message", `已压缩 ${count} 条历史消息以节省上下文。`),
+        },
+        verifyAfterPatch: (_call, result) =>
+          this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
+        requiresApproval: (call) => call.name === "apply_patch",
+        waitForApproval: (call) => this.awaitApproval(runId, call),
+        onToolCall: (call) => {
+          this.storage.addRunUsage(runId, { toolCalls: 1 });
+          this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
+        },
+        executeTool: async (call) => {
+          const res = await execute(call);
+          if (res.command) this.addStep(runId, "command", formatCommandOutput(res.command));
+          this.addStep(
+            runId,
+            res.isError ? "error" : "tool_result",
+            truncateStep(res.resultText),
+          );
+          return res.resultText;
+        },
+      });
+      this.applyOutcome(runId, outcome);
+    } finally {
+      this.controllers.delete(runId);
+      this.approvals.delete(runId);
+      this.pending.delete(runId);
+      this.baselines.delete(runId);
     }
   }
 
-  async applyPatch(runId: string): Promise<AgentRunDetail> {
-    const run = this.storage.getRun(runId);
-    if (!run) throw new Error(`Run not found: ${runId}`);
-    const ws = this.storage.getWorkspace(run.workspaceId);
-    if (!ws) throw new Error("No workspace open");
-    const pending = this.pending.get(runId) ?? this.derivePending(runId);
-    if (!pending) throw new Error("No pending patch to apply");
+  /** The command used for baseline + post-patch verification, if any. */
+  private verifyCommand(ctx: ToolContext): string | undefined {
+    return detectProject(ctx.workspaceRoot).suggestedCommands[0];
+  }
 
-    const controller = new AbortController();
-    this.controllers.set(runId, controller);
-    const ctx = { workspaceRoot: ws.rootPath, runId, signal: controller.signal };
-
+  /**
+   * Regression guard: run the verification command once on the pristine project
+   * before any edit, and remember which tests already failed. A `null` baseline
+   * (shell disabled or no command) disables regression classification.
+   */
+  private async captureBaseline(
+    runId: string,
+    ctx: ToolContext,
+    allowShellExecution: boolean,
+  ): Promise<void> {
+    const command = this.verifyCommand(ctx);
+    if (!allowShellExecution || !command) {
+      this.baselines.set(runId, null);
+      return;
+    }
     try {
-      this.setStatus(runId, "applying_patch");
-      this.addStep(runId, "tool_call", "apply_patch");
-      const result = await applyPatchTool({ runId, patch: pending.patch }, ctx, this.storage);
-      this.addStep(runId, "tool_result", `Applied to: ${result.changedFiles.join(", ")}`);
-
-      const settings = this.getAgentSettings();
-      if (!pending.command) {
-        this.addStep(runId, "message", "No validation command available; applied without running tests");
-        this.setStatus(runId, "done");
-      } else if (!settings.allowShellExecution) {
-        this.addStep(
-          runId,
-          "message",
-          `补丁已应用。Shell 执行已在设置中禁用，跳过验证命令：${pending.command}`,
-        );
-        this.setStatus(runId, "done");
-      } else if (settings.requireConfirmationBeforeCommand) {
-        this.addStep(
-          runId,
-          "message",
-          `补丁已应用。验证命令需手动确认后执行（可在底部"运行测试"运行）：${pending.command}`,
-        );
-        this.setStatus(runId, "done");
-      } else {
-        this.setStatus(runId, "running_command");
-        this.addStep(runId, "command", `$ ${pending.command}`);
-        const out = await runCommandTool.run({ command: pending.command }, ctx);
-        this.addStep(runId, "command", formatCommandOutput(out));
-        if (out.exitCode === 0 && !out.timedOut) {
-          this.setStatus(runId, "done");
-        } else {
-          this.addStep(runId, "error", `Command failed (exit ${out.exitCode}${out.timedOut ? ", timed out" : ""})`);
-          this.setStatus(runId, "failed");
-        }
-      }
-      this.pending.delete(runId);
-      return this.getDetail(runId);
+      const out = await runCommandTool.run({ command }, ctx);
+      const report = parseTestFailure({
+        command: out.command,
+        stdout: out.stdout,
+        stderr: out.stderr,
+        exitCode: out.exitCode ?? 1,
+      });
+      this.baselines.set(runId, report);
+      const n = report.failures.length;
+      this.addStep(
+        runId,
+        "message",
+        n === 0 ? `回归基线：\`${command}\` 初始通过。` : `回归基线：\`${command}\` 初始有 ${n} 个已存在的失败。`,
+      );
     } catch (err) {
-      this.addStep(runId, "error", asMessage(err));
-      this.setStatus(runId, "failed");
-      return this.getDetail(runId);
+      this.baselines.set(runId, null);
+      this.addStep(runId, "message", `无法建立回归基线（${asMessage(err)}），跳过回归检测。`);
+    }
+  }
+
+  /**
+   * Automatic post-patch verification: after an approved apply_patch writes,
+   * run the project's verification command and feed the result back so the
+   * model can repair failures (the verify→repair loop). New failures absent
+   * from the baseline are flagged as regressions. Returns null to skip (patch
+   * didn't actually apply, or shell execution is disabled).
+   */
+  private async verifyPatch(
+    runId: string,
+    ctx: ToolContext,
+    allowShellExecution: boolean,
+    patchResult: string,
+  ): Promise<string | null> {
+    if (!patchApplied(patchResult)) return null;
+    if (!allowShellExecution) {
+      this.addStep(runId, "message", "补丁已应用，但 shell 执行被禁用，跳过自动验证。");
+      return "已应用补丁，但 shell 执行被禁用，无法自动验证。请在确认无误后向用户说明需要手动验证。";
+    }
+
+    const command = this.verifyCommand(ctx);
+    if (!command) {
+      this.addStep(runId, "message", "未检测到验证命令，跳过自动验证。");
+      return null;
+    }
+
+    this.setStatus(runId, "verifying");
+    this.addStep(runId, "tool_call", `verify $ ${command}`);
+    let out;
+    try {
+      out = await runCommandTool.run({ command }, ctx);
+    } catch (err) {
+      this.addStep(runId, "error", `自动验证无法运行：${asMessage(err)}`);
+      return `自动验证命令无法运行（${asMessage(err)}）。请检查后继续。`;
+    }
+
+    this.addStep(runId, "command", formatCommandOutput(out));
+    const verdict = evaluateVerification(out);
+
+    // Regression guard: classify current failures against the pristine baseline.
+    const current = parseTestFailure({
+      command: out.command,
+      stdout: out.stdout,
+      stderr: out.stderr,
+      exitCode: out.exitCode ?? 1,
+    });
+    const analysis = analyzeRegressions(this.baselines.get(runId) ?? null, current);
+    const note = regressionNote(analysis);
+    if (note) this.addStep(runId, "error", note);
+
+    this.addStep(runId, verdict.passed ? "tool_result" : "error", verdict.message);
+    this.setStatus(runId, verdict.passed ? "tool_use" : "repairing");
+    return note ? `${verdict.message}\n\n${note}` : verdict.message;
+  }
+
+  /** Summarize old conversation context via the LLM (compression callback). */
+  private async summarizeContext(
+    llm: ChatLLMProvider,
+    text: string,
+    signal: AbortSignal,
+  ): Promise<string> {
+    const out = await llm.complete({
+      messages: [
+        { role: "system", content: SUMMARIZE_PROMPT },
+        { role: "user", content: text },
+      ],
+      temperature: 0.2,
+      signal,
+    });
+    return out.text.trim();
+  }
+
+  /** Park the loop until the user approves/rejects the pending patch. */
+  private awaitApproval(runId: string, call: LLMToolCall): Promise<boolean> {
+    const patch = patchArg(call);
+    this.addStep(runId, "diff", patch);
+    this.emit({ kind: "patch_ready", runId, patch });
+    this.pending.set(runId, { patch, command: null });
+    this.setStatus(runId, "waiting_for_user_approval");
+    return new Promise<boolean>((resolve) => {
+      this.approvals.set(runId, { resolve });
+    });
+  }
+
+  private applyOutcome(runId: string, outcome: ToolLoopOutcome): void {
+    switch (outcome.state) {
+      case "done":
+        this.storage.setRunExitReason(runId, "done");
+        this.setStatus(runId, "done");
+        break;
+      case "failed":
+        this.addStep(runId, "error", outcome.reason);
+        this.storage.setRunExitReason(runId, "failed");
+        this.setStatus(runId, "failed");
+        break;
+      case "cancelled":
+        this.storage.setRunExitReason(runId, "cancelled");
+        this.setStatus(runId, "cancelled");
+        break;
+      case "budget_exceeded":
+        this.addStep(
+          runId,
+          "message",
+          `预算耗尽（${outcome.reason}）。已应用的修改保留，可选择回滚或手动继续。`,
+        );
+        this.storage.setRunExitReason(runId, outcome.reason);
+        this.setStatus(runId, "budget_exceeded");
+        break;
+    }
+  }
+
+  private async buildInitialUserMessage(task: string, ctx: ToolContext): Promise<string> {
+    let fileList = "(unavailable)";
+    try {
+      const { files } = await listFilesTool.run({}, ctx);
+      fileList = files.slice(0, MAX_INITIAL_FILES).join("\n");
+    } catch {
+      // Non-fatal: the model can still call list_files itself.
+    }
+    const project = detectProject(ctx.workspaceRoot);
+    const commands = project.suggestedCommands.join(", ") || "(none detected)";
+    return [
+      `用户任务：\n${task}`,
+      `\n项目类型：${project.kind}；建议的验证命令：${commands}`,
+      `\n项目文件（前 ${MAX_INITIAL_FILES}）：\n${fileList}`,
+    ].join("\n");
+  }
+
+  // --- internal: explain short-circuit (read-only, non-streaming) ---
+
+  private async driveExplain(
+    runId: string,
+    workspaceRoot: string,
+    task: string,
+    llm: ChatLLMProvider,
+    controller: AbortController,
+  ): Promise<void> {
+    try {
+      const candidates = dedupe(extractFilePaths(task)).slice(0, 4);
+      const blocks = await this.readRelevant(runId, candidates, {
+        workspaceRoot,
+        runId,
+        signal: controller.signal,
+      });
+      const out = await llm.complete({
+        messages: [
+          { role: "system", content: EXPLAIN_PROMPT },
+          { role: "user", content: `任务：${task}\n\n文件内容：\n${blocks.join("\n\n") || "(未找到文件)"}` },
+        ],
+        temperature: 0.2,
+        signal: controller.signal,
+      });
+      const explanation = out.text.trim() || `已读取 ${candidates.length} 个文件。${candidates.join(", ")}`;
+      this.addStep(runId, "message", explanation);
+      this.storage.setRunExitReason(runId, "done");
+      this.setStatus(runId, "done");
     } finally {
       this.controllers.delete(runId);
     }
   }
 
-  // --- internal helpers ---
-
-  private async makePlan(
-    llm: LLMProvider,
-    task: string,
-    files: string[],
-    signal?: AbortSignal,
-  ): Promise<ReturnType<typeof parsePlan>> {
-    const fileList = files.slice(0, 200).join("\n");
-    const out = await llm.complete({
-      messages: [
-        { role: "system", content: CODING_AGENT_PLAN_PROMPT },
-        { role: "user", content: `用户任务：\n${task}\n\n项目文件列表：\n${fileList}` },
-      ],
-      temperature: 0.1,
-      signal,
-    });
-    return parsePlan(out.text);
-  }
-
-  private async search(
-    runId: string,
-    queries: string[],
-    ctx: { workspaceRoot: string; runId: string; signal?: AbortSignal },
-  ): Promise<string[]> {
-    const paths: string[] = [];
-    for (const query of queries.slice(0, 3)) {
-      this.addStep(runId, "tool_call", `search_text "${query}"`);
-      try {
-        const { matches } = await searchTextTool.run({ query }, ctx);
-        this.addStep(runId, "tool_result", `${matches.length} matches for "${query}"`);
-        for (const m of matches) paths.push(m.path);
-      } catch (err) {
-        this.addStep(runId, "error", `search_text failed: ${asMessage(err)}`);
-      }
-    }
-    return dedupe(paths);
-  }
-
   private async readRelevant(
     runId: string,
     candidates: string[],
-    ctx: { workspaceRoot: string; runId: string; signal?: AbortSignal },
+    ctx: ToolContext,
   ): Promise<string[]> {
     const blocks: string[] = [];
-    for (const path of candidates.slice(0, TOOL_LIMITS.maxReadFilesPerRun)) {
+    for (const path of candidates) {
       this.addStep(runId, "tool_call", `read_file ${path}`);
       try {
         const { content } = await readFileTool.run({ path }, ctx);
@@ -298,63 +488,8 @@ export class AgentService {
     return blocks;
   }
 
-  private async makePatch(
-    llm: LLMProvider,
-    task: string,
-    fileBlocks: string[],
-    signal?: AbortSignal,
-  ): Promise<string> {
-    const out = await llm.complete({
-      messages: [
-        { role: "system", content: PATCH_GENERATION_PROMPT },
-        {
-          role: "user",
-          content: `用户任务：\n${task}\n\n相关文件内容：\n${fileBlocks.join("\n\n") || "(无)"}`,
-        },
-      ],
-      temperature: 0.1,
-      signal,
-    });
-    return stripDiffFences(out.text);
-  }
-
-  private async explain(
-    llm: LLMProvider,
-    runId: string,
-    workspaceRoot: string,
-    task: string,
-    likelyFiles: string[],
-    signal?: AbortSignal,
-  ): Promise<void> {
-    const candidates = dedupe([...extractFilePaths(task), ...likelyFiles]).slice(0, 4);
-    const blocks = await this.readRelevant(runId, candidates, { workspaceRoot, runId });
-    const out = await llm.complete({
-      messages: [
-        { role: "system", content: EXPLAIN_PROMPT },
-        { role: "user", content: `任务：${task}\n\n文件内容：\n${blocks.join("\n\n") || "(未找到文件)"}` },
-      ],
-      temperature: 0.2,
-      signal,
-    });
-    const explanation = out.text.trim() || `已读取 ${candidates.length} 个文件。${candidates.join(", ")}`;
-    this.addStep(runId, "message", explanation);
-    this.setStatus(runId, "done");
-  }
-
-  private pickCommand(workspaceRoot: string, plan: ReturnType<typeof parsePlan>): string | null {
-    const detected = detectProject(workspaceRoot).suggestedCommands;
-    const fromPlan = plan.suggestedCommands.filter(isCommandAllowed);
-    return detected[0] ?? fromPlan[0] ?? null;
-  }
-
-  private derivePending(runId: string): Pending | null {
-    const steps = this.storage.listSteps(runId);
-    const lastDiff = [...steps].reverse().find((s) => s.type === "diff");
-    if (!lastDiff) return null;
-    const run = this.storage.getRun(runId);
-    const ws = run ? this.storage.getWorkspace(run.workspaceId) : null;
-    const command = ws ? (detectProject(ws.rootPath).suggestedCommands[0] ?? null) : null;
-    return { patch: lastDiff.content, command };
+  private budgetLimits(): BudgetLimits {
+    return clampBudgetLimits(DEFAULT_BUDGET_LIMITS);
   }
 
   private addStep(runId: string, type: AgentStepType, content: string): void {
@@ -366,10 +501,6 @@ export class AgentService {
     const run = this.storage.updateRunStatus(runId, status);
     this.emit({ kind: "run_updated", run });
   }
-
-  private throwIfAborted(controller: AbortController): void {
-    if (controller.signal.aborted) throw new Error("aborted");
-  }
 }
 
 function dedupe(items: string[]): string[] {
@@ -378,6 +509,40 @@ function dedupe(items: string[]): string[] {
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** True when an apply_patch tool result reports a successful write. */
+function patchApplied(resultText: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(resultText);
+    return typeof parsed === "object" && parsed !== null && (parsed as { applied?: unknown }).applied === true;
+  } catch {
+    return false;
+  }
+}
+
+function patchArg(call: LLMToolCall): string {
+  const args = call.args;
+  if (typeof args === "object" && args !== null && "patch" in args) {
+    const patch = (args as { patch: unknown }).patch;
+    if (typeof patch === "string") return patch;
+  }
+  return "";
+}
+
+function summarizeArgs(call: LLMToolCall): string {
+  const args = call.args;
+  if (typeof args !== "object" || args === null) return "";
+  const record = args as Record<string, unknown>;
+  if (typeof record.path === "string") return record.path;
+  if (typeof record.query === "string") return `"${record.query}"`;
+  if (typeof record.command === "string") return `$ ${record.command}`;
+  if (typeof record.patch === "string") return "(patch)";
+  return "";
+}
+
+function truncateStep(text: string): string {
+  return text.length > MAX_STEP_CONTENT ? `${text.slice(0, MAX_STEP_CONTENT)}…(truncated)` : text;
 }
 
 function formatCommandOutput(out: RunCommandOutput): string {
