@@ -16,5 +16,6 @@ data/*.db-shm
 settings.json
 apikey.bin
 
-# Local Claude Code guidance — kept on disk, not tracked.
+# Local Claude Code guidance + worktrees — kept on disk, not tracked.
 CLAUDE.md
+.claude/
