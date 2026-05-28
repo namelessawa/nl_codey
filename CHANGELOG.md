@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Added
+- **Notebook/runbook UI redesign (`ui/notebook-redesign` branch)** — replaces the 3-column dark
+  IDE renderer with a chat-centric notebook aesthetic from the
+  `claude.ai/design` handoff (`coding-agent/project/Coding Agent.html`). New shell: 48 px topbar
+  (brand · workspace chip · LLM-status pill · settings) + 268 px threads sidebar wired to
+  `listAgentRuns` (grouped today/yesterday/this-week, with status dots + awaiting/live pills) +
+  main viewport that switches between an A3 notebook-cover empty state, a `NewRunCompose`
+  serif prompt for workspaces with no active run, and a `ChatRunView` rendering `AgentStep[]`
+  as paired user/agent messages + collapsible tool cards + a derived 4-stage pipeline strip
+  (plan · explore · patch · verify). Approval is now a notebook-style sheet (`ApprovalSheet`)
+  with summary pills, file list, syntax-highlighted V4A/unified-diff excerpts, and a
+  signature-required Sign &amp; apply button — gated on initials. Warm-paper palette + Geist /
+  Geist Mono / Newsreader fonts (loaded via Google Fonts with CSP `style-src` and `font-src`
+  scoped to `fonts.googleapis.com` / `fonts.gstatic.com`). Legacy `FileTree`, `CommandOutput`,
+  `TracePanel`, `IterationTimeline`, and `Phase3Panel` are no longer wired into the main shell
+  (sources retained for re-surfacing later); `SettingsModal`, `Toast`, `BudgetIndicator`, and
+  `DiffView` carry over and inherit the new palette via compatibility CSS aliases. Typecheck
+  green across all 13 packages + the desktop app; `pnpm build` produces 314 kB renderer JS /
+  36 kB CSS. 389/393 vitest pass (the 4 failures are the pre-existing better-sqlite3 Node-ABI
+  mismatch in `storage.test.ts` documented in CLAUDE.md, not a regression).
+
 ### Fixed
 - **Startup crash `SqliteError: no such column: iteration` on upgraded databases** —
   `Storage`'s constructor ran `exec(SCHEMA_SQL)` (which created `idx_snapshots_run_iter ON
