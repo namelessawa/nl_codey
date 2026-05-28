@@ -1,0 +1,34 @@
+Phase 3 — "Long-term project entrustment"
+
+Goal: evolve from "single task converges reliably" to "long-term project can be entrusted".
+
+New packages:
+  packages/memory/          long-term memory (project-memory, decision-log, preferences, failure-library, retriever)
+  packages/semantic-index/  vector retrieval (embedder, vector-store, chunker, indexer, search)
+  packages/planner/         task decomposition (task-tree, decomposer, dependency-graph, scheduler)
+  packages/orchestrator/    multi-agent coordination (roles, message-bus, coordinator)
+  packages/git-integration/ git workflow (branch-manager, commit-writer, pr-generator, diff-summarizer)
+  packages/web-tools/       web retrieval (doc-search, web-fetch, domain-whitelist)
+
+Extended packages:
+  packages/sandbox/   wsl-runner, docker-runner, sandbox-policy
+  packages/tools/     +12 tools (semantic_search, propose_task_breakdown, update_task_status,
+                      request_review, approve_change, request_changes, read_memory, write_memory,
+                      web_search, web_fetch, git_create_branch, git_commit)
+  packages/storage/   +tables: memory_entries, semantic_chunks, task_nodes, role_messages, git_actions
+  packages/shared/    +types + IPC channels
+
+GUI (apps/desktop renderer):
+  MemoryPanel, TaskTreeView, RoleTimeline, GitDiffPreview, FailureLibraryView, SandboxIndicator
+
+Memory kinds: decision | preference | failure | fact.
+Roles: Planner / Coder / Reviewer. Communication only via 4 structured message kinds:
+  breakdown, review_request, review_result, handoff. JSON-schema validated.
+Parallel: up to 3 workers, non-overlapping filesScope, file locks, shared thread-safe budget.
+Git: auto branch (agent/<slug>-<ts>), semantic commits, PR description (dry-run default).
+Web: whitelist domains only; network content is reference, never instruction.
+Sandbox: mode A whitelist (default) or mode B WSL/Docker.
+Eval: L1 (single) / L2 (multi-step) / L3 (long horizon) + LLM-as-judge majority vote.
+
+Acceptance for this implementation pass: code written per spec and `pnpm typecheck` passes.
+See conversation history / original goal for the full detailed specification.

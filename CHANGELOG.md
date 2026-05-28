@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Phase 3 — long-term project entrustment (full module build, typecheck-green)**. New packages:
+  `@coding-agent/memory` (cross-session memory: decision/preference/failure/fact entries,
+  embedding+tag+recency retriever, decay, JSON export/import), `@coding-agent/semantic-index`
+  (OpenAI + mock embedders, heuristic chunker, cosine vector search, incremental mtime reindex),
+  `@coding-agent/planner` (glob dependency graph, DAG validation, scheduler waves with
+  scope-overlap serialization, LLM decomposer), `@coding-agent/orchestrator` (Planner/Coder/Reviewer
+  roles + prompts, strict 4-kind message-bus with JSON validation, thread-safe BudgetController,
+  LockManager with deadlock-timeout, bounded worker pool, Coordinator review loop),
+  `@coding-agent/git-integration` (branch manager, conventional commit writer, PR generator,
+  diff summarizer), `@coding-agent/web-tools` (domain whitelist, readability fetch, search backends).
+  Extended packages: `sandbox` (WSL/Docker runners, escape guards, command router), `tools` (10 new
+  port-injected LLM tools + role registry; git_create_branch/git_commit kept as orchestrator
+  system-calls), `storage` (5 new tables: memory_entries, semantic_chunks, task_nodes, role_messages,
+  git_actions + CRUD), `shared` (memory/semantic/task/roles/git/sandbox/web contracts + 25 IPC
+  channels). Desktop: full IPC wiring (main handlers, preload bridge, renderer api) and 6 GUI
+  components (MemoryPanel, TaskTreeView, RoleTimeline, GitDiffPreview, FailureLibraryView,
+  SandboxIndicator) behind a new "Phase 3" tab. `pnpm typecheck` green across all 15 workspace
+  projects; ~220 new unit tests pass (the only failing tests are the pre-existing storage
+  better-sqlite3 native-ABI mismatch under Node, documented in CLAUDE.md).
 - **Acceptance scenarios (Phase 2 Step 16)** — `docs/PHASE2_ACCEPTANCE.md` enumerates 14
   acceptance scenarios (autonomous loop, patch approval, verify, verify→repair, regression
   guard, snapshots/rollback, budget breaker, cancellation, compression, retries,

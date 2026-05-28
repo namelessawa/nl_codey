@@ -7,6 +7,7 @@ import { RecentWorkspaces } from "./components/RecentWorkspaces.js";
 import { StepStream } from "./components/StepStream.js";
 import { TracePanel } from "./components/TracePanel.js";
 import { IterationTimeline } from "./components/IterationTimeline.js";
+import { Phase3Panel } from "./components/Phase3Panel.js";
 import { ProjectCard } from "./components/ProjectCard.js";
 import { BudgetIndicator } from "./components/BudgetIndicator.js";
 import { DiffView } from "./components/DiffView.js";
@@ -29,7 +30,9 @@ export function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [liveText, setLiveText] = useState<string>("");
-  const [centerView, setCenterView] = useState<"stream" | "trace" | "timeline">("stream");
+  const [centerView, setCenterView] = useState<"stream" | "trace" | "timeline" | "phase3">(
+    "stream",
+  );
 
   const runIdRef = useRef<string | null>(null);
   runIdRef.current = detail?.run.id ?? null;
@@ -239,6 +242,13 @@ export function App(): JSX.Element {
             >
               Timeline
             </button>
+            <button
+              className={`tab ${centerView === "phase3" ? "tab-active" : ""}`}
+              onClick={() => setCenterView("phase3")}
+              disabled={!workspace}
+            >
+              Phase 3
+            </button>
           </div>
         </div>
         <div className="panel-body">
@@ -246,8 +256,12 @@ export function App(): JSX.Element {
             <StepStream steps={detail?.steps ?? []} liveText={liveText} />
           ) : centerView === "trace" ? (
             <TracePanel detail={detail} />
-          ) : (
+          ) : centerView === "timeline" ? (
             <IterationTimeline detail={detail} />
+          ) : workspace ? (
+            <Phase3Panel workspaceId={workspace.id} runId={detail?.run.id ?? null} />
+          ) : (
+            <div className="empty">Open a workspace to use Phase 3 tools.</div>
           )}
         </div>
       </section>

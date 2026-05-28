@@ -8,10 +8,37 @@ import type {
   AgentStep,
   AgentStepType,
   FileSnapshot,
+  GitAction,
+  GitActionKind,
+  IndexedChunk,
+  MemoryEntry,
+  MemoryEntryInput,
+  MemoryEntryPatch,
+  MemoryFilter,
+  MemoryKind,
+  RoleMessageRow,
   SnapshotType,
+  TaskNode,
+  TaskNodePatch,
+  TaskNodeStatus,
   Workspace,
 } from "@coding-agent/shared";
 import { COLUMN_MIGRATIONS, SCHEMA_SQL } from "./schema.js";
+import {
+  chunkFromRow,
+  chunkToBlob,
+  embeddingToBlob,
+  memoryEmbedding,
+  type ChunkRow,
+  type GitActionRow,
+  type MemoryRow,
+  type RoleMessageDbRow,
+  type TaskNodeRow,
+  toGitAction,
+  toMemoryEntry,
+  toRoleMessageRow,
+  toTaskNode,
+} from "./phase3-rows.js";
 
 type WorkspaceRow = { id: string; root_path: string; opened_at: number };
 type RunRow = {
@@ -286,6 +313,287 @@ export class Storage {
       )
       .all(runId, iteration) as SnapshotRow[];
     return rows.map(toSnapshot);
+  }
+
+  // --- Phase 3: memory ---
+
+  createMemory(workspaceId: string, input: MemoryEntryInput, embedding?: number[]): MemoryEntry {
+    const entry: MemoryEntry = {
+      id: randomUUID(),
+      workspaceId,
+      kind: input.kind,
+      title: input.title,
+      body: input.body,
+      tags: input.tags ?? [],
+      ...(input.sourceRunId ? { sourceRunId: input.sourceRunId } : {}),
+      createdAt: Date.now(),
+      usefulness: 0,
+    };
+    this.db
+      .prepare(
+        "INSERT INTO memory_entries (id, workspace_id, kind, title, body, tags, source_run_id, embedding, created_at, last_used_at, usefulness) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0)",
+      )
+      .run(
+        entry.id,
+        entry.workspaceId,
+        entry.kind,
+        entry.title,
+        entry.body,
+        JSON.stringify(entry.tags),
+        entry.sourceRunId ?? null,
+        embedding ? embeddingToBlob(embedding) : null,
+        entry.createdAt,
+      );
+    return entry;
+  }
+
+  listMemory(workspaceId: string, filter?: MemoryFilter): MemoryEntry[] {
+    const clauses = ["workspace_id = ?"];
+    const params: (string | number)[] = [workspaceId];
+    if (filter?.kind) {
+      clauses.push("kind = ?");
+      params.push(filter.kind);
+    }
+    if (!filter?.includeHidden) {
+      clauses.push("usefulness > -3");
+    }
+    if (filter?.search) {
+      clauses.push("(title LIKE ? OR body LIKE ?)");
+      const like = `%${filter.search}%`;
+      params.push(like, like);
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM memory_entries WHERE ${clauses.join(" AND ")} ORDER BY usefulness DESC, created_at DESC`,
+      )
+      .all(...params) as MemoryRow[];
+    const entries = rows.map(toMemoryEntry);
+    if (filter?.tags && filter.tags.length > 0) {
+      const wanted = new Set(filter.tags);
+      return entries.filter((e) => e.tags.some((t) => wanted.has(t)));
+    }
+    return entries;
+  }
+
+  /** All entries with their embeddings, for similarity retrieval. */
+  listMemoryWithEmbeddings(
+    workspaceId: string,
+  ): { entry: MemoryEntry; embedding: number[] | null }[] {
+    const rows = this.db
+      .prepare("SELECT * FROM memory_entries WHERE workspace_id = ? AND usefulness > -3")
+      .all(workspaceId) as MemoryRow[];
+    return rows.map((r) => ({ entry: toMemoryEntry(r), embedding: memoryEmbedding(r) }));
+  }
+
+  getMemory(id: string): MemoryEntry | null {
+    const row = this.db.prepare("SELECT * FROM memory_entries WHERE id = ?").get(id) as
+      | MemoryRow
+      | undefined;
+    return row ? toMemoryEntry(row) : null;
+  }
+
+  updateMemory(id: string, patch: MemoryEntryPatch): MemoryEntry | null {
+    const existing = this.getMemory(id);
+    if (!existing) return null;
+    const merged: MemoryEntry = {
+      ...existing,
+      ...patch,
+      tags: patch.tags ?? existing.tags,
+    };
+    this.db
+      .prepare(
+        "UPDATE memory_entries SET kind = ?, title = ?, body = ?, tags = ?, last_used_at = ?, usefulness = ? WHERE id = ?",
+      )
+      .run(
+        merged.kind,
+        merged.title,
+        merged.body,
+        JSON.stringify(merged.tags),
+        merged.lastUsedAt ?? null,
+        merged.usefulness,
+        id,
+      );
+    return merged;
+  }
+
+  /** Bump usefulness and refresh lastUsedAt when an entry is referenced. */
+  touchMemory(id: string, delta = 1): void {
+    this.db
+      .prepare("UPDATE memory_entries SET usefulness = usefulness + ?, last_used_at = ? WHERE id = ?")
+      .run(delta, Date.now(), id);
+  }
+
+  deleteMemory(id: string): boolean {
+    const info = this.db.prepare("DELETE FROM memory_entries WHERE id = ?").run(id);
+    return info.changes > 0;
+  }
+
+  // --- Phase 3: semantic chunks ---
+
+  replaceChunksForFile(workspaceId: string, filePath: string, chunks: IndexedChunk[], mtime: number): void {
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare("DELETE FROM semantic_chunks WHERE workspace_id = ? AND file_path = ?")
+        .run(workspaceId, filePath);
+      const insert = this.db.prepare(
+        "INSERT INTO semantic_chunks (id, workspace_id, file_path, start_line, end_line, kind, content, symbol_name, embedding, file_mtime, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      );
+      const now = Date.now();
+      for (const c of chunks) {
+        insert.run(
+          c.id,
+          workspaceId,
+          c.filePath,
+          c.startLine,
+          c.endLine,
+          c.kind,
+          c.content,
+          c.symbolName ?? null,
+          chunkToBlob(c.embedding),
+          mtime,
+          now,
+        );
+      }
+    });
+    tx();
+  }
+
+  deleteChunksForFile(workspaceId: string, filePath: string): void {
+    this.db
+      .prepare("DELETE FROM semantic_chunks WHERE workspace_id = ? AND file_path = ?")
+      .run(workspaceId, filePath);
+  }
+
+  listChunks(workspaceId: string): IndexedChunk[] {
+    const rows = this.db
+      .prepare("SELECT * FROM semantic_chunks WHERE workspace_id = ?")
+      .all(workspaceId) as ChunkRow[];
+    return rows.map(chunkFromRow);
+  }
+
+  /** Map of filePath -> stored mtime, for incremental reindex decisions. */
+  getIndexedFileMtimes(workspaceId: string): Map<string, number> {
+    const rows = this.db
+      .prepare(
+        "SELECT file_path, MAX(file_mtime) AS file_mtime FROM semantic_chunks WHERE workspace_id = ? GROUP BY file_path",
+      )
+      .all(workspaceId) as { file_path: string; file_mtime: number }[];
+    return new Map(rows.map((r) => [r.file_path, r.file_mtime]));
+  }
+
+  countChunks(workspaceId: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM semantic_chunks WHERE workspace_id = ?")
+      .get(workspaceId) as { n: number };
+    return row.n;
+  }
+
+  // --- Phase 3: task nodes ---
+
+  createTaskNode(node: TaskNode): TaskNode {
+    this.db
+      .prepare(
+        "INSERT INTO task_nodes (id, parent_run_id, title, description, status, depends_on, verify_command, files_scope, sub_run_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        node.id,
+        node.parentRunId,
+        node.title,
+        node.description,
+        node.status,
+        JSON.stringify(node.dependsOn),
+        node.verifyCommand ?? null,
+        node.filesScope ? JSON.stringify(node.filesScope) : null,
+        node.subRunId ?? null,
+        node.createdAt,
+        node.updatedAt,
+      );
+    return node;
+  }
+
+  listTaskNodes(parentRunId: string): TaskNode[] {
+    const rows = this.db
+      .prepare("SELECT * FROM task_nodes WHERE parent_run_id = ? ORDER BY created_at ASC")
+      .all(parentRunId) as TaskNodeRow[];
+    return rows.map(toTaskNode);
+  }
+
+  getTaskNode(id: string): TaskNode | null {
+    const row = this.db.prepare("SELECT * FROM task_nodes WHERE id = ?").get(id) as
+      | TaskNodeRow
+      | undefined;
+    return row ? toTaskNode(row) : null;
+  }
+
+  updateTaskNode(id: string, patch: TaskNodePatch): TaskNode | null {
+    const existing = this.getTaskNode(id);
+    if (!existing) return null;
+    const merged: TaskNode = { ...existing, ...patch, updatedAt: Date.now() };
+    this.db
+      .prepare(
+        "UPDATE task_nodes SET title = ?, description = ?, status = ?, depends_on = ?, verify_command = ?, files_scope = ?, sub_run_id = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(
+        merged.title,
+        merged.description,
+        merged.status,
+        JSON.stringify(merged.dependsOn),
+        merged.verifyCommand ?? null,
+        merged.filesScope ? JSON.stringify(merged.filesScope) : null,
+        merged.subRunId ?? null,
+        merged.updatedAt,
+        id,
+      );
+    return merged;
+  }
+
+  setTaskNodeStatus(id: string, status: TaskNodeStatus): void {
+    this.db
+      .prepare("UPDATE task_nodes SET status = ?, updated_at = ? WHERE id = ?")
+      .run(status, Date.now(), id);
+  }
+
+  // --- Phase 3: role messages ---
+
+  addRoleMessage(row: RoleMessageRow): void {
+    this.db
+      .prepare(
+        "INSERT INTO role_messages (id, task_node_id, from_role, to_role, kind, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(row.id, row.taskNodeId, row.fromRole, row.toRole, row.kind, row.payload, row.createdAt);
+  }
+
+  listRoleMessages(taskNodeId: string): RoleMessageRow[] {
+    const rows = this.db
+      .prepare("SELECT * FROM role_messages WHERE task_node_id = ? ORDER BY created_at ASC")
+      .all(taskNodeId) as RoleMessageDbRow[];
+    return rows.map(toRoleMessageRow);
+  }
+
+  // --- Phase 3: git actions ---
+
+  addGitAction(runId: string, action: GitActionKind, ref?: string, payload?: string): GitAction {
+    const entry: GitAction = {
+      id: randomUUID(),
+      runId,
+      action,
+      ...(ref ? { ref } : {}),
+      ...(payload ? { payload } : {}),
+      createdAt: Date.now(),
+    };
+    this.db
+      .prepare(
+        "INSERT INTO git_actions (id, run_id, action, ref, payload, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(entry.id, entry.runId, entry.action, ref ?? null, payload ?? null, entry.createdAt);
+    return entry;
+  }
+
+  listGitActions(runId: string): GitAction[] {
+    const rows = this.db
+      .prepare("SELECT * FROM git_actions WHERE run_id = ? ORDER BY created_at ASC")
+      .all(runId) as GitActionRow[];
+    return rows.map(toGitAction);
   }
 }
 

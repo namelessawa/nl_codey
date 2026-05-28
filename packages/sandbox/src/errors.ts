@@ -12,4 +12,6 @@ export const SANDBOX_CODES = {
   pathEscape: "PATH_ESCAPE",
   commandNotAllowed: "COMMAND_NOT_ALLOWED",
   dangerousCommand: "DANGEROUS_COMMAND",
+  networkDenied: "NETWORK_DENIED",
+  spawnFailed: "SPAWN_FAILED",
 } as const;
