@@ -18,6 +18,13 @@ const workspacePackages = [
   "@coding-agent/orchestrator",
   "@coding-agent/git-integration",
   "@coding-agent/web-tools",
+  "@coding-agent/global-memory",
+  "@coding-agent/style-profile",
+  "@coding-agent/learning",
+  "@coding-agent/finetune",
+  "@coding-agent/distributed",
+  "@coding-agent/proactive",
+  "@coding-agent/plugin-sdk",
 ];
 
 export default defineConfig({

@@ -38,6 +38,7 @@ const api: AgentApi = {
   stopAgentRun: (args: RunIdArgs) => ipcRenderer.invoke(IPC.stopAgentRun, args),
   getAgentRun: (args: RunIdArgs) => ipcRenderer.invoke(IPC.getAgentRun, args),
   listAgentRuns: (workspaceId: string) => ipcRenderer.invoke(IPC.listAgentRuns, workspaceId),
+  clearAgentRuns: (args: WorkspaceIdArgs) => ipcRenderer.invoke(IPC.clearAgentRuns, args),
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   updateSettings: (settings: AppSettings) => ipcRenderer.invoke(IPC.updateSettings, settings),
   resetSettings: () => ipcRenderer.invoke(IPC.resetSettings),
@@ -70,6 +71,50 @@ const api: AgentApi = {
   // --- Phase 3: sandbox ---
   getSandboxMode: (args: WorkspaceIdArgs) => ipcRenderer.invoke(IPC.getSandboxMode, args),
   setSandboxMode: (args: SetSandboxModeArgs) => ipcRenderer.invoke(IPC.setSandboxMode, args),
+  // --- Phase 4: global memory + KG ---
+  listGlobalPatterns: () => ipcRenderer.invoke(IPC.listGlobalPatterns),
+  contributeGlobalPattern: (args) => ipcRenderer.invoke(IPC.contributeGlobalPattern, args),
+  retractWorkspaceContribution: (args) => ipcRenderer.invoke(IPC.retractWorkspaceContribution, args),
+  deleteGlobalPattern: (args) => ipcRenderer.invoke(IPC.deleteGlobalPattern, args),
+  getWorkspaceContribution: (args) => ipcRenderer.invoke(IPC.getWorkspaceContribution, args),
+  setWorkspaceContribution: (args) => ipcRenderer.invoke(IPC.setWorkspaceContribution, args),
+  // --- Phase 4: style profile ---
+  getStyleSpec: (args) => ipcRenderer.invoke(IPC.getStyleSpec, args),
+  upsertStyleSpec: (args) => ipcRenderer.invoke(IPC.upsertStyleSpec, args),
+  extractStyleSpecFromCodebase: (args) =>
+    ipcRenderer.invoke(IPC.extractStyleSpecFromCodebase, args),
+  // --- Phase 4: learning ---
+  listFeedbackSignals: (args) => ipcRenderer.invoke(IPC.listFeedbackSignals, args),
+  recordFeedbackSignal: (args) => ipcRenderer.invoke(IPC.recordFeedbackSignal, args),
+  buildPreferenceDataset: (args) => ipcRenderer.invoke(IPC.buildPreferenceDataset, args),
+  listPreferenceDatasets: () => ipcRenderer.invoke(IPC.listPreferenceDatasets),
+  // --- Phase 4: finetune ---
+  listFinetuneJobs: () => ipcRenderer.invoke(IPC.listFinetuneJobs),
+  createFinetuneJob: (args) => ipcRenderer.invoke(IPC.createFinetuneJob, args),
+  listModels: () => ipcRenderer.invoke(IPC.listModels),
+  getActiveModel: () => ipcRenderer.invoke(IPC.getActiveModel),
+  promoteModel: (args) => ipcRenderer.invoke(IPC.promoteModel, args),
+  rollbackToBaseModel: () => ipcRenderer.invoke(IPC.rollbackToBaseModel),
+  // --- Phase 4: proposals ---
+  listProposals: (args) => ipcRenderer.invoke(IPC.listProposals, args),
+  snoozeProposal: (args) => ipcRenderer.invoke(IPC.snoozeProposal, args),
+  dismissProposal: (args) => ipcRenderer.invoke(IPC.dismissProposal, args),
+  convertProposal: (args) => ipcRenderer.invoke(IPC.convertProposal, args),
+  scanDebtNow: (args) => ipcRenderer.invoke(IPC.scanDebtNow, args),
+  // --- Phase 4: distributed ---
+  listWorkerNodes: () => ipcRenderer.invoke(IPC.listWorkerNodes),
+  registerWorkerNode: (args) => ipcRenderer.invoke(IPC.registerWorkerNode, args),
+  // --- Phase 4: plugins ---
+  listPlugins: () => ipcRenderer.invoke(IPC.listPlugins),
+  installPlugin: (args) => ipcRenderer.invoke(IPC.installPlugin, args),
+  setPluginEnabled: (args) => ipcRenderer.invoke(IPC.setPluginEnabled, args),
+  uninstallPlugin: (args) => ipcRenderer.invoke(IPC.uninstallPlugin, args),
+  // --- Phase 4: evals ---
+  listFrozenSnapshots: (args) => ipcRenderer.invoke(IPC.listFrozenSnapshots, args),
+  listEvalRuns: (args) => ipcRenderer.invoke(IPC.listEvalRuns, args),
+  // --- Phase 4: settings ---
+  getPhase4Settings: () => ipcRenderer.invoke(IPC.getPhase4Settings),
+  updatePhase4Settings: (args) => ipcRenderer.invoke(IPC.updatePhase4Settings, args),
   onAgentEvent: (handler: (event: AgentEvent) => void) => {
     const listener = (_e: unknown, payload: AgentEvent): void => handler(payload);
     ipcRenderer.on(IPC_EVENT, listener);

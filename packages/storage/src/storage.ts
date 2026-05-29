@@ -39,6 +39,7 @@ import {
   toRoleMessageRow,
   toTaskNode,
 } from "./phase3-rows.js";
+import { Phase4Storage } from "./phase4-store.js";
 
 type WorkspaceRow = { id: string; root_path: string; opened_at: number };
 type RunRow = {
@@ -80,6 +81,8 @@ export type RunUsageDelta = {
 /** Thin synchronous persistence layer over SQLite. Construction runs the schema. */
 export class Storage {
   private readonly db: Database.Database;
+  /** Phase 4 sub-facade. Lazily created on first access. */
+  private phase4Cache: Phase4Storage | null = null;
 
   constructor(dbPath: string) {
     if (dbPath !== ":memory:") {
@@ -94,6 +97,12 @@ export class Storage {
     this.db.exec(SCHEMA_SQL);
     this.migrate();
     this.db.exec(INDEX_SQL);
+  }
+
+  /** Phase 4 storage facade. Same underlying DB; safe to use freely. */
+  get phase4(): Phase4Storage {
+    if (!this.phase4Cache) this.phase4Cache = new Phase4Storage(this.db);
+    return this.phase4Cache;
   }
 
   /** Apply additive column migrations, ignoring already-present columns. */
@@ -229,6 +238,31 @@ export class Storage {
       .prepare("SELECT * FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC")
       .all(workspaceId) as RunRow[];
     return rows.map(toRun);
+  }
+
+  /**
+   * Delete every run for a workspace plus its cascading steps and file
+   * snapshots. Returns the number of runs removed. Runs are also returned so
+   * callers can purge in-memory state (controllers, approvals, baselines).
+   */
+  deleteRunsForWorkspace(workspaceId: string): { deleted: number; runIds: string[] } {
+    const rows = this.db
+      .prepare("SELECT id FROM agent_runs WHERE workspace_id = ?")
+      .all(workspaceId) as { id: string }[];
+    const runIds = rows.map((r) => r.id);
+    if (runIds.length === 0) return { deleted: 0, runIds: [] };
+    const tx = this.db.transaction((ids: string[]) => {
+      const stepStmt = this.db.prepare("DELETE FROM agent_steps WHERE run_id = ?");
+      const snapStmt = this.db.prepare("DELETE FROM file_snapshots WHERE run_id = ?");
+      const runStmt = this.db.prepare("DELETE FROM agent_runs WHERE id = ?");
+      for (const id of ids) {
+        stepStmt.run(id);
+        snapStmt.run(id);
+        runStmt.run(id);
+      }
+    });
+    tx(runIds);
+    return { deleted: runIds.length, runIds };
   }
 
   // --- steps ---

@@ -22,9 +22,16 @@ export const OPENAI_COMPATIBLE_PROVIDERS: readonly LLMProviderId[] = [
   "custom",
 ];
 
+import type { SandboxMode } from "./sandbox.js";
+
 export type ThemePreference = "system" | "light" | "dark";
 export type LanguagePreference = "zh-CN" | "en-US";
 export type FontSizePreference = "small" | "medium" | "large";
+export type DensityPreference = "comfy" | "compact";
+
+/** Allowed sandbox modes for settings validation; mirrors {@link SandboxMode}. */
+export const SANDBOX_MODES: readonly SandboxMode[] = ["whitelist", "wsl", "docker"];
+export const DENSITY_VALUES: readonly DensityPreference[] = ["comfy", "compact"];
 
 export type LLMSettings = {
   provider: LLMProviderId;
@@ -42,18 +49,33 @@ export type AgentSettings = {
   requireConfirmationBeforeCommand: boolean;
   maxAutoSteps: number;
   sandboxEnabled: boolean;
+  /** Execution backend when sandboxing is on. UI-driven; backend may treat
+   *  unsupported values as a fall-through to "whitelist" until WSL/Docker
+   *  drivers land. */
+  sandboxMode: SandboxMode;
+  /** Dollar ceiling per run. Hard-capped at $5 by validation. */
+  budgetUsd: number;
 };
 
 export type UISettings = {
   theme: ThemePreference;
   language: LanguagePreference;
   fontSize: FontSizePreference;
+  density: DensityPreference;
+  /** Whether to render the plan→search→patch→verify strip during a run. */
+  showPipeline: boolean;
+  /** When true, hides animations and pulsing indicators. */
+  reduceMotion: boolean;
 };
+
+/** Map of action id → key combo (e.g. "Ctrl+Enter"). Empty string = unbound. */
+export type ShortcutBindings = Record<string, string>;
 
 export type AppSettings = {
   llm: LLMSettings;
   agent: AgentSettings;
   ui: UISettings;
+  shortcuts: ShortcutBindings;
 };
 
 /**
@@ -95,7 +117,27 @@ export const SETTINGS_LIMITS = {
   timeoutSecondsMax: 600,
   maxAutoStepsMin: 1,
   maxAutoStepsMax: 100,
+  budgetUsdMin: 0,
+  budgetUsdMax: 5,
 } as const;
+
+export const DEFAULT_SHORTCUTS: ShortcutBindings = {
+  "new-run": "Ctrl+N",
+  "open-workspace": "Ctrl+O",
+  "send-message": "Ctrl+Enter",
+  "stop-run": "Esc",
+  "approve-patch": "Ctrl+Enter",
+  "reject-patch": "Ctrl+Backspace",
+  "open-diff": "Ctrl+D",
+  rollback: "Ctrl+Shift+Z",
+  "quick-prefs": "Ctrl+,",
+  "open-settings": "Ctrl+;",
+  "search-history": "Ctrl+K",
+  palette: "Ctrl+Shift+P",
+  "next-thread": "Ctrl+]",
+  "prev-thread": "Ctrl+[",
+  "recall-last": "ArrowUp",
+};
 
 export const DEFAULT_SETTINGS: AppSettings = {
   llm: {
@@ -113,12 +155,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
     requireConfirmationBeforeCommand: true,
     maxAutoSteps: 10,
     sandboxEnabled: true,
+    sandboxMode: "whitelist",
+    budgetUsd: 1.0,
   },
   ui: {
     theme: "system",
     language: "zh-CN",
     fontSize: "medium",
+    density: "comfy",
+    showPipeline: true,
+    reduceMotion: false,
   },
+  shortcuts: { ...DEFAULT_SHORTCUTS },
 };
 
 /** A single validation problem, keyed by a dotted field path. */
@@ -201,6 +249,24 @@ export function validateSettings(settings: AppSettings): ValidationResult {
     });
   }
 
+  if (
+    !isFiniteNumber(agent.budgetUsd) ||
+    agent.budgetUsd < SETTINGS_LIMITS.budgetUsdMin ||
+    agent.budgetUsd > SETTINGS_LIMITS.budgetUsdMax
+  ) {
+    issues.push({
+      field: "agent.budgetUsd",
+      message: `Budget must be between $${SETTINGS_LIMITS.budgetUsdMin} and $${SETTINGS_LIMITS.budgetUsdMax}`,
+    });
+  }
+
+  if (!SANDBOX_MODES.includes(agent.sandboxMode)) {
+    issues.push({
+      field: "agent.sandboxMode",
+      message: `Sandbox mode must be one of: ${SANDBOX_MODES.join(", ")}`,
+    });
+  }
+
   return { valid: issues.length === 0, issues };
 }
 
@@ -233,5 +299,6 @@ export function mergeSettings(partial: Partial<AppSettings> | null | undefined):
     llm: { ...DEFAULT_SETTINGS.llm, ...(partial?.llm ?? {}) },
     agent: { ...DEFAULT_SETTINGS.agent, ...(partial?.agent ?? {}) },
     ui: { ...DEFAULT_SETTINGS.ui, ...(partial?.ui ?? {}) },
+    shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...(partial?.shortcuts ?? {}) },
   };
 }
