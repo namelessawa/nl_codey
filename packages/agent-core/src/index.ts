@@ -8,8 +8,12 @@ export {
   type ToolExecutorOptions,
 } from "./tools-registry.js";
 export { SYSTEM_PROMPT } from "./prompts.js";
+export {
+  buildPhase4PromptAugmentation,
+  MODEL_IDENTITY_REMINDER,
+  type Phase4PromptInputs,
+} from "./phase4-prompt.js";
 export { rollbackRun, type RollbackArgs } from "./rollback.js";
-export { isExplainTask, extractFilePaths } from "./intent.js";
 export {
   compressConversation,
   shouldCompress,
