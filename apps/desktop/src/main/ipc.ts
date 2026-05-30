@@ -22,7 +22,7 @@ import { registerPhase3Ipc } from "./phase3-ipc.js";
 import { registerPhase4Ipc } from "./phase4-ipc.js";
 
 export function registerIpc(services: Services): void {
-  const { storage, agent, settings } = services;
+  const { storage, agent, settings, installationGate } = services;
 
   const settingsPayload = (): SettingsPayload => ({
     settings: settings.getSettings(),
@@ -88,6 +88,9 @@ export function registerIpc(services: Services): void {
 
   handle(IPC.runCommand, async (args) => {
     const { workspaceId, command } = args as RunCommandArgs;
+    // Installation gate: refuse if Docker is missing and the user skipped.
+    // Throws a readable error which the renderer surfaces in the run detail.
+    installationGate.assertToolAllowed("run_command");
     return agent.runCommandDirect(workspaceId, command);
   });
 
@@ -112,6 +115,14 @@ export function registerIpc(services: Services): void {
     const { config } = args as TestLLMConnectionArgs;
     return testLLMConnection(config);
   });
+
+  // --- Installation gate (instruction branch) ---
+  handle(IPC.getInstallationStatus, () => installationGate.status());
+  handle(IPC.recheckDocker, () => installationGate.recheck());
+  handle(IPC.skipInstallationGate, () => installationGate.skip());
+  handle(IPC.resumeInstallationGate, () => installationGate.resume());
+  handle(IPC.markFirstRunCompleted, () => installationGate.markFirstRunCompleted());
+  handle(IPC.openDockerInstallPage, () => installationGate.openInstallPage());
 
   registerPhase3Ipc(services, requireWorkspaceRoot);
   registerPhase4Ipc(services, requireWorkspaceRoot, app.getPath("userData"));

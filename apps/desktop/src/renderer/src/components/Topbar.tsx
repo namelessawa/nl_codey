@@ -1,16 +1,21 @@
 import type { ForwardedRef } from "react";
 import { forwardRef } from "react";
-import type { AgentRun, Workspace } from "@coding-agent/shared";
+import type { AgentRun, InstallationStatus, Workspace } from "@coding-agent/shared";
 import { Icon } from "./Icons.js";
+import { DockerStatusBadge } from "./DockerStatusBadge.js";
 
 interface TopbarProps {
   workspace: Workspace | null;
   activeRun: AgentRun | null;
   llmConnected: boolean;
   currentModel: string;
+  /** Docker availability + gate state for the red badge. */
+  installation: InstallationStatus;
   onSwitchWorkspace: () => void;
   onOpenModelSwitcher: () => void;
   onOpenSettings: () => void;
+  /** Re-open the install reminder modal (also used by the red badge). */
+  onOpenInstallReminder: () => void;
 }
 
 /**
@@ -24,9 +29,11 @@ export const Topbar = forwardRef(function Topbar(
     activeRun,
     llmConnected,
     currentModel,
+    installation,
     onSwitchWorkspace,
     onOpenModelSwitcher,
     onOpenSettings,
+    onOpenInstallReminder,
   }: TopbarProps,
   modelChipRef: ForwardedRef<HTMLButtonElement>,
 ): JSX.Element {
@@ -98,6 +105,8 @@ export const Topbar = forwardRef(function Topbar(
         />
         {llmConnected ? "connected" : "not configured"}
       </span>
+
+      <DockerStatusBadge status={installation} onClick={onOpenInstallReminder} />
 
       <button
         className="icon-btn"

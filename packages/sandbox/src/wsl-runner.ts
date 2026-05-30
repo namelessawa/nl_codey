@@ -6,7 +6,8 @@ import {
   type SandboxRunResult,
 } from "@coding-agent/shared";
 import { assertNoSandboxEscape } from "./sandbox-policy.js";
-import { truncateOutput } from "./output.js";
+import { truncateOutput, filteredEnv } from "./output.js";
+import { createJobObject } from "./job-object.js";
 
 const MAX_OUTPUT_BYTES = 100_000;
 const DEFAULT_DISTRO = "Ubuntu";
@@ -77,7 +78,26 @@ export async function runChild(
     let timedOut = false;
     let settled = false;
 
-    const child = spawn(bin, argv, { windowsHide: true });
+    // Defense-in-depth: a Job Object whose KILL_ON_JOB_CLOSE flag guarantees
+    // that closing the job (on resolve, reject, or timeout) tears down the
+    // entire process tree atomically. On non-Windows the job is a no-op.
+    const job = createJobObject({ name: `codey-run-${Date.now()}` });
+
+    // Whitelist the environment we pass downstream — strips OPENAI_API_KEY,
+    // ANTHROPIC_API_KEY, GITHUB_TOKEN, etc. before they can leak to a tool's
+    // stdout/stderr or be exfiltrated by a malicious script.
+    const child = spawn(bin, argv, {
+      windowsHide: true,
+      env: filteredEnv(process.env),
+    });
+
+    if (typeof child.pid === "number") {
+      job.assignProcess(child.pid);
+    }
+
+    const finish = (): void => {
+      job.close();
+    };
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -95,6 +115,7 @@ export async function runChild(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      finish();
       reject(err);
     });
 
@@ -102,6 +123,7 @@ export async function runChild(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      finish();
       resolve({
         command,
         mode,

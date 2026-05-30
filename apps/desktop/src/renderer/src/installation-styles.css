@@ -1,0 +1,327 @@
+/* ============================================================================
+ *  Installation gate (instruction branch)
+ *
+ *  Three surfaces:
+ *   - .docker-install-modal      first-run install reminder + skip
+ *   - .docker-status-badge       red chip in the top bar when degraded
+ *   - .docker-warning-banner     warning row inside Settings → Agent panel
+ *   - .pane-locked               disabled state for the locked Agent panel
+ * ========================================================================= */
+
+/* --- modal scrim + container ---------------------------------------------- */
+
+.docker-install-scrim {
+  background: rgba(8, 10, 14, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.docker-install-modal {
+  width: min(540px, calc(100vw - 48px));
+  background: var(--bg-elev, #15181d);
+  color: var(--ink, #e8ecef);
+  border: 1px solid var(--border, #2a2e36);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dim-head {
+  position: relative;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--border, #2a2e36);
+}
+
+.dim-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ff6b6b;
+  font-weight: 700;
+}
+
+.dim-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  display: inline-block;
+}
+.dim-dot-red {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}
+
+.dim-head h2 {
+  margin: 8px 0 0;
+  font-family: var(--serif, Georgia, serif);
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+}
+
+.dim-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted, #8b929a);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.dim-close:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink, #e8ecef);
+}
+
+/* --- body ----------------------------------------------------------------- */
+
+.dim-body {
+  padding: 18px 22px 6px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-2, #b9c1c9);
+}
+
+.dim-body p {
+  margin: 0 0 12px;
+}
+
+.dim-body strong {
+  color: var(--ink, #e8ecef);
+}
+
+.dim-risks {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dim-risks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--ink-2, #b9c1c9);
+}
+
+.dim-risks li svg {
+  margin-top: 3px;
+  flex-shrink: 0;
+  color: #ef4444;
+}
+
+.dim-recommendation {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  padding: 11px 13px;
+  border-radius: 8px;
+  margin: 14px 0 12px !important;
+  font-size: 13px;
+}
+.dim-recommendation strong {
+  color: #4ade80;
+}
+
+.dim-probe-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  padding: 9px 12px;
+  border-radius: 7px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: #fca5a5;
+  margin-top: 6px;
+}
+.dim-probe-error code {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* --- footer --------------------------------------------------------------- */
+
+.dim-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--border, #2a2e36);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.dim-foot-spacer {
+  flex: 1;
+}
+
+.dim-foot .btn.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- red badge in top bar ------------------------------------------------- */
+
+.docker-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 9px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  color: #fca5a5;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.docker-status-badge:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fee2e2;
+}
+
+.docker-status-badge:focus-visible {
+  outline: 2px solid rgba(239, 68, 68, 0.6);
+  outline-offset: 2px;
+}
+
+.dsb-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.8);
+  animation: dsb-pulse 1.8s ease-in-out infinite;
+}
+
+.dsb-label {
+  line-height: 1;
+}
+
+.dsb-tag {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  background: rgba(239, 68, 68, 0.25);
+  border-radius: 3px;
+  color: #fee2e2;
+}
+
+@keyframes dsb-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+}
+
+/* --- Settings → Agent panel warning + lock-out --------------------------- */
+
+.docker-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  margin: 0 0 18px;
+  background: rgba(239, 68, 68, 0.07);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink, #e8ecef);
+  font-family: inherit;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.docker-warning-banner:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.dwb-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 99px;
+  background: rgba(239, 68, 68, 0.15);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dwb-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 99px;
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+  animation: dsb-pulse 1.8s ease-in-out infinite;
+}
+
+.dwb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.dwb-body strong {
+  font-size: 13.5px;
+  color: var(--ink, #e8ecef);
+  font-weight: 600;
+}
+
+.dwb-body span {
+  font-size: 12px;
+  color: var(--ink-2, #b9c1c9);
+  line-height: 1.45;
+}
+
+.dwb-chevron {
+  flex-shrink: 0;
+  color: var(--muted, #8b929a);
+}
+
+/* When the Agent pane is locked, every fieldset child fades + becomes unclickable.
+   The fieldset[disabled] attribute already blocks pointer events on form inputs;
+   we add the visual treatment here. The warning banner stays vivid so the user
+   can always click through to re-open the modal. */
+.pane.pane-locked .pane-fieldset {
+  opacity: 0.45;
+  pointer-events: none;
+  filter: grayscale(0.4);
+  transition: opacity 200ms ease;
+}
+
+.pane .pane-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: contents;
+}

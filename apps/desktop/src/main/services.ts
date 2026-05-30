@@ -5,11 +5,14 @@ import { createLLMProvider, createLLMProviderFromEnv } from "@coding-agent/llm";
 import { Storage } from "@coding-agent/storage";
 import type { AgentEvent } from "@coding-agent/shared";
 import { SettingsStore } from "./settings/store.js";
+import { InstallationGate } from "./installation-gate.js";
 
 export type Services = {
   storage: Storage;
   settings: SettingsStore;
   agent: AgentService;
+  /** Docker availability + user skip choice (instruction branch). */
+  installationGate: InstallationGate;
 };
 
 /** Build the storage + settings + agent service. `emit` broadcasts live events. */
@@ -19,6 +22,7 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
   const dbPath = path.join(dataDir, "workspace-state.db");
   const storage = new Storage(dbPath);
   const settings = new SettingsStore(userData);
+  const installationGate = new InstallationGate(userData, emit);
 
   const agent = new AgentService({
     storage,
@@ -34,5 +38,12 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
     emit,
   });
 
-  return { storage, settings, agent };
+  return { storage, settings, agent, installationGate };
 }
+
+// NOTE: tool-dispatch gating for the agent's autonomous loop (refuse
+// `run_command`/`apply_patch`/`write_file` when degraded) currently lives at
+// the IPC boundary (apps/desktop/src/main/ipc.ts → runCommand handler) and the
+// renderer (`useInstallationGate`). Pushing the check into agent-core's
+// tool-registry would catch LLM-initiated tool calls too — tracked as a
+// follow-up in docs/sandbox/appcontainer-spike.md §9.

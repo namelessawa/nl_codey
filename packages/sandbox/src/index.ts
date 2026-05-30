@@ -12,3 +12,7 @@ export { WslRunner, runChild } from "./wsl-runner.js";
 export { DockerRunner } from "./docker-runner.js";
 export { routeCommand } from "./command-router.js";
 export type { SandboxRunners } from "./command-router.js";
+export { createJobObject } from "./job-object.js";
+export type { JobObjectHandle, JobObjectLimits } from "./job-object.js";
+export { detectDocker, probeDockerStatus } from "./docker-detect.js";
+export type { DockerProbeResult } from "./docker-detect.js";
