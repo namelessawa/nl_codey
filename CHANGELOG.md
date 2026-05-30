@@ -6,6 +6,91 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Phase 4 — cross-project self-evolution + team scale.** Seven new workspace packages plus
+  agent-core / IPC / GUI wiring that bring the coding agent from "single-project entrustment"
+  to "provably improving across projects":
+  - `packages/global-memory/` — cross-project knowledge graph with provenance; `KnowledgeGraph`
+    facade ties pattern contribution to source-project edges; the offline `pattern-extractor`
+    promotes a pattern only when it appears in ≥2 projects (default cap ≤10 promotions/week);
+    `cross-project-retriever` ranks ≤3 patterns per task with semantic + tag matching and
+    renders a provenance-tagged Markdown block; `privacy-scope` enforces opt-in contribution
+    (default `isolated`) and full retraction cascade.
+  - `packages/style-profile/` — `StyleSpec` data model (`naming` / `error-handling` / `imports`
+    / `testing` / `comments` / `structure` × `must` / `should` / `prefer`); `style-extractor`
+    derives initial rules from codebase statistics (quote preference, indent, semicolons,
+    function style); `diff-feedback` classifies signals and auto-promotes after 3 consistent
+    signals, auto-strengthens to `must` after 6. All rules carry source ("extracted" /
+    "feedback" / "manual") for full human auditability.
+  - `packages/learning/` — passive `SignalCollector` records `diff_accepted` / `diff_rejected`
+    / `diff_edited` / `review_overturned` / `manual_correction` with zero user friction;
+    `preference-dataset` builds `(prompt, chosen, rejected)` tuples from edited signals;
+    `dataset-curator` filters whitespace-only churn, low-quality pairs, near-duplicates and
+    caps per category — quality > quantity.
+  - `packages/finetune/` — optional LoRA/QLoRA pipeline (default OFF); `LoRATrainer` shells out
+    to an external backend; `eval-gate` enforces the three-rule gate (candidate score ≥
+    baseline, zero per-task regression, no holdout collapse) with one-line verdict text;
+    `ModelRegistry` enforces "exactly one active model" with one-click rollback to base;
+    `embedding-adapter` runs A/B with normal-approximation z-test and only promotes on
+    significant lift (≥2pp at p<0.05); `frozen-suite.ts` seeds 5 immutable initial tasks
+    (L1 typo → L4 mini ESM migration) and computes monotonic/visible-improvement flags.
+  - `packages/distributed/` — `Coordinator` holds the registered worker set with
+    least-loaded scheduling; `RemoteWorkerClient` port for mTLS-pluggable transport; graceful
+    fallback to local execution when no workers are available (NEVER blocks single-node);
+    `task-distributor` computes ready sets + round-robin plans with per-task capability
+    filtering; `node-recovery` reassigns running tasks from offline nodes.
+  - `packages/proactive/` — read-only `scanForDebt` (oversized files, TODO concentration,
+    missing tests, deprecated deps, doc gaps) with a HARD INVARIANT: never modifies a file,
+    never schedules a task, never runs non-read-only commands; output is `ProposalInput[]`
+    only; `ProposalInbox` provides snooze/dismiss/convert lifecycle with rewake on snooze
+    expiry; conversion hands off to the Phase 3 Planner pipeline (which is the ONLY place a
+    real task is created).
+  - `packages/plugin-sdk/` — `validateManifest` rejects malformed manifests (bad semver,
+    unknown sandbox, unknown permission, non-snake_case tool names) at install time;
+    `PluginLoader` requires explicit per-permission user approval (never auto-approves);
+    `PluginHost` re-checks permissions on every invocation (enable check + permission check +
+    sandbox routing); `renderCommand` shell-escapes all argument values.
+  - `packages/storage` — 16 new tables (`global_patterns`, `kg_edges`, `workspace_contribution`,
+    `style_specs`, `feedback_signals`, `preference_pairs`, `preference_datasets`, `finetune_jobs`,
+    `model_registry`, `proposals`, `worker_nodes`, `distributed_assignments`,
+    `plugin_installations`, `checkpoints`, `eval_tasks`, `eval_runs`, `frozen_suite_snapshots`)
+    + 16 indexes; new `Phase4Storage` sub-facade exposed via `storage.phase4`; all packages
+    consume this through narrow port interfaces (same pattern as Phase 3 `MemoryStore`).
+  - `packages/shared` — new `phase4.ts` module with all Phase 4 data contracts + `Phase4Settings`
+    (per-feature flags, defaulting to disabled for `globalMemory` / `finetune` / `distributed` /
+    `proactive` / `plugins`; `styleProfile` and `learning` default ON since they're zero-risk).
+  - `packages/agent-core` — new `buildPhase4PromptAugmentation` injects GlobalPattern hints
+    (capped at 3, with provenance) + StyleSpec rules (sorted must > should > prefer) +
+    `MODEL_IDENTITY_REMINDER` ("you may be running on a fine-tuned model — still verify, style
+    yields to correctness").
+  - `apps/desktop` — new `phase4-ipc.ts` registers ~30 IPC handlers; `phase4-settings.json`
+    persists feature flags separately from the main settings so they can be toggled freely.
+    Preload bridge and renderer `api.ts` mirror the full surface. New components:
+    `Phase4Panel` (tabbed shell), `KnowledgeGraphView` (provenance + delete), `StyleProfilePanel`
+    (per-rule strength editor + extract-from-codebase), `LearningDashboard` (signal tally +
+    frozen-suite weekly trend table + build-dataset action), `FinetuneManager` (model registry +
+    one-click rollback + per-job eval Δ / holdout / regressions), `ProposalInbox` (scan +
+    convert/snooze/dismiss), `ClusterMonitor` (auto-refresh every 10s), `PluginManager`
+    (enable/disable/uninstall with permission display). Phase 4 stylesheet at
+    `phase4-styles.css` registered through `main.tsx`.
+  - **Tests**: ~70 new vitest cases across the seven packages (KG contribution + retraction
+    cascade, pattern-extractor weekly cap, style-extractor codebase stats, diff-feedback
+    threshold promotion + strengthening, dataset curator filters, eval-gate three-rule
+    enforcement + catastrophic-forgetting detection, A/B z-test, coordinator least-loaded
+    + fallback + reaper, task-distributor capability matching, node-recovery reassignment,
+    debt-scanner read-only verification + dedupe, ProposalInbox lifecycle, manifest validator
+    + authorize, PluginHost permission re-check + disabled-plugin rejection,
+    phase4-prompt strength ordering + provenance rendering). Full `pnpm typecheck` green
+    across all 21 packages + the desktop app. 456/460 vitest pass — the 4 failures are the
+    pre-existing better-sqlite3 Node-ABI mismatch in `storage.test.ts` documented in CLAUDE.md.
+- **Notebook UI polish (right panel · shortcuts · expanded settings · i18n)** — `RightPanel`
+  slide-out detail surface + `ModelSwitcher` topbar pill + `QuickPrefsPopover` for fast
+  theme/density swaps. `useShortcuts` + Settings → Shortcuts pane wires the named-action
+  keyboard rebinding to the `ShortcutBindings` shape in `packages/shared/src/settings.ts`.
+  Settings panes (`AgentSettings` / `LLMSettings` / `UISettings` / `fields`) fleshed out;
+  `i18n.ts` dictionary extended to cover the new settings and quick-pref surfaces
+  (zh-CN + en-US). Dropped the dead `packages/agent-core/src/intent.ts` — the tool-calling
+  loop has driven intent end-to-end since Phase 2, and keeping the file encouraged
+  accidental re-imports.
 - **Notebook/runbook UI redesign (`ui/notebook-redesign` branch)** — replaces the 3-column dark
   IDE renderer with a chat-centric notebook aesthetic from the
   `claude.ai/design` handoff (`coding-agent/project/Coding Agent.html`). New shell: 48 px topbar
@@ -27,6 +112,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
   mismatch in `storage.test.ts` documented in CLAUDE.md, not a regression).
 
 ### Fixed
+- **Topbar settings / sidebar quick-prefs gear icons rendered as a dot** —
+  `Topbar.tsx` and `ThreadsSidebar.tsx` rendered `<Icon name="gear" />` at `size={15}`
+  with the default `stroke={1.6}`. Against the gear's 24×24 viewBox that maps every
+  tooth to ~1 px and an effective stroke of ~1 px, so on standard-DPI displays the
+  teeth anti-aliased into a fuzzy ring and only the inner `<circle r="3" />` (a
+  ~3.75 px ring) read clearly — visually a "dot". Bumped both gear buttons (and the
+  history button beside the quick-prefs gear) to `size={16} stroke={2}`, matching
+  lucide's recommended minimum readable settings-icon size. Also reverted a stray
+  uncommitted swap in `Icons.tsx` that replaced lucide's `Settings` path with the
+  `Settings2` variant — both render the same at 15 px, so the swap did nothing for
+  the symptom and only churned the source.
 - **Startup crash `SqliteError: no such column: iteration` on upgraded databases** —
   `Storage`'s constructor ran `exec(SCHEMA_SQL)` (which created `idx_snapshots_run_iter ON
   file_snapshots(run_id, iteration)`) *before* `migrate()` added the `iteration` column via
@@ -43,6 +139,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
   and threw `ERR_UNKNOWN_FILE_EXTENSION` for `packages/semantic-index/src/index.ts`. Added all six
   to the bundle list so every `@coding-agent/*` workspace package (13 total) is bundled. `pnpm build`
   green; `out/main/index.js` now transforms 118 modules.
+- **ReDoS on diff classifier (`packages/style-profile/src/diff-feedback.ts`)** — CodeQL flagged
+  three polynomial-time regular expressions evaluated against unbounded LLM/user-controlled diff
+  text. `/try\s*\{[\s\S]*?\}\s*catch/` (line 37) catastrophically backtracks on inputs like
+  `try{try{try{...` because the lazy `[\s\S]*?` can split at every nested `{`. `/[a-z]+_[a-z]+/`
+  (line 70, used twice — once on `before`, once on `after`) is polynomial on long `a`-runs without
+  `_`. Fixed with two changes: (1) cap `before`/`after` at `MAX_SIGNAL_LEN = 4000` before any regex
+  test so worst-case work is bounded regardless of future heuristics; (2) replace the lazy try/catch
+  matcher with two anchored sub-tests (`/try\s*\{/` + `/\}\s*catch\b/`) and the snake_case matcher
+  with the single-char-on-each-side form `/[a-z]_[a-z]/` (existence-detection is semantically
+  equivalent — no need for the `+` quantifier). All 8 `style-profile` vitest cases still pass;
+  closes the three GitHub Code Scanning alerts on PR #4.
 
 ### Added
 - **Phase 3 — long-term project entrustment (full module build, typecheck-green)**. New packages:

@@ -97,7 +97,14 @@ button { font-family: inherit; }
 }
 .topbar { grid-area: topbar; }
 .side   { grid-area: side; min-height: 0; }
-.main   { grid-area: main; min-height: 0; overflow: hidden; position: relative; }
+.main   {
+  grid-area: main; min-height: 0; min-width: 0;
+  overflow: hidden; position: relative;
+  display: flex; flex-direction: column;
+}
+.main > .chat,
+.main > .main-inner,
+.main > .cover-scroll { flex: 1; min-height: 0; }
 
 /* ─────────────  Topbar  ───────────── */
 .topbar {
@@ -193,12 +200,16 @@ button { font-family: inherit; }
 
 .side-search {
   padding: 0 12px 6px;
+  display: flex; align-items: center; gap: 6px;
 }
 .side-search input {
-  width: 100%; padding: 6px 10px;
+  flex: 1; min-width: 0; padding: 6px 10px;
   background: var(--surface-2); border: 1px solid transparent;
   border-radius: 6px; color: var(--ink); font-family: var(--sans);
   font-size: 12px; outline: none;
+}
+.side-clear {
+  padding: 5px 8px; font-size: 11px; line-height: 1; flex-shrink: 0;
 }
 .side-search input:focus { border-color: var(--border-2); background: var(--surface); }
 .side-search input::placeholder { color: var(--muted); }
@@ -488,6 +499,26 @@ button { font-family: inherit; }
   margin-left: auto; font-family: var(--mono); font-size: 10.5px;
 }
 :root[data-pipeline="off"] .pipeline-strip { display: none; }
+
+/* ─────────────  Density: compact  ───────────── */
+:root[data-density="compact"] .chat-stream { padding: 14px 22px 10px; gap: 12px; }
+:root[data-density="compact"] .chat-head { padding: 10px 22px 8px; }
+:root[data-density="compact"] .composer { padding: 10px 22px 12px; }
+:root[data-density="compact"] .side-head { padding: 10px 12px 6px; }
+:root[data-density="compact"] .thread { padding: 6px 10px 7px 26px; }
+:root[data-density="compact"] .cover-body { padding: 24px 48px 24px 84px; gap: 20px; }
+:root[data-density="compact"] .sheet-body { padding: 16px 56px 16px 56px; gap: 14px; }
+
+/* ─────────────  Motion: off  ───────────── */
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+}
+:root[data-motion="off"] .dot-pulse,
+:root[data-motion="off"] .spinner { animation: none !important; }
 
 .chat-stream {
   flex: 1; min-height: 0;

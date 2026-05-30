@@ -15,8 +15,7 @@ import type {
 import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
 import type { Storage } from "@coding-agent/storage";
 import { detectProject } from "@coding-agent/project-indexer";
-import { listFilesTool, parseTestFailure, readFileTool, runCommandTool } from "@coding-agent/tools";
-import { extractFilePaths, isExplainTask } from "./intent.js";
+import { listFilesTool, parseTestFailure, runCommandTool } from "@coding-agent/tools";
 import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
@@ -25,8 +24,6 @@ import { SYSTEM_PROMPT } from "./prompts.js";
 import { SUMMARIZE_PROMPT } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
 import { analyzeRegressions, regressionNote } from "./regression.js";
-
-const EXPLAIN_PROMPT = `你是一个本地 Coding Agent。请阅读给定文件内容，用结构化的中文解释其执行流程、关键函数和数据流。不要修改任何文件，不要输出 diff。`;
 
 const MAX_INITIAL_FILES = 200;
 const MAX_STEP_CONTENT = 4000;
@@ -68,6 +65,29 @@ export class AgentService {
 
   listRuns(workspaceId: string): AgentRun[] {
     return this.storage.listRuns(workspaceId);
+  }
+
+  /**
+   * Wipe every run for a workspace (steps + snapshots cascade in storage).
+   * Active runs are aborted first so background loops don't keep writing into
+   * deleted rows; per-run in-memory state (controllers/approvals/baselines/
+   * pending) is also purged.
+   */
+  clearRuns(workspaceId: string): { deleted: number } {
+    const runs = this.storage.listRuns(workspaceId);
+    for (const run of runs) {
+      this.controllers.get(run.id)?.abort();
+      const approval = this.approvals.get(run.id);
+      if (approval) {
+        this.approvals.delete(run.id);
+        approval.resolve(false);
+      }
+      this.controllers.delete(run.id);
+      this.pending.delete(run.id);
+      this.baselines.delete(run.id);
+    }
+    const { deleted } = this.storage.deleteRunsForWorkspace(workspaceId);
+    return { deleted };
   }
 
   getDetail(runId: string): AgentRunDetail {
@@ -131,9 +151,9 @@ export class AgentService {
   }
 
   /**
-   * Start a run. Provider resolution and the explain short-circuit happen
-   * synchronously; the tool-use loop runs in the background and drives the UI
-   * via events, so this returns the initial detail immediately.
+   * Start a run. Provider resolution happens synchronously; the tool-use loop
+   * runs in the background and drives the UI via events, so this returns the
+   * initial detail immediately.
    */
   async runTask(workspaceId: string, task: string): Promise<AgentRunDetail> {
     const ws = this.storage.getWorkspace(workspaceId);
@@ -154,16 +174,6 @@ export class AgentService {
 
     this.storage.setRunModel(run.id, llm.model);
     this.addStep(run.id, "message", `Task: ${task}`);
-
-    if (isExplainTask(task)) {
-      this.setStatus(run.id, "reading");
-      void this.driveExplain(run.id, ws.rootPath, task, llm, controller).catch((err) => {
-        this.addStep(run.id, "error", asMessage(err));
-        this.setStatus(run.id, "failed");
-        this.controllers.delete(run.id);
-      });
-      return this.getDetail(run.id);
-    }
 
     this.setStatus(run.id, "tool_use");
     void this.driveLoop(run.id, ws.rootPath, task, llm, controller).catch((err) => {
@@ -436,58 +446,6 @@ export class AgentService {
     ].join("\n");
   }
 
-  // --- internal: explain short-circuit (read-only, non-streaming) ---
-
-  private async driveExplain(
-    runId: string,
-    workspaceRoot: string,
-    task: string,
-    llm: ChatLLMProvider,
-    controller: AbortController,
-  ): Promise<void> {
-    try {
-      const candidates = dedupe(extractFilePaths(task)).slice(0, 4);
-      const blocks = await this.readRelevant(runId, candidates, {
-        workspaceRoot,
-        runId,
-        signal: controller.signal,
-      });
-      const out = await llm.complete({
-        messages: [
-          { role: "system", content: EXPLAIN_PROMPT },
-          { role: "user", content: `任务：${task}\n\n文件内容：\n${blocks.join("\n\n") || "(未找到文件)"}` },
-        ],
-        temperature: 0.2,
-        signal: controller.signal,
-      });
-      const explanation = out.text.trim() || `已读取 ${candidates.length} 个文件。${candidates.join(", ")}`;
-      this.addStep(runId, "message", explanation);
-      this.storage.setRunExitReason(runId, "done");
-      this.setStatus(runId, "done");
-    } finally {
-      this.controllers.delete(runId);
-    }
-  }
-
-  private async readRelevant(
-    runId: string,
-    candidates: string[],
-    ctx: ToolContext,
-  ): Promise<string[]> {
-    const blocks: string[] = [];
-    for (const path of candidates) {
-      this.addStep(runId, "tool_call", `read_file ${path}`);
-      try {
-        const { content } = await readFileTool.run({ path }, ctx);
-        this.addStep(runId, "tool_result", `Read ${path} (${content.length} chars)`);
-        blocks.push(`文件: ${path}\n\`\`\`\n${content}\n\`\`\``);
-      } catch (err) {
-        this.addStep(runId, "error", `read_file ${path} failed: ${asMessage(err)}`);
-      }
-    }
-    return blocks;
-  }
-
   private budgetLimits(): BudgetLimits {
     return clampBudgetLimits(DEFAULT_BUDGET_LIMITS);
   }
@@ -501,10 +459,6 @@ export class AgentService {
     const run = this.storage.updateRunStatus(runId, status);
     this.emit({ kind: "run_updated", run });
   }
-}
-
-function dedupe(items: string[]): string[] {
-  return [...new Set(items.filter((s) => s.length > 0))];
 }
 
 function asMessage(err: unknown): string {

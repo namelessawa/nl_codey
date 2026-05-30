@@ -14,6 +14,26 @@ import type { TaskNode, TaskNodePatch } from "./task.js";
 import type { RoleMessage } from "./roles.js";
 import type { GitWorkingTreeStatus, PRDescription } from "./git.js";
 import type { SandboxMode } from "./sandbox.js";
+import type {
+  FeedbackSignal,
+  FeedbackSignalInput,
+  FinetuneJob,
+  FinetuneJobInput,
+  FrozenSuiteSnapshot,
+  GlobalPattern,
+  GlobalPatternInput,
+  ModelRegistryEntry,
+  Phase4Settings,
+  PluginInstallation,
+  PluginManifest,
+  PluginPermission,
+  PreferenceDataset,
+  Proposal,
+  StyleScope,
+  StyleSpec,
+  WorkerNode,
+  WorkspaceContributionMode,
+} from "./phase4.js";
 
 /** Consistent response envelope for every IPC call. */
 export type IpcResult<T> =
@@ -34,6 +54,7 @@ export const IPC = {
   stopAgentRun: "agent:stopAgentRun",
   getAgentRun: "agent:getAgentRun",
   listAgentRuns: "agent:listAgentRuns",
+  clearAgentRuns: "agent:clearAgentRuns",
   getSettings: "settings:get",
   updateSettings: "settings:update",
   resetSettings: "settings:reset",
@@ -63,6 +84,49 @@ export const IPC = {
   // --- Phase 3: sandbox ---
   getSandboxMode: "sandbox:getMode",
   setSandboxMode: "sandbox:setMode",
+  // --- Phase 4: global memory + KG ---
+  listGlobalPatterns: "phase4:listGlobalPatterns",
+  contributeGlobalPattern: "phase4:contributeGlobalPattern",
+  retractWorkspaceContribution: "phase4:retractWorkspaceContribution",
+  deleteGlobalPattern: "phase4:deleteGlobalPattern",
+  getWorkspaceContribution: "phase4:getWorkspaceContribution",
+  setWorkspaceContribution: "phase4:setWorkspaceContribution",
+  // --- Phase 4: style profile ---
+  getStyleSpec: "phase4:getStyleSpec",
+  upsertStyleSpec: "phase4:upsertStyleSpec",
+  extractStyleSpecFromCodebase: "phase4:extractStyleSpec",
+  // --- Phase 4: learning ---
+  listFeedbackSignals: "phase4:listFeedbackSignals",
+  recordFeedbackSignal: "phase4:recordFeedbackSignal",
+  buildPreferenceDataset: "phase4:buildPreferenceDataset",
+  listPreferenceDatasets: "phase4:listPreferenceDatasets",
+  // --- Phase 4: finetune ---
+  listFinetuneJobs: "phase4:listFinetuneJobs",
+  createFinetuneJob: "phase4:createFinetuneJob",
+  listModels: "phase4:listModels",
+  getActiveModel: "phase4:getActiveModel",
+  promoteModel: "phase4:promoteModel",
+  rollbackToBaseModel: "phase4:rollbackToBase",
+  // --- Phase 4: proposals ---
+  listProposals: "phase4:listProposals",
+  snoozeProposal: "phase4:snoozeProposal",
+  dismissProposal: "phase4:dismissProposal",
+  convertProposal: "phase4:convertProposal",
+  scanDebtNow: "phase4:scanDebt",
+  // --- Phase 4: distributed ---
+  listWorkerNodes: "phase4:listWorkerNodes",
+  registerWorkerNode: "phase4:registerWorkerNode",
+  // --- Phase 4: plugins ---
+  listPlugins: "phase4:listPlugins",
+  installPlugin: "phase4:installPlugin",
+  setPluginEnabled: "phase4:setPluginEnabled",
+  uninstallPlugin: "phase4:uninstallPlugin",
+  // --- Phase 4: evals + frozen suite ---
+  listFrozenSnapshots: "phase4:listFrozenSnapshots",
+  listEvalRuns: "phase4:listEvalRuns",
+  // --- Phase 4: settings ---
+  getPhase4Settings: "phase4:getSettings",
+  updatePhase4Settings: "phase4:updateSettings",
 } as const;
 
 /** Push channel: main -> renderer live updates while a run progresses. */
@@ -121,6 +185,7 @@ export interface AgentApi {
   stopAgentRun(args: RunIdArgs): Promise<IpcResult<AgentRunDetail>>;
   getAgentRun(args: RunIdArgs): Promise<IpcResult<AgentRunDetail>>;
   listAgentRuns(workspaceId: string): Promise<IpcResult<AgentRun[]>>;
+  clearAgentRuns(args: WorkspaceIdArgs): Promise<IpcResult<{ deleted: number }>>;
   getSettings(): Promise<IpcResult<SettingsPayload>>;
   updateSettings(settings: AppSettings): Promise<IpcResult<SettingsPayload>>;
   resetSettings(): Promise<IpcResult<SettingsPayload>>;
@@ -150,6 +215,49 @@ export interface AgentApi {
   // --- Phase 3: sandbox ---
   getSandboxMode(args: WorkspaceIdArgs): Promise<IpcResult<SandboxMode>>;
   setSandboxMode(args: SetSandboxModeArgs): Promise<IpcResult<SandboxMode>>;
+  // --- Phase 4: global memory + KG ---
+  listGlobalPatterns(): Promise<IpcResult<GlobalPattern[]>>;
+  contributeGlobalPattern(args: { input: GlobalPatternInput }): Promise<IpcResult<GlobalPattern>>;
+  retractWorkspaceContribution(args: WorkspaceIdArgs): Promise<IpcResult<{ updated: number; deleted: number }>>;
+  deleteGlobalPattern(args: { id: string }): Promise<IpcResult<{ deleted: boolean }>>;
+  getWorkspaceContribution(args: WorkspaceIdArgs): Promise<IpcResult<WorkspaceContributionMode>>;
+  setWorkspaceContribution(args: { workspaceId: string; mode: WorkspaceContributionMode }): Promise<IpcResult<WorkspaceContributionMode>>;
+  // --- Phase 4: style profile ---
+  getStyleSpec(args: { scope: StyleScope; workspaceId: string | null }): Promise<IpcResult<StyleSpec | null>>;
+  upsertStyleSpec(args: { spec: StyleSpec }): Promise<IpcResult<StyleSpec>>;
+  extractStyleSpecFromCodebase(args: WorkspaceIdArgs): Promise<IpcResult<StyleSpec>>;
+  // --- Phase 4: learning ---
+  listFeedbackSignals(args: WorkspaceIdArgs): Promise<IpcResult<FeedbackSignal[]>>;
+  recordFeedbackSignal(args: { signal: FeedbackSignalInput }): Promise<IpcResult<FeedbackSignal>>;
+  buildPreferenceDataset(args: { workspaceId: string; name?: string }): Promise<IpcResult<{ datasetId: string; built: number; rejected: number }>>;
+  listPreferenceDatasets(): Promise<IpcResult<PreferenceDataset[]>>;
+  // --- Phase 4: finetune ---
+  listFinetuneJobs(): Promise<IpcResult<FinetuneJob[]>>;
+  createFinetuneJob(args: { input: FinetuneJobInput }): Promise<IpcResult<FinetuneJob>>;
+  listModels(): Promise<IpcResult<ModelRegistryEntry[]>>;
+  getActiveModel(): Promise<IpcResult<ModelRegistryEntry | null>>;
+  promoteModel(args: { modelId: string }): Promise<IpcResult<ModelRegistryEntry | null>>;
+  rollbackToBaseModel(): Promise<IpcResult<ModelRegistryEntry | null>>;
+  // --- Phase 4: proposals ---
+  listProposals(args: WorkspaceIdArgs): Promise<IpcResult<Proposal[]>>;
+  snoozeProposal(args: { id: string; untilTs: number }): Promise<IpcResult<Proposal | null>>;
+  dismissProposal(args: { id: string }): Promise<IpcResult<Proposal | null>>;
+  convertProposal(args: { id: string }): Promise<IpcResult<Proposal | null>>;
+  scanDebtNow(args: WorkspaceIdArgs): Promise<IpcResult<{ created: Proposal[] }>>;
+  // --- Phase 4: distributed ---
+  listWorkerNodes(): Promise<IpcResult<WorkerNode[]>>;
+  registerWorkerNode(args: { node: Omit<WorkerNode, "registeredAt"> }): Promise<IpcResult<WorkerNode>>;
+  // --- Phase 4: plugins ---
+  listPlugins(): Promise<IpcResult<PluginInstallation[]>>;
+  installPlugin(args: { manifest: PluginManifest; installPath: string; approvedPermissions: PluginPermission[] }): Promise<IpcResult<PluginInstallation>>;
+  setPluginEnabled(args: { id: string; enabled: boolean }): Promise<IpcResult<PluginInstallation | null>>;
+  uninstallPlugin(args: { id: string }): Promise<IpcResult<{ uninstalled: boolean }>>;
+  // --- Phase 4: evals ---
+  listFrozenSnapshots(args?: { modelId?: string }): Promise<IpcResult<FrozenSuiteSnapshot[]>>;
+  listEvalRuns(args?: { taskId?: string; modelId?: string }): Promise<IpcResult<import("./phase4.js").EvalRunResult[]>>;
+  // --- Phase 4: settings ---
+  getPhase4Settings(): Promise<IpcResult<Phase4Settings>>;
+  updatePhase4Settings(args: { settings: Phase4Settings }): Promise<IpcResult<Phase4Settings>>;
   onAgentEvent(handler: (event: AgentEvent) => void): () => void;
 }
 
