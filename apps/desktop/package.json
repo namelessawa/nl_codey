@@ -4,12 +4,16 @@
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
+  "author": "coding-agent",
+  "description": "Local Windows GUI Coding Agent",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "package": "electron-builder --win",
+    "package:dir": "electron-builder --win --dir"
   },
   "dependencies": {
     "@coding-agent/agent-core": "workspace:*",
@@ -47,5 +51,48 @@
     "electron-vite": "^2.3.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.codingagent.desktop",
+    "productName": "Coding Agent",
+    "copyright": "Copyright (c) 2026 coding-agent",
+    "directories": {
+      "output": "../../release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,*.test.*,*.spec.*}",
+      "!**/node_modules/*/{.bin,.cache}"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/bindings/**",
+      "**/node_modules/file-uri-to-path/**",
+      "**/node_modules/@vscode/ripgrep/**",
+      "**/node_modules/@vscode/ripgrep-win32-*/**",
+      "**/node_modules/@vscode/ripgrep-darwin-*/**",
+      "**/node_modules/@vscode/ripgrep-linux-*/**"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Coding Agent",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

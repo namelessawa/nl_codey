@@ -1,0 +1,99 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Attach artifacts to a GitHub Release (only meaningful on a tag)'
+        required: false
+        default: 'false'
+
+# A tagged push creates a Release; manual runs just upload an artifact.
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Use hoisted node-linker for build
+        shell: pwsh
+        run: Copy-Item .npmrc.ci .npmrc -Force
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Approve native build scripts
+        # electron-builder pulls electron-winstaller which needs its build script
+        # to run; pnpm 10 blocks unknown scripts by default in CI.
+        run: pnpm approve-builds || echo "no interactive prompt in CI - skipping"
+        shell: bash
+        continue-on-error: true
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        # Skip storage.test.ts: postinstall already built better-sqlite3 for
+        # Electron ABI, so opening a real DB under Node fails with
+        # NODE_MODULE_VERSION mismatch (see CLAUDE.md). The packaged app runs
+        # under Electron so the binding works there.
+        run: pnpm exec vitest run --exclude '**/storage.test.ts'
+
+      - name: Build renderer + main + preload
+        run: pnpm build
+
+      - name: Rebuild native modules against Electron
+        run: pnpm rebuild:native
+
+      - name: Package Windows installer
+        run: pnpm --filter @coding-agent/desktop exec electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List artifacts
+        shell: pwsh
+        run: Get-ChildItem release -Recurse | Select-Object FullName, Length
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coding-agent-windows-x64
+          path: |
+            release/*.exe
+            release/*.zip
+            release/latest.yml
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/*.zip
+            release/latest.yml
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,6 @@
+# CI-only pnpm config: switch to a flat node_modules layout so electron-builder
+# can resolve all transitive deps without chasing pnpm's symlink graph.
+# This file is copied over .npmrc inside the CI workflow before `pnpm install`.
+# Local development keeps the default isolated layout.
+node-linker=hoisted
+shamefully-hoist=true
