@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Release pipeline — Windows installer via GitHub Actions.** New `.github/workflows/release.yml`
+  builds an NSIS installer on `windows-latest` runner. Triggered by `v*` tags (auto-creates
+  GitHub Release with attached `.exe` + `.zip`) or `workflow_dispatch` (artifact only).
+  `apps/desktop/package.json` gains an `electron-builder` config block: `nsis` target with
+  `oneClick: false` + `allowToChangeInstallationDirectory: true` (user-picked install dir,
+  per-user install, no admin), plus a `zip` portable target. `asarUnpack` rules cover
+  `better-sqlite3` (`.node` binding) and all `@vscode/ripgrep-*` platform binaries, so the
+  packaged app can `spawn(rg)` and open the SQLite DB. `packages/tools/src/search-text.ts`
+  now rewrites the `app.asar` path returned by `@vscode/ripgrep` to `app.asar.unpacked`
+  before spawning. CI uses a separate `.npmrc.ci` to force `node-linker=hoisted` so
+  electron-builder can resolve transitive deps without chasing pnpm symlinks; local dev keeps
+  the default isolated layout. Local verification: `pnpm typecheck` + 456 tests pass,
+  `pnpm build` clean. Tag a release with `git tag v0.1.0 && git push --tags` to publish.
 - **Phase 4 — cross-project self-evolution + team scale.** Seven new workspace packages plus
   agent-core / IPC / GUI wiring that bring the coding agent from "single-project entrustment"
   to "provably improving across projects":

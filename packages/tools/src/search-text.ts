@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { rgPath } from "@vscode/ripgrep";
 import { IGNORED_DIRS } from "@coding-agent/project-indexer";
 import {
@@ -22,7 +23,15 @@ type RgJsonEvent = {
 
 /** Resolve the ripgrep binary: bundled @vscode/ripgrep, else a clear error. */
 function resolveRgPath(): string {
-  if (rgPath && fs.existsSync(rgPath)) return rgPath;
+  if (rgPath) {
+    // In a packaged Electron app the @vscode/ripgrep package lives inside
+    // app.asar, but the binary is extracted to app.asar.unpacked via the
+    // asarUnpack rule. The path the library returns still points at the asar
+    // copy, so spawn() would fail. Prefer the unpacked path when it exists.
+    const unpacked = rgPath.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+    if (fs.existsSync(unpacked)) return unpacked;
+    if (fs.existsSync(rgPath)) return rgPath;
+  }
   throw new ToolError(
     TOOL_CODES.ripgrepMissing,
     "ripgrep binary not found (expected bundled @vscode/ripgrep). Reinstall dependencies.",
