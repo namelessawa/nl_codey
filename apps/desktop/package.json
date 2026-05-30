@@ -56,6 +56,8 @@
     "appId": "com.codingagent.desktop",
     "productName": "Coding Agent",
     "copyright": "Copyright (c) 2026 coding-agent",
+    "electronVersion": "33.2.1",
+    "npmRebuild": false,
     "directories": {
       "output": "../../release",
       "buildResources": "build"
