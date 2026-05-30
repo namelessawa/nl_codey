@@ -46,10 +46,10 @@ export function EmptyView({
                 </div>
                 <div className="cover-drop-text">
                   <div className="cover-drop-title">
-                    {busy ? "Opening…" : "Choose a folder"}
+                    {busy ? "Opening…" : "Drop a folder here"}
                   </div>
                   <div className="cover-drop-sub">
-                    any local project · nothing leaves your machine
+                    or click to browse · any local project · nothing leaves your machine
                   </div>
                 </div>
                 <div className="cover-drop-kbd">
@@ -91,7 +91,7 @@ export function EmptyView({
             )}
 
             <footer className="cover-foot">
-              <span>nothing is written until you approve it</span>
+              <span>nothing is written until you sign for it</span>
               <span className="cover-foot-mark">✦</span>
               <span>every change snapshots · every run reverses</span>
             </footer>

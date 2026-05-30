@@ -1,3 +1,5 @@
+import type { ForwardedRef } from "react";
+import { forwardRef } from "react";
 import type { AgentRun, Workspace } from "@coding-agent/shared";
 import { Icon } from "./Icons.js";
 
@@ -5,24 +7,36 @@ interface TopbarProps {
   workspace: Workspace | null;
   activeRun: AgentRun | null;
   llmConnected: boolean;
+  currentModel: string;
   onSwitchWorkspace: () => void;
+  onOpenModelSwitcher: () => void;
   onOpenSettings: () => void;
 }
 
-export function Topbar({
-  workspace,
-  activeRun,
-  llmConnected,
-  onSwitchWorkspace,
-  onOpenSettings,
-}: TopbarProps): JSX.Element {
+/**
+ * Top bar. The model chip (sparkle + current model name + chevron) anchors the
+ * ModelSwitcher popover — we forward the ref so the parent can capture the
+ * button's bounding rect for positioning.
+ */
+export const Topbar = forwardRef(function Topbar(
+  {
+    workspace,
+    activeRun,
+    llmConnected,
+    currentModel,
+    onSwitchWorkspace,
+    onOpenModelSwitcher,
+    onOpenSettings,
+  }: TopbarProps,
+  modelChipRef: ForwardedRef<HTMLButtonElement>,
+): JSX.Element {
   const wsName = workspace ? workspaceName(workspace.rootPath) : null;
   return (
     <header className="topbar">
       <div className="brand">
         <div className="brand-mark">c</div>
         <span>codey</span>
-        <span className="brand-version">· coding agent</span>
+        <span className="brand-version">· v0.2 · phase 1</span>
       </div>
 
       <button
@@ -55,6 +69,23 @@ export function Topbar({
         </span>
       )}
 
+      <button
+        ref={modelChipRef}
+        className="model-chip"
+        title="Switch model"
+        type="button"
+        onClick={onOpenModelSwitcher}
+      >
+        <Icon name="sparkle" size={12} />
+        <span className="mc-name">{currentModel || "no model"}</span>
+        <Icon
+          name="chev-right"
+          size={10}
+          stroke={2}
+          style={{ transform: "rotate(90deg)", opacity: 0.6 }}
+        />
+      </button>
+
       <span className="pill-status">
         <span
           style={{
@@ -75,11 +106,11 @@ export function Topbar({
         onClick={onOpenSettings}
         type="button"
       >
-        <Icon name="gear" size={15} />
+        <Icon name="gear" size={16} stroke={2} />
       </button>
     </header>
   );
-}
+});
 
 function workspaceName(rootPath: string): string {
   const normalized = rootPath.replace(/\\/g, "/").replace(/\/+$/, "");

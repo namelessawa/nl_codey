@@ -165,6 +165,21 @@ export function ApprovalSheet({
           </div>
           <button className="btn ghost" type="button" onClick={onReject}>Reject</button>
           <button
+            className="btn ghost"
+            type="button"
+            onClick={() => {
+              onClose();
+              setTimeout(() => {
+                const ta = document.querySelector(
+                  ".composer textarea",
+                ) as HTMLTextAreaElement | null;
+                if (ta) ta.focus();
+              }, 60);
+            }}
+          >
+            Ask for changes…
+          </button>
+          <button
             className="btn primary"
             type="button"
             disabled={!canApply}
