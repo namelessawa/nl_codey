@@ -11,6 +11,7 @@ import type {
   GitAction,
   GitActionKind,
   IndexedChunk,
+  LLMMessage,
   MemoryEntry,
   MemoryEntryInput,
   MemoryEntryPatch,
@@ -253,10 +254,12 @@ export class Storage {
     if (runIds.length === 0) return { deleted: 0, runIds: [] };
     const tx = this.db.transaction((ids: string[]) => {
       const stepStmt = this.db.prepare("DELETE FROM agent_steps WHERE run_id = ?");
+      const msgStmt = this.db.prepare("DELETE FROM agent_run_messages WHERE run_id = ?");
       const snapStmt = this.db.prepare("DELETE FROM file_snapshots WHERE run_id = ?");
       const runStmt = this.db.prepare("DELETE FROM agent_runs WHERE id = ?");
       for (const id of ids) {
         stepStmt.run(id);
+        msgStmt.run(id);
         snapStmt.run(id);
         runStmt.run(id);
       }
@@ -292,6 +295,37 @@ export class Storage {
       content: r.content,
       createdAt: r.created_at,
     }));
+  }
+
+  // --- run conversation (multi-turn) ---
+
+  /**
+   * Replace the persisted LLM conversation for a run with `messages`. Stored as
+   * one JSON-encoded row per LLMMessage, ordered by seq. Called at the end of
+   * each driveLoop turn so continueTask() can resume with the full history
+   * (including tool_call / tool result pairs that the user-facing step log
+   * doesn't capture verbatim).
+   */
+  saveRunMessages(runId: string, messages: readonly LLMMessage[]): void {
+    const tx = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM agent_run_messages WHERE run_id = ?").run(runId);
+      const ins = this.db.prepare(
+        "INSERT INTO agent_run_messages (id, run_id, seq, message_json, created_at) VALUES (?, ?, ?, ?, ?)",
+      );
+      const now = Date.now();
+      messages.forEach((msg, i) => {
+        ins.run(randomUUID(), runId, i, JSON.stringify(msg), now);
+      });
+    });
+    tx();
+  }
+
+  /** Load the persisted conversation in seq order. Empty if never saved. */
+  loadRunMessages(runId: string): LLMMessage[] {
+    const rows = this.db
+      .prepare("SELECT message_json FROM agent_run_messages WHERE run_id = ? ORDER BY seq ASC")
+      .all(runId) as { message_json: string }[];
+    return rows.map((r) => JSON.parse(r.message_json) as LLMMessage);
   }
 
   // --- snapshots ---

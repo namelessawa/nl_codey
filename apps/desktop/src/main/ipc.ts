@@ -4,6 +4,7 @@ import {
   IPC,
   validateSettings,
   type AppSettings,
+  type ContinueAgentTaskArgs,
   type ReadFileArgs,
   type RunAgentTaskArgs,
   type RunCommandArgs,
@@ -70,6 +71,11 @@ export function registerIpc(services: Services): void {
   handle(IPC.runAgentTask, async (args) => {
     const { workspaceId, task } = args as RunAgentTaskArgs;
     return agent.runTask(workspaceId, task);
+  });
+
+  handle(IPC.continueAgentTask, async (args) => {
+    const { runId, followUp } = args as ContinueAgentTaskArgs;
+    return agent.continueTask(runId, followUp);
   });
 
   handle(IPC.applyAgentPatch, async (args) => agent.applyPatch((args as RunIdArgs).runId));

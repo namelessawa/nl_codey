@@ -95,7 +95,7 @@ describe("acceptance: user rejects the patch", () => {
     });
 
     expect(executed).toEqual([]); // patch was never applied
-    expect(outcome).toEqual({ state: "cancelled" });
+    expect(outcome).toMatchObject({ state: "cancelled" });
   });
 });
 

@@ -22,6 +22,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
   electron-builder must track and ship them.
 
 ### Added
+- **Multi-turn runs — continue a finished run with follow-up tasks.** Each
+  `AgentRun` no longer closes after one task; submitting from the chat
+  composer on a finished run calls the new `continueAgentTask` IPC and
+  appends to the same `runId`. The model receives the full prior
+  conversation (assistant turns, tool calls, tool results, applied patches)
+  so follow-ups like "now also rename the helper" or "the test still fails,
+  fix the regex" have full context. New SQLite table
+  `agent_run_messages` (one JSON row per `LLMMessage`, ordered by `seq`)
+  persists the conversation at the end of each loop turn; `runToolLoop`
+  now returns `finalMessages` in its outcome for that purpose. The
+  regression-guard baseline is re-captured at the start of each follow-up
+  turn so regressions are measured against the (already-edited) workspace,
+  not the original pristine state. `AgentService.continueTask(runId,
+  followUp)` rejects in-flight runs and runs predating multi-turn (no
+  persisted conversation). Composer placeholder already said "Describe a
+  follow-up task…" on finished runs — behaviour now matches.
 - **Release pipeline — Windows installer via GitHub Actions.** New `.github/workflows/release.yml`
   builds an NSIS installer on `windows-latest` runner. Triggered by `v*` tags (auto-creates
   GitHub Release with attached `.exe` + `.zip`) or `workflow_dispatch` (artifact only).

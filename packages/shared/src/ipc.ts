@@ -47,6 +47,7 @@ export const IPC = {
   listWorkspaceFiles: "agent:listWorkspaceFiles",
   readFile: "agent:readFile",
   runAgentTask: "agent:runAgentTask",
+  continueAgentTask: "agent:continueAgentTask",
   applyAgentPatch: "agent:applyAgentPatch",
   rejectAgentPatch: "agent:rejectAgentPatch",
   rollbackRun: "agent:rollbackRun",
@@ -146,6 +147,7 @@ export type AgentEvent =
   | { kind: "index_status"; workspaceId: string; status: SemanticIndexStatus };
 
 export type RunAgentTaskArgs = { workspaceId: string; task: string };
+export type ContinueAgentTaskArgs = { runId: string; followUp: string };
 export type RunIdArgs = { runId: string };
 export type WorkspaceIdArgs = { workspaceId: string };
 export type RunCommandArgs = { workspaceId: string; command: string };
@@ -178,6 +180,8 @@ export interface AgentApi {
   listWorkspaceFiles(workspaceId: string): Promise<IpcResult<string[]>>;
   readFile(args: ReadFileArgs): Promise<IpcResult<ReadFileOutput>>;
   runAgentTask(args: RunAgentTaskArgs): Promise<IpcResult<AgentRunDetail>>;
+  /** Continue a finished run with a follow-up task; same runId, shared context. */
+  continueAgentTask(args: ContinueAgentTaskArgs): Promise<IpcResult<AgentRunDetail>>;
   applyAgentPatch(args: RunIdArgs): Promise<IpcResult<AgentRunDetail>>;
   rejectAgentPatch(args: RunIdArgs): Promise<IpcResult<AgentRunDetail>>;
   rollbackRun(args: RunIdArgs): Promise<IpcResult<AgentRunDetail>>;

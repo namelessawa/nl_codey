@@ -66,7 +66,7 @@ describe("runToolLoop", () => {
     );
 
     expect(executed).toEqual(["list_files"]); // apply_patch never executed
-    expect(outcome).toEqual({ state: "cancelled" });
+    expect(outcome).toMatchObject({ state: "cancelled" });
   });
 
   it("trips the budget circuit breaker", async () => {
@@ -74,14 +74,14 @@ describe("runToolLoop", () => {
       START,
       deps({ budget: new BudgetController({ ...LIMITS, maxIterations: 1 }) }),
     );
-    expect(outcome).toEqual({ state: "budget_exceeded", reason: "max_iterations" });
+    expect(outcome).toMatchObject({ state: "budget_exceeded", reason: "max_iterations" });
   });
 
   it("cancels immediately when the signal is already aborted", async () => {
     const ac = new AbortController();
     ac.abort();
     const outcome = await runToolLoop(START, deps({ signal: ac.signal }));
-    expect(outcome).toEqual({ state: "cancelled" });
+    expect(outcome).toMatchObject({ state: "cancelled" });
   });
 
   it("forwards streamed chunks and records assistant turns", async () => {

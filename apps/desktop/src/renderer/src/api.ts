@@ -62,6 +62,8 @@ export const api = {
     unwrap(window.agentApi.readFile({ workspaceId, path })),
   runAgentTask: (workspaceId: string, task: string): Promise<AgentRunDetail> =>
     unwrap(window.agentApi.runAgentTask({ workspaceId, task })),
+  continueAgentTask: (runId: string, followUp: string): Promise<AgentRunDetail> =>
+    unwrap(window.agentApi.continueAgentTask({ runId, followUp })),
   applyAgentPatch: (runId: string): Promise<AgentRunDetail> =>
     unwrap(window.agentApi.applyAgentPatch({ runId })),
   rejectAgentPatch: (runId: string): Promise<AgentRunDetail> =>
