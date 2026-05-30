@@ -6,6 +6,10 @@
   "main": "./out/main/index.js",
   "author": "coding-agent",
   "description": "Local Windows GUI Coding Agent",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/namelessawa/nl_codey.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -58,6 +62,7 @@
     "copyright": "Copyright (c) 2026 coding-agent",
     "electronVersion": "33.2.1",
     "npmRebuild": false,
+    "publish": null,
     "directories": {
       "output": "../../release",
       "buildResources": "build"
