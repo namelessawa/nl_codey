@@ -2,7 +2,7 @@
   "name": "coding-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Local Windows GUI Coding Agent (Phase 1 MVP)",
+  "description": "NL_Codey — local Windows GUI coding agent",
   "scripts": {
     "dev": "pnpm --filter @coding-agent/desktop dev",
     "build": "pnpm -r --filter ./packages/* build && pnpm --filter @coding-agent/desktop build",

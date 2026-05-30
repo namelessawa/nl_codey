@@ -6,7 +6,7 @@ const COMPRESS_TRIGGER_RATIO = 0.6;
 /** Number of most-recent messages preserved verbatim. */
 const KEEP_RECENT = 10;
 
-export const SUMMARIZE_PROMPT = `你是一个对话上下文压缩器。请将下面的 Coding Agent 历史对话压缩成简洁摘要。
+export const SUMMARIZE_PROMPT = `你是一个对话上下文压缩器。请将下面的 NL_Codey 历史对话压缩成简洁摘要。
 必须保留：
 - 用户最初的任务目标。
 - 已经探索过的文件路径和关键发现。

@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
-  "author": "coding-agent",
-  "description": "Local Windows GUI Coding Agent",
+  "author": "nameless",
+  "description": "NL_Codey — local Windows GUI coding agent",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/namelessawa/nl_codey.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -39,8 +43,13 @@
     "better-sqlite3": "^11.7.0",
     "diff": "^7.0.0",
     "@vscode/ripgrep": "^1.15.9",
+    "bindings": "^1.5.0",
+    "file-uri-to-path": "^1.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
+  },
+  "optionalDependencies": {
+    "@vscode/ripgrep-win32-x64": "1.18.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
@@ -53,9 +62,12 @@
     "vite": "^5.4.11"
   },
   "build": {
-    "appId": "com.codingagent.desktop",
-    "productName": "Coding Agent",
-    "copyright": "Copyright (c) 2026 coding-agent",
+    "appId": "com.nl-codey.desktop",
+    "productName": "NL_Codey",
+    "copyright": "Copyright (c) 2026 nameless",
+    "electronVersion": "33.2.1",
+    "npmRebuild": false,
+    "publish": null,
     "directories": {
       "output": "../../release",
       "buildResources": "build"
@@ -91,7 +103,7 @@
       "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Coding Agent",
+      "shortcutName": "NL_Codey",
       "deleteAppDataOnUninstall": false
     }
   }
