@@ -19,6 +19,12 @@ import { addRule, makeRule, replaceRule } from "./style-spec.js";
 export const PROMOTE_THRESHOLD = 3;
 export const STRENGTHEN_THRESHOLD = 6;
 
+// Cap diff text length before any regex test. Diffs are LLM/user-controlled
+// input and would otherwise let an attacker amplify polynomial-time regex
+// matches (ReDoS). 4 KB is well above what we need for heuristic
+// classification of a code edit.
+const MAX_SIGNAL_LEN = 4000;
+
 export type SignalSummary = {
   category: StyleCategory;
   description: string;
@@ -31,10 +37,17 @@ export function classifySignal(signal: FeedbackSignal): SignalSummary | null {
   if (signal.kind === "diff_accepted") return null;
   if (!signal.before) return null;
 
-  const before = signal.before;
-  const after = signal.after ?? "";
+  const before = signal.before.slice(0, MAX_SIGNAL_LEN);
+  const after = (signal.after ?? "").slice(0, MAX_SIGNAL_LEN);
 
-  if (/try\s*\{[\s\S]*?\}\s*catch/.test(before) && /Result[<\(]/.test(after)) {
+  // Split try/catch detection into two anchored sub-regexes instead of one
+  // `try\s*\{[\s\S]*?\}\s*catch` — the lazy `[\s\S]*?` makes the original
+  // worst-case polynomial on inputs like `try{try{try{...`.
+  if (
+    /try\s*\{/.test(before) &&
+    /\}\s*catch\b/.test(before) &&
+    /Result[<(]/.test(after)
+  ) {
     return {
       category: "error-handling",
       description: "用 Result<T,E> 替代 try/catch 处理可预期失败",
@@ -66,8 +79,10 @@ export function classifySignal(signal: FeedbackSignal): SignalSummary | null {
       signalCount: 1,
     };
   }
-  // Naming: snake_case → camelCase preference detection.
-  if (/[a-z]+_[a-z]+/.test(before) && !/[a-z]+_[a-z]+/.test(after)) {
+  // Naming: snake_case → camelCase preference detection. Original
+  // `[a-z]+_[a-z]+` was polynomial on long `a`-runs without `_`; a single-char
+  // match on either side is sufficient to detect the pattern.
+  if (/[a-z]_[a-z]/.test(before) && !/[a-z]_[a-z]/.test(after)) {
     return {
       category: "naming",
       description: "TypeScript 标识符使用 camelCase,避免 snake_case",

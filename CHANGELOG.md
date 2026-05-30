@@ -131,6 +131,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
   and threw `ERR_UNKNOWN_FILE_EXTENSION` for `packages/semantic-index/src/index.ts`. Added all six
   to the bundle list so every `@coding-agent/*` workspace package (13 total) is bundled. `pnpm build`
   green; `out/main/index.js` now transforms 118 modules.
+- **ReDoS on diff classifier (`packages/style-profile/src/diff-feedback.ts`)** — CodeQL flagged
+  three polynomial-time regular expressions evaluated against unbounded LLM/user-controlled diff
+  text. `/try\s*\{[\s\S]*?\}\s*catch/` (line 37) catastrophically backtracks on inputs like
+  `try{try{try{...` because the lazy `[\s\S]*?` can split at every nested `{`. `/[a-z]+_[a-z]+/`
+  (line 70, used twice — once on `before`, once on `after`) is polynomial on long `a`-runs without
+  `_`. Fixed with two changes: (1) cap `before`/`after` at `MAX_SIGNAL_LEN = 4000` before any regex
+  test so worst-case work is bounded regardless of future heuristics; (2) replace the lazy try/catch
+  matcher with two anchored sub-tests (`/try\s*\{/` + `/\}\s*catch\b/`) and the snake_case matcher
+  with the single-char-on-each-side form `/[a-z]_[a-z]/` (existence-detection is semantically
+  equivalent — no need for the `+` quantifier). All 8 `style-profile` vitest cases still pass;
+  closes the three GitHub Code Scanning alerts on PR #4.
 
 ### Added
 - **Phase 3 — long-term project entrustment (full module build, typecheck-green)**. New packages:
