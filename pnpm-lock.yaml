@@ -123,6 +123,10 @@ importers:
       vite:
         specifier: ^5.4.11
         version: 5.4.21(@types/node@22.19.19)
+    optionalDependencies:
+      '@vscode/ripgrep-win32-x64':
+        specifier: 1.18.0
+        version: 1.18.0
 
   packages/agent-core:
     dependencies:
