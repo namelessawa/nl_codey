@@ -38,6 +38,17 @@ CREATE TABLE IF NOT EXISTS agent_steps (
   created_at INTEGER NOT NULL
 );
 
+-- Multi-turn: full LLM conversation per run (one row per LLMMessage, ordered
+-- by seq). Loaded by continueTask so a follow-up sees prior tool calls and
+-- assistant turns, not just the user-facing step log.
+CREATE TABLE IF NOT EXISTS agent_run_messages (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  message_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS file_snapshots (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
@@ -339,6 +350,7 @@ CREATE TABLE IF NOT EXISTS frozen_suite_snapshots (
 export const INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace ON agent_runs(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_agent_steps_run ON agent_steps(run_id);
+CREATE INDEX IF NOT EXISTS idx_run_messages_run_seq ON agent_run_messages(run_id, seq);
 CREATE INDEX IF NOT EXISTS idx_file_snapshots_run ON file_snapshots(run_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_run_iter ON file_snapshots(run_id, iteration);
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(workspace_id, name);

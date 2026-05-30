@@ -59,11 +59,19 @@ export async function consumeStream(
   return { text, toolCalls, finishReason, usage, ...(errorMessage ? { errorMessage } : {}) };
 }
 
-export type ToolLoopOutcome =
+export type ToolLoopOutcome = {
+  /**
+   * The final conversation state after the loop ends. Includes any compression
+   * that happened mid-loop. Persist this so a follow-up call (continueTask)
+   * can resume from the full history rather than rebuilding from steps.
+   */
+  finalMessages: LLMMessage[];
+} & (
   | { state: "done"; finalText: string }
   | { state: "failed"; reason: string }
   | { state: "cancelled" }
-  | { state: "budget_exceeded"; reason: string };
+  | { state: "budget_exceeded"; reason: string }
+);
 
 export type ToolLoopDeps = {
   llm: ChatLLMProvider;
@@ -121,8 +129,10 @@ export async function runToolLoop(
 
   while (true) {
     const limit = deps.budget.exceeded();
-    if (limit.exceeded) return { state: "budget_exceeded", reason: limit.reason ?? "unknown" };
-    if (deps.signal?.aborted) return { state: "cancelled" };
+    if (limit.exceeded) {
+      return { state: "budget_exceeded", reason: limit.reason ?? "unknown", finalMessages: messages };
+    }
+    if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
 
     deps.budget.incrementIteration();
 
@@ -136,7 +146,7 @@ export async function runToolLoop(
         messages = compressed.messages;
         deps.compression.onCompressed?.(compressed.compressedCount);
       }
-      if (deps.signal?.aborted) return { state: "cancelled" };
+      if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
     }
 
     const turn = await consumeStream(
@@ -154,25 +164,25 @@ export async function runToolLoop(
     deps.onAssistant?.(turn.text, turn.toolCalls, turn.usage);
 
     if (turn.finishReason === "error") {
-      return { state: "failed", reason: turn.errorMessage ?? "LLM stream error" };
+      return { state: "failed", reason: turn.errorMessage ?? "LLM stream error", finalMessages: messages };
     }
-    if (deps.signal?.aborted) return { state: "cancelled" };
+    if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
 
     if (turn.toolCalls.length === 0) {
       // No tools requested: a stop is success; anything else is a dead end.
-      if (turn.finishReason === "stop") return { state: "done", finalText: turn.text };
-      return { state: "failed", reason: `Model stopped without tools (reason: ${turn.finishReason})` };
+      if (turn.finishReason === "stop") return { state: "done", finalText: turn.text, finalMessages: messages };
+      return { state: "failed", reason: `Model stopped without tools (reason: ${turn.finishReason})`, finalMessages: messages };
     }
 
     for (const call of turn.toolCalls) {
-      if (deps.signal?.aborted) return { state: "cancelled" };
+      if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
       deps.budget.recordToolCall();
       deps.onToolCall?.(call);
 
       if (deps.requiresApproval(call)) {
         const approved = await deps.waitForApproval(call);
-        if (!approved) return { state: "cancelled" };
-        if (deps.signal?.aborted) return { state: "cancelled" };
+        if (!approved) return { state: "cancelled", finalMessages: messages };
+        if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
       }
 
       const result = await deps.executeTool(call);
@@ -182,7 +192,7 @@ export async function runToolLoop(
       if (deps.verifyAfterPatch && call.name === "apply_patch") {
         const feedback = await deps.verifyAfterPatch(call, result);
         if (feedback) messages.push({ role: "user", content: feedback });
-        if (deps.signal?.aborted) return { state: "cancelled" };
+        if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
       }
     }
   }
