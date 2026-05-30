@@ -80,7 +80,6 @@ jobs:
           path: |
             release/*.exe
             release/*.zip
-            release/latest.yml
           if-no-files-found: error
           retention-days: 30
 
@@ -91,7 +90,6 @@ jobs:
           files: |
             release/*.exe
             release/*.zip
-            release/latest.yml
           draft: false
           prerelease: false
           generate_release_notes: true

@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Changed
+- **Product renamed to NL_Codey.** `productName`, `appId`, `shortcutName`, window
+  title, README heading, and the system / patch / plan / summarize prompts now
+  use `NL_Codey` instead of `Coding Agent`. The repository name and npm package
+  ids (`@coding-agent/*`) stay unchanged.
+
+### Fixed
+- **Packaged app crashed on launch with `Cannot find module 'bindings'`.**
+  `better-sqlite3` does `require('bindings')` at module load. The `bindings`
+  and its sibling `file-uri-to-path` are transitive deps that pnpm with
+  hoisted linker installs to root `node_modules`, but electron-builder did
+  not bundle them into the asar — the same failure mode previously seen with
+  `@vscode/ripgrep-win32-x64`. Declared `bindings@^1.5.0` and
+  `file-uri-to-path@^1.0.0` as direct deps of `apps/desktop` so
+  electron-builder must track and ship them.
+
 ### Added
 - **Release pipeline — Windows installer via GitHub Actions.** New `.github/workflows/release.yml`
   builds an NSIS installer on `windows-latest` runner. Triggered by `v*` tags (auto-creates

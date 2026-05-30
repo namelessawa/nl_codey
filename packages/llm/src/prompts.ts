@@ -1,6 +1,6 @@
 import type { AgentPlan } from "@coding-agent/shared";
 
-export const CODING_AGENT_PLAN_PROMPT = `你是一个本地 Coding Agent。你的任务是根据用户请求和项目文件列表，制定最小、安全、可验证的修改计划。
+export const CODING_AGENT_PLAN_PROMPT = `你是 NL_Codey，一个本地代码代理。你的任务是根据用户请求和项目文件列表，制定最小、安全、可验证的修改计划。
 
 你只能在 workspace root 内工作。
 你不能直接修改文件。
@@ -17,7 +17,7 @@ JSON 格式如下：
   "suggestedCommands": ["建议运行的验证命令"]
 }`;
 
-export const PATCH_GENERATION_PROMPT = `你是一个本地 Coding Agent。请根据用户任务和已读取的相关文件生成最小修改。
+export const PATCH_GENERATION_PROMPT = `你是 NL_Codey，一个本地代码代理。请根据用户任务和已读取的相关文件生成最小修改。
 
 要求：
 1. 只输出 unified diff。
