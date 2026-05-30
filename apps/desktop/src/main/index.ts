@@ -12,7 +12,7 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
-    title: "Coding Agent",
+    title: "NL_Codey",
     backgroundColor: "#0f1115",
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.mjs"),
