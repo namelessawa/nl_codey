@@ -82,7 +82,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
     phase4-prompt strength ordering + provenance rendering). Full `pnpm typecheck` green
     across all 21 packages + the desktop app. 456/460 vitest pass — the 4 failures are the
     pre-existing better-sqlite3 Node-ABI mismatch in `storage.test.ts` documented in CLAUDE.md.
-
+- **Notebook UI polish (right panel · shortcuts · expanded settings · i18n)** — `RightPanel`
+  slide-out detail surface + `ModelSwitcher` topbar pill + `QuickPrefsPopover` for fast
+  theme/density swaps. `useShortcuts` + Settings → Shortcuts pane wires the named-action
+  keyboard rebinding to the `ShortcutBindings` shape in `packages/shared/src/settings.ts`.
+  Settings panes (`AgentSettings` / `LLMSettings` / `UISettings` / `fields`) fleshed out;
+  `i18n.ts` dictionary extended to cover the new settings and quick-pref surfaces
+  (zh-CN + en-US). Dropped the dead `packages/agent-core/src/intent.ts` — the tool-calling
+  loop has driven intent end-to-end since Phase 2, and keeping the file encouraged
+  accidental re-imports.
 - **Notebook/runbook UI redesign (`ui/notebook-redesign` branch)** — replaces the 3-column dark
   IDE renderer with a chat-centric notebook aesthetic from the
   `claude.ai/design` handoff (`coding-agent/project/Coding Agent.html`). New shell: 48 px topbar
