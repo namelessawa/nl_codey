@@ -23,9 +23,21 @@ importers:
       '@coding-agent/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@coding-agent/distributed':
+        specifier: workspace:*
+        version: link:../../packages/distributed
+      '@coding-agent/finetune':
+        specifier: workspace:*
+        version: link:../../packages/finetune
       '@coding-agent/git-integration':
         specifier: workspace:*
         version: link:../../packages/git-integration
+      '@coding-agent/global-memory':
+        specifier: workspace:*
+        version: link:../../packages/global-memory
+      '@coding-agent/learning':
+        specifier: workspace:*
+        version: link:../../packages/learning
       '@coding-agent/llm':
         specifier: workspace:*
         version: link:../../packages/llm
@@ -38,6 +50,12 @@ importers:
       '@coding-agent/planner':
         specifier: workspace:*
         version: link:../../packages/planner
+      '@coding-agent/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      '@coding-agent/proactive':
+        specifier: workspace:*
+        version: link:../../packages/proactive
       '@coding-agent/project-indexer':
         specifier: workspace:*
         version: link:../../packages/project-indexer
@@ -53,6 +71,9 @@ importers:
       '@coding-agent/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@coding-agent/style-profile':
+        specifier: workspace:*
+        version: link:../../packages/style-profile
       '@coding-agent/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -128,6 +149,32 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
+  packages/distributed:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/finetune:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
   packages/git-integration:
     dependencies:
       '@coding-agent/shared':
@@ -137,6 +184,32 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.19
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/global-memory:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/learning:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -208,6 +281,32 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
+  packages/plugin-sdk:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/proactive:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
   packages/project-indexer:
     dependencies:
       '@coding-agent/shared':
@@ -268,6 +367,19 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/style-profile:
+    dependencies:
+      '@coding-agent/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

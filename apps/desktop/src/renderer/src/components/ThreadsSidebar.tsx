@@ -9,8 +9,13 @@ interface ThreadsSidebarProps {
   activeRunId: string | null;
   isComposingNew: boolean;
   userLabel: string;
+  quickPrefsOpen: boolean;
+  /** True when a workspace is open — clearing is meaningless otherwise. */
+  canClear: boolean;
   onSelectRun: (runId: string) => void;
   onNewRun: () => void;
+  onClearRuns: () => void;
+  onOpenQuickPrefs: () => void;
 }
 
 export function ThreadsSidebar({
@@ -18,8 +23,12 @@ export function ThreadsSidebar({
   activeRunId,
   isComposingNew,
   userLabel,
+  quickPrefsOpen,
+  canClear,
   onSelectRun,
   onNewRun,
+  onClearRuns,
+  onOpenQuickPrefs,
 }: ThreadsSidebarProps): JSX.Element {
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
@@ -46,6 +55,20 @@ export function ThreadsSidebar({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <button
+          type="button"
+          className="btn ghost side-clear"
+          title="Clear all runs in this workspace"
+          aria-label="Clear all runs"
+          disabled={!canClear || runs.length === 0}
+          onClick={() => {
+            if (window.confirm(`Delete all ${runs.length} run${runs.length === 1 ? "" : "s"} for this workspace? This cannot be undone.`)) {
+              onClearRuns();
+            }
+          }}
+        >
+          <Icon name="x" size={12} stroke={2.2} /> Clear
+        </button>
       </div>
 
       <ul className="thread-list">
@@ -67,7 +90,16 @@ export function ThreadsSidebar({
       <div className="side-foot">
         <span className="side-foot-user">{userLabel}</span>
         <button className="icon-btn" title="History" type="button" aria-label="History">
-          <Icon name="history" size={15} />
+          <Icon name="history" size={16} stroke={2} />
+        </button>
+        <button
+          className={`icon-btn${quickPrefsOpen ? " active" : ""}`}
+          title="Quick preferences"
+          type="button"
+          aria-label="Quick preferences"
+          onClick={onOpenQuickPrefs}
+        >
+          <Icon name="gear" size={16} stroke={2} />
         </button>
       </div>
     </aside>

@@ -5,20 +5,27 @@ import type {
   AgentRunDetail,
   AgentRunState,
   AppSettings,
+  LLMProviderId,
   Workspace,
 } from "@coding-agent/shared";
 import {
+  DEFAULT_SHORTCUTS,
+  PROVIDER_PRESETS,
   isRunActive,
   reduceAgentDetail,
   runPreconditionError,
 } from "@coding-agent/shared";
 import { api } from "./api.js";
+import { useShortcuts } from "./hooks/useShortcuts.js";
 import { Topbar } from "./components/Topbar.js";
 import { ThreadsSidebar } from "./components/ThreadsSidebar.js";
 import { EmptyView } from "./components/EmptyView.js";
 import { ChatRunView } from "./components/ChatRunView.js";
 import { ApprovalSheet } from "./components/ApprovalSheet.js";
-import { SettingsModal } from "./components/SettingsModal.js";
+import { SettingsModal, type SettingsTab } from "./components/SettingsModal.js";
+import { QuickPrefsPopover } from "./components/QuickPrefsPopover.js";
+import { ModelSwitcher } from "./components/ModelSwitcher.js";
+import { RightPanel } from "./components/RightPanel.js";
 import { Toast, type ToastMessage } from "./components/Toast.js";
 import { Icon } from "./components/Icons.js";
 import { applyAppearance } from "./appearance.js";
@@ -35,19 +42,27 @@ export function App(): JSX.Element {
   const [busy, setBusy] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("llm");
+  const [quickPrefsOpen, setQuickPrefsOpen] = useState<boolean>(false);
   const [approvalOpen, setApprovalOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [llmConnected, setLlmConnected] = useState<boolean>(false);
   const [userLabel, setUserLabel] = useState<string>("local");
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [modelSwitcherOpen, setModelSwitcherOpen] = useState<boolean>(false);
+  const [modelAnchor, setModelAnchor] = useState<DOMRect | null>(null);
+  const [gitRefreshTick, setGitRefreshTick] = useState<number>(0);
 
   const activeRunIdRef = useRef<string | null>(null);
   activeRunIdRef.current = activeRunId;
+  const modelChipRef = useRef<HTMLButtonElement | null>(null);
 
   // Initial setup: apply persisted appearance + LLM-configured flag, list recents.
   useEffect(() => {
     void api
       .getSettings()
       .then((payload) => {
+        setSettings(payload.settings);
         applyAppearance(payload.settings.ui);
         const hasKey = Boolean(payload.settings.llm.apiKey?.trim());
         const hasProvider = Boolean(payload.settings.llm.provider);
@@ -65,6 +80,7 @@ export function App(): JSX.Element {
   }, []);
 
   const onSettingsSaved = useCallback((saved: AppSettings) => {
+    setSettings(saved);
     applyAppearance(saved.ui);
     const hasKey = Boolean(saved.llm.apiKey?.trim());
     const hasProvider = Boolean(saved.llm.provider);
@@ -102,6 +118,11 @@ export function App(): JSX.Element {
         // Always refresh the runs list when any run updates.
         if (event.kind === "run_updated") {
           setRuns((prev) => upsertRun(prev, event.run));
+          // Refresh git status when a run reaches a terminal/applied state —
+          // the working tree may have changed.
+          if (isTerminalStatus(event.run.status) || event.run.status === "applying_patch") {
+            setGitRefreshTick((t) => t + 1);
+          }
         }
       }
     });
@@ -232,8 +253,95 @@ export function App(): JSX.Element {
       showToast("success", "Rolled back");
     });
 
+  const clearRuns = (): Promise<void> =>
+    guard(async () => {
+      if (!workspace) return;
+      const { deleted } = await api.clearAgentRuns(workspace.id);
+      setRuns([]);
+      setActiveRunId(null);
+      setDetail(null);
+      setLiveText("");
+      setApprovalOpen(false);
+      setIsComposingNew(false);
+      showToast("success", deleted === 0 ? "No runs to clear" : `Cleared ${deleted} run${deleted === 1 ? "" : "s"}`);
+    });
+
   const isRunBusy = Boolean(detail && isRunActive(detail.run.status));
   const wsName = workspace ? shortName(workspace.rootPath) : "";
+  const userInitials = useMemo(() => deriveInitials(userLabel), [userLabel]);
+  const maxAutoSteps = settings?.agent.maxAutoSteps ?? 10;
+  const currentModel = settings?.llm.model ?? "";
+  const currentProvider: LLMProviderId = settings?.llm.provider ?? "deepseek";
+
+  const onPickModel = useCallback(
+    (model: string, provider: LLMProviderId) => {
+      if (!settings) return;
+      // If the provider changed, swap base URL too so the LLM client targets
+      // the right endpoint; if the same provider, keep the user's customised
+      // baseUrl untouched.
+      const providerChanged = provider !== settings.llm.provider;
+      const next: AppSettings = {
+        ...settings,
+        llm: {
+          ...settings.llm,
+          model,
+          provider,
+          ...(providerChanged ? { baseUrl: PROVIDER_PRESETS[provider].baseUrl } : {}),
+        },
+      };
+      setSettings(next);
+      void api
+        .updateSettings(next)
+        .then((payload) => {
+          setSettings(payload.settings);
+          showToast("success", `Switched to ${model}`);
+        })
+        .catch((err) => {
+          showToast("error", err instanceof Error ? err.message : String(err));
+        });
+    },
+    [settings, showToast],
+  );
+
+  const openModelSwitcher = useCallback(() => {
+    if (modelChipRef.current) {
+      setModelAnchor(modelChipRef.current.getBoundingClientRect());
+    }
+    setModelSwitcherOpen((o) => !o);
+  }, []);
+  const hasPendingPatch = Boolean(detail?.pendingPatch);
+  const isDetailActive = Boolean(detail && isRunActive(detail.run.status));
+  const isDetailDone = detail?.run.status === "done";
+
+  const navigateRun = useCallback(
+    (delta: number) => {
+      if (runs.length === 0) return;
+      const idx = activeRunId ? runs.findIndex((r) => r.id === activeRunId) : -1;
+      const nextIdx = ((idx === -1 ? 0 : idx + delta) + runs.length) % runs.length;
+      const next = runs[nextIdx];
+      if (next) void selectRun(next.id);
+    },
+    // selectRun is stable per-render via guard; runs/activeRunId drive the lookup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [runs, activeRunId],
+  );
+
+  useShortcuts(settings?.shortcuts ?? DEFAULT_SHORTCUTS, {
+    "new-run": newRun,
+    "open-workspace": () => void openWorkspace(),
+    "stop-run": isDetailActive ? () => void stopRun() : undefined,
+    "approve-patch": hasPendingPatch ? () => setApprovalOpen(true) : undefined,
+    "open-diff": hasPendingPatch ? () => setApprovalOpen(true) : undefined,
+    "reject-patch": hasPendingPatch ? () => void rejectPatch() : undefined,
+    rollback: isDetailDone ? () => void rollback() : undefined,
+    "quick-prefs": () => setQuickPrefsOpen((o) => !o),
+    "open-settings": () => {
+      setSettingsInitialTab("llm");
+      setSettingsOpen(true);
+    },
+    "next-thread": () => navigateRun(1),
+    "prev-thread": () => navigateRun(-1),
+  });
 
   const main = useMemo(() => {
     if (!workspace) {
@@ -264,32 +372,45 @@ export function App(): JSX.Element {
         liveText={liveText}
         composerValue={composer}
         composerBusy={busy}
+        userInitials={userInitials}
+        maxAutoSteps={maxAutoSteps}
         onComposerChange={setComposer}
         onSubmitComposer={() => void submitComposer()}
         onStopRun={() => void stopRun()}
         onOpenApproval={() => setApprovalOpen(true)}
+        onRejectPatch={() => void rejectPatch()}
         onRollback={() => void rollback()}
       />
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace, recents, busy, isComposingNew, detail, liveText, composer]);
+  }, [workspace, recents, busy, isComposingNew, detail, liveText, composer, userInitials, maxAutoSteps]);
 
   return (
     <div className="app">
       <Topbar
+        ref={modelChipRef}
         workspace={workspace}
         activeRun={detail?.run ?? null}
         llmConnected={llmConnected}
+        currentModel={currentModel}
         onSwitchWorkspace={() => void openWorkspace()}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenModelSwitcher={openModelSwitcher}
+        onOpenSettings={() => {
+          setSettingsInitialTab("llm");
+          setSettingsOpen(true);
+        }}
       />
       <ThreadsSidebar
         runs={runs}
         activeRunId={activeRunId}
         isComposingNew={isComposingNew}
         userLabel={userLabel}
+        quickPrefsOpen={quickPrefsOpen}
+        canClear={Boolean(workspace)}
         onSelectRun={(id) => void selectRun(id)}
         onNewRun={newRun}
+        onClearRuns={() => void clearRuns()}
+        onOpenQuickPrefs={() => setQuickPrefsOpen((o) => !o)}
       />
       <div className="main">
         {error && (
@@ -311,9 +432,39 @@ export function App(): JSX.Element {
         )}
       </div>
 
+      <RightPanel
+        detail={detail}
+        workspace={workspace}
+        refreshTick={gitRefreshTick}
+      />
+
+      <ModelSwitcher
+        open={modelSwitcherOpen}
+        anchorRect={modelAnchor}
+        currentModel={currentModel}
+        currentProvider={currentProvider}
+        onPick={onPickModel}
+        onOpenSettings={() => {
+          setSettingsInitialTab("llm");
+          setSettingsOpen(true);
+        }}
+        onClose={() => setModelSwitcherOpen(false)}
+      />
+
       <SettingsModal
         open={settingsOpen}
+        initialTab={settingsInitialTab}
         onClose={() => setSettingsOpen(false)}
+        onSaved={onSettingsSaved}
+        onToast={showToast}
+      />
+      <QuickPrefsPopover
+        open={quickPrefsOpen}
+        onClose={() => setQuickPrefsOpen(false)}
+        onOpenFullSettings={() => {
+          setSettingsInitialTab("ui");
+          setSettingsOpen(true);
+        }}
         onSaved={onSettingsSaved}
         onToast={showToast}
       />
@@ -446,6 +597,11 @@ function shortName(rootPath: string): string {
 
 function shortRunId(id: string): string {
   return id.length > 6 ? id.slice(-6) : id;
+}
+
+function deriveInitials(label: string): string {
+  const first = label.trim().split(/[\s·]+/)[0] ?? "";
+  return (first.slice(0, 2) || "me").toLowerCase();
 }
 
 function isTerminalStatus(status: AgentRunState): boolean {

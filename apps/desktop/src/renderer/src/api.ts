@@ -3,14 +3,29 @@ import type {
   AgentRun,
   AgentRunDetail,
   AppSettings,
+  EvalRunResult,
+  FeedbackSignal,
+  FeedbackSignalInput,
+  FinetuneJob,
+  FinetuneJobInput,
+  FrozenSuiteSnapshot,
   GitWorkingTreeStatus,
+  GlobalPattern,
+  GlobalPatternInput,
   IpcResult,
   LLMConfig,
   MemoryEntry,
   MemoryEntryInput,
   MemoryEntryPatch,
   MemoryFilter,
+  ModelRegistryEntry,
   PRDescription,
+  Phase4Settings,
+  PluginInstallation,
+  PluginManifest,
+  PluginPermission,
+  PreferenceDataset,
+  Proposal,
   ReadFileOutput,
   RoleMessage,
   RunCommandOutput,
@@ -19,10 +34,14 @@ import type {
   SemanticIndexStatus,
   SemanticSearchOptions,
   SettingsPayload,
+  StyleScope,
+  StyleSpec,
   TaskNode,
   TaskNodePatch,
   TestConnectionResult,
+  WorkerNode,
   Workspace,
+  WorkspaceContributionMode,
 } from "@coding-agent/shared";
 
 async function unwrap<T>(p: Promise<IpcResult<T>>): Promise<T> {
@@ -57,6 +76,8 @@ export const api = {
     unwrap(window.agentApi.getAgentRun({ runId })),
   listAgentRuns: (workspaceId: string): Promise<AgentRun[]> =>
     unwrap(window.agentApi.listAgentRuns(workspaceId)),
+  clearAgentRuns: (workspaceId: string): Promise<{ deleted: number }> =>
+    unwrap(window.agentApi.clearAgentRuns({ workspaceId })),
   getSettings: (): Promise<SettingsPayload> => unwrap(window.agentApi.getSettings()),
   updateSettings: (settings: AppSettings): Promise<SettingsPayload> =>
     unwrap(window.agentApi.updateSettings(settings)),
@@ -111,6 +132,87 @@ export const api = {
     unwrap(window.agentApi.getSandboxMode({ workspaceId })),
   setSandboxMode: (workspaceId: string, mode: SandboxMode): Promise<SandboxMode> =>
     unwrap(window.agentApi.setSandboxMode({ workspaceId, mode })),
+  // --- Phase 4: global memory + KG ---
+  listGlobalPatterns: (): Promise<GlobalPattern[]> =>
+    unwrap(window.agentApi.listGlobalPatterns()),
+  contributeGlobalPattern: (input: GlobalPatternInput): Promise<GlobalPattern> =>
+    unwrap(window.agentApi.contributeGlobalPattern({ input })),
+  retractWorkspaceContribution: (workspaceId: string): Promise<{ updated: number; deleted: number }> =>
+    unwrap(window.agentApi.retractWorkspaceContribution({ workspaceId })),
+  deleteGlobalPattern: (id: string): Promise<{ deleted: boolean }> =>
+    unwrap(window.agentApi.deleteGlobalPattern({ id })),
+  getWorkspaceContribution: (workspaceId: string): Promise<WorkspaceContributionMode> =>
+    unwrap(window.agentApi.getWorkspaceContribution({ workspaceId })),
+  setWorkspaceContribution: (workspaceId: string, mode: WorkspaceContributionMode): Promise<WorkspaceContributionMode> =>
+    unwrap(window.agentApi.setWorkspaceContribution({ workspaceId, mode })),
+  // --- Phase 4: style profile ---
+  getStyleSpec: (scope: StyleScope, workspaceId: string | null): Promise<StyleSpec | null> =>
+    unwrap(window.agentApi.getStyleSpec({ scope, workspaceId })),
+  upsertStyleSpec: (spec: StyleSpec): Promise<StyleSpec> =>
+    unwrap(window.agentApi.upsertStyleSpec({ spec })),
+  extractStyleSpecFromCodebase: (workspaceId: string): Promise<StyleSpec> =>
+    unwrap(window.agentApi.extractStyleSpecFromCodebase({ workspaceId })),
+  // --- Phase 4: learning ---
+  listFeedbackSignals: (workspaceId: string): Promise<FeedbackSignal[]> =>
+    unwrap(window.agentApi.listFeedbackSignals({ workspaceId })),
+  recordFeedbackSignal: (signal: FeedbackSignalInput): Promise<FeedbackSignal> =>
+    unwrap(window.agentApi.recordFeedbackSignal({ signal })),
+  buildPreferenceDataset: (workspaceId: string, name?: string): Promise<{ datasetId: string; built: number; rejected: number }> =>
+    unwrap(window.agentApi.buildPreferenceDataset({ workspaceId, name })),
+  listPreferenceDatasets: (): Promise<PreferenceDataset[]> =>
+    unwrap(window.agentApi.listPreferenceDatasets()),
+  // --- Phase 4: finetune ---
+  listFinetuneJobs: (): Promise<FinetuneJob[]> =>
+    unwrap(window.agentApi.listFinetuneJobs()),
+  createFinetuneJob: (input: FinetuneJobInput): Promise<FinetuneJob> =>
+    unwrap(window.agentApi.createFinetuneJob({ input })),
+  listModels: (): Promise<ModelRegistryEntry[]> =>
+    unwrap(window.agentApi.listModels()),
+  getActiveModel: (): Promise<ModelRegistryEntry | null> =>
+    unwrap(window.agentApi.getActiveModel()),
+  promoteModel: (modelId: string): Promise<ModelRegistryEntry | null> =>
+    unwrap(window.agentApi.promoteModel({ modelId })),
+  rollbackToBaseModel: (): Promise<ModelRegistryEntry | null> =>
+    unwrap(window.agentApi.rollbackToBaseModel()),
+  // --- Phase 4: proposals ---
+  listProposals: (workspaceId: string): Promise<Proposal[]> =>
+    unwrap(window.agentApi.listProposals({ workspaceId })),
+  snoozeProposal: (id: string, untilTs: number): Promise<Proposal | null> =>
+    unwrap(window.agentApi.snoozeProposal({ id, untilTs })),
+  dismissProposal: (id: string): Promise<Proposal | null> =>
+    unwrap(window.agentApi.dismissProposal({ id })),
+  convertProposal: (id: string): Promise<Proposal | null> =>
+    unwrap(window.agentApi.convertProposal({ id })),
+  scanDebtNow: (workspaceId: string): Promise<{ created: Proposal[] }> =>
+    unwrap(window.agentApi.scanDebtNow({ workspaceId })),
+  // --- Phase 4: distributed ---
+  listWorkerNodes: (): Promise<WorkerNode[]> =>
+    unwrap(window.agentApi.listWorkerNodes()),
+  registerWorkerNode: (node: Omit<WorkerNode, "registeredAt">): Promise<WorkerNode> =>
+    unwrap(window.agentApi.registerWorkerNode({ node })),
+  // --- Phase 4: plugins ---
+  listPlugins: (): Promise<PluginInstallation[]> =>
+    unwrap(window.agentApi.listPlugins()),
+  installPlugin: (
+    manifest: PluginManifest,
+    installPath: string,
+    approvedPermissions: PluginPermission[],
+  ): Promise<PluginInstallation> =>
+    unwrap(window.agentApi.installPlugin({ manifest, installPath, approvedPermissions })),
+  setPluginEnabled: (id: string, enabled: boolean): Promise<PluginInstallation | null> =>
+    unwrap(window.agentApi.setPluginEnabled({ id, enabled })),
+  uninstallPlugin: (id: string): Promise<{ uninstalled: boolean }> =>
+    unwrap(window.agentApi.uninstallPlugin({ id })),
+  // --- Phase 4: evals ---
+  listFrozenSnapshots: (modelId?: string): Promise<FrozenSuiteSnapshot[]> =>
+    unwrap(window.agentApi.listFrozenSnapshots({ modelId })),
+  listEvalRuns: (taskId?: string, modelId?: string): Promise<EvalRunResult[]> =>
+    unwrap(window.agentApi.listEvalRuns({ taskId, modelId })),
+  // --- Phase 4: settings ---
+  getPhase4Settings: (): Promise<Phase4Settings> =>
+    unwrap(window.agentApi.getPhase4Settings()),
+  updatePhase4Settings: (settings: Phase4Settings): Promise<Phase4Settings> =>
+    unwrap(window.agentApi.updatePhase4Settings({ settings })),
   onAgentEvent: (handler: (event: AgentEvent) => void): (() => void) =>
     window.agentApi.onAgentEvent(handler),
 };

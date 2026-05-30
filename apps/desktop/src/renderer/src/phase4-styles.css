@@ -1,0 +1,263 @@
+/* Phase 4 styling — lean defaults that fit the existing chat-centric shell. */
+
+.phase4-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.phase4-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border-color, #2a2a2a);
+  padding-bottom: 6px;
+}
+
+.phase4-tab {
+  background: transparent;
+  color: var(--text-color, #ccc);
+  border: 1px solid transparent;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.phase4-tab:hover {
+  background: var(--surface-hover, #1f1f1f);
+}
+
+.phase4-tab--active {
+  background: var(--accent-bg, #2d3a52);
+  color: var(--accent-fg, #cee0ff);
+  border-color: var(--accent-border, #3a4d70);
+}
+
+.phase4-tabbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 4px;
+}
+
+.phase4-empty {
+  color: var(--muted, #888);
+  font-style: italic;
+}
+
+.phase4-error {
+  background: rgba(220, 60, 60, 0.1);
+  color: #e58a8a;
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.phase4-help {
+  color: var(--muted, #888);
+  font-size: 12px;
+  margin: 4px 0 10px;
+}
+
+.phase4-settings ul {
+  list-style: none;
+  padding: 0;
+}
+
+.phase4-toggle {
+  margin: 6px 0;
+}
+
+.phase4-toggle label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* Knowledge graph */
+
+.kg-controls {
+  padding: 8px;
+  background: var(--surface, #181818);
+  border-radius: 6px;
+}
+
+.kg-pattern-card {
+  border: 1px solid var(--border-color, #2a2a2a);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 8px 0;
+}
+
+.kg-pattern-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.kg-conf {
+  color: var(--muted, #888);
+  font-size: 12px;
+}
+
+.kg-prov {
+  color: var(--muted, #888);
+  font-size: 11px;
+  margin: 4px 0;
+}
+
+/* Style profile */
+
+.style-rule {
+  border-bottom: 1px solid var(--border-color, #222);
+  padding: 8px 0;
+  list-style: none;
+}
+
+.style-rule-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted, #888);
+}
+
+.strength {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.strength--must {
+  background: rgba(220, 80, 80, 0.2);
+  color: #ff9999;
+}
+
+.strength--should {
+  background: rgba(80, 160, 220, 0.2);
+  color: #99c8ff;
+}
+
+.strength--prefer {
+  background: rgba(120, 120, 120, 0.2);
+  color: #aaa;
+}
+
+.style-rule-body {
+  margin: 6px 0;
+}
+
+.style-rules {
+  padding: 0;
+}
+
+/* Learning dashboard */
+
+.signal-counts {
+  display: flex;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+}
+
+.signal-counts li {
+  background: var(--surface, #181818);
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.trend-table,
+.job-table,
+.node-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.trend-table th,
+.trend-table td,
+.job-table th,
+.job-table td,
+.node-table th,
+.node-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-color, #222);
+  font-size: 12px;
+}
+
+/* Finetune */
+
+.model.active {
+  font-weight: 600;
+  color: var(--accent-fg, #cee0ff);
+}
+
+/* Proposal inbox */
+
+.proposal {
+  border: 1px solid var(--border-color, #222);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 8px 0;
+}
+
+.proposal-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.kind {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: var(--surface, #2a2a2a);
+}
+
+.proposal-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Cluster */
+
+.node--offline {
+  opacity: 0.5;
+}
+
+.node--degraded td {
+  color: #e0b070;
+}
+
+/* Plugin */
+
+.plugin {
+  border: 1px solid var(--border-color, #222);
+  border-radius: 8px;
+  padding: 10px;
+  margin: 8px 0;
+}
+
+.plugin.disabled {
+  opacity: 0.6;
+}
+
+.plugin-perms,
+.plugin-tools {
+  font-size: 12px;
+  color: var(--muted, #888);
+  margin: 4px 0;
+}
+
+.plugin-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}

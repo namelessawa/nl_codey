@@ -15,10 +15,15 @@ interface ChatRunViewProps {
   liveText: string;
   composerValue: string;
   composerBusy: boolean;
+  /** 2-letter avatar text shown on user messages (lowercase). */
+  userInitials: string;
+  /** Hard cap on auto-steps, shown as "Auto · N steps" in the composer chrome. */
+  maxAutoSteps: number;
   onComposerChange: (value: string) => void;
   onSubmitComposer: () => void;
   onStopRun: () => void;
   onOpenApproval: () => void;
+  onRejectPatch: () => void;
   onRollback: () => void;
 }
 
@@ -26,6 +31,8 @@ interface ChatEntry {
   key: string;
   kind: "user" | "agent" | "tool" | "error";
   text?: string;
+  /** Step createdAt timestamp (ms epoch). Rendered as elapsed-from-run-start. */
+  at?: number;
   tool?: { name: string; arg: string; body: string; state: "run" | "done" | "failed" };
 }
 
@@ -35,19 +42,23 @@ export function ChatRunView({
   liveText,
   composerValue,
   composerBusy,
+  userInitials,
+  maxAutoSteps,
   onComposerChange,
   onSubmitComposer,
   onStopRun,
   onOpenApproval,
+  onRejectPatch,
   onRollback,
 }: ChatRunViewProps): JSX.Element {
   const streamRef = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
 
-  const entries = useMemo(() => buildEntries(detail.run.userTask, detail.steps), [
-    detail.run.userTask,
-    detail.steps,
-  ]);
+  const runStartedAt = detail.run.createdAt;
+  const entries = useMemo(
+    () => buildEntries(detail.run.userTask, detail.steps, runStartedAt),
+    [detail.run.userTask, detail.steps, runStartedAt],
+  );
   const pipeline = useMemo(() => buildPipeline(detail), [detail]);
   const isActive = isRunActive(detail.run.status);
   const isWaiting = detail.run.status === "waiting_for_user_approval";
@@ -132,7 +143,7 @@ export function ChatRunView({
       )}
 
       <div className="chat-stream" ref={streamRef}>
-        {entries.map((entry) => renderEntry(entry))}
+        {entries.map((entry) => renderEntry(entry, userInitials, runStartedAt))}
 
         {hasPendingPatch && isWaiting && (
           <div className="msg agent">
@@ -145,6 +156,7 @@ export function ChatRunView({
               <PatchCard
                 patch={detail.pendingPatch ?? ""}
                 onOpenApproval={onOpenApproval}
+                onReject={onRejectPatch}
               />
             </div>
           </div>
@@ -168,6 +180,7 @@ export function ChatRunView({
       <Composer
         value={composerValue}
         busy={composerBusy || isActive}
+        maxAutoSteps={maxAutoSteps}
         placeholder={
           isWaiting
             ? "Reply, ask for changes, or open the patch above to approve…"
@@ -182,17 +195,22 @@ export function ChatRunView({
   );
 }
 
-function renderEntry(entry: ChatEntry): JSX.Element {
+function renderEntry(
+  entry: ChatEntry,
+  userInitials: string,
+  runStartedAt: number,
+): JSX.Element {
   if (entry.kind === "user") {
     return (
       <div className="msg user" key={entry.key}>
         <div className="msg-body">
           <div className="msg-head">
-            <span className="ts">you</span>
+            <span className="ts">{formatStamp(entry.at, runStartedAt)}</span>
+            <span className="who">you</span>
           </div>
           <div className="msg-content">{entry.text}</div>
         </div>
-        <div className="msg-avatar">me</div>
+        <div className="msg-avatar">{userInitials}</div>
       </div>
     );
   }
@@ -203,6 +221,7 @@ function renderEntry(entry: ChatEntry): JSX.Element {
         <div className="msg-body">
           <div className="msg-head">
             <span className="who">codey</span>
+            <span className="ts">{formatStamp(entry.at, runStartedAt)}</span>
           </div>
           <div className="msg-content">
             <Markdown text={entry.text ?? ""} />
@@ -347,7 +366,6 @@ function buildPipeline(detail: AgentRunDetail): PipelineStep[] {
   let activeIndex = stages.findIndex((stage) => stage.matches.includes(status));
   if (status === "done") activeIndex = stages.length;
   if (status === "failed" || status === "budget_exceeded") {
-    // mark up through the last attempted stage as failed
     const lastAttempted = stages.findIndex((stage) => stage.matches.includes(status));
     if (lastAttempted >= 0) activeIndex = lastAttempted;
     else activeIndex = stages.length - 1;
@@ -367,10 +385,14 @@ function buildPipeline(detail: AgentRunDetail): PipelineStep[] {
   });
 }
 
-function buildEntries(userTask: string, steps: AgentStep[]): ChatEntry[] {
+function buildEntries(
+  userTask: string,
+  steps: AgentStep[],
+  runStartedAt: number,
+): ChatEntry[] {
   const entries: ChatEntry[] = [];
   if (userTask) {
-    entries.push({ key: "user-task", kind: "user", text: userTask });
+    entries.push({ key: "user-task", kind: "user", text: userTask, at: runStartedAt });
   }
   let lastTool: ChatEntry["tool"] | null = null;
   let lastToolEntry: ChatEntry | null = null;
@@ -382,13 +404,23 @@ function buildEntries(userTask: string, steps: AgentStep[]): ChatEntry[] {
     if (step.type === "message") {
       lastTool = null;
       lastToolEntry = null;
-      entries.push({ key: step.id, kind: "agent", text: step.content });
+      entries.push({
+        key: step.id,
+        kind: "agent",
+        text: step.content,
+        at: step.createdAt,
+      });
       continue;
     }
     if (step.type === "tool_call") {
       const { name, arg } = parseToolCall(step.content);
       const tool: ChatEntry["tool"] = { name, arg, body: "", state: "run" };
-      const entry: ChatEntry = { key: step.id, kind: "tool", tool };
+      const entry: ChatEntry = {
+        key: step.id,
+        kind: "tool",
+        tool,
+        at: step.createdAt,
+      };
       entries.push(entry);
       lastTool = tool;
       lastToolEntry = entry;
@@ -403,6 +435,7 @@ function buildEntries(userTask: string, steps: AgentStep[]): ChatEntry[] {
           key: step.id,
           kind: "tool",
           tool: { name: "result", arg: "", body: step.content, state: "done" },
+          at: step.createdAt,
         });
       }
       continue;
@@ -410,18 +443,17 @@ function buildEntries(userTask: string, steps: AgentStep[]): ChatEntry[] {
     if (step.type === "command") {
       if (lastTool) {
         lastTool.body = appendBody(lastTool.body, step.content);
-        // keep state as run until tool_result confirms
       } else {
         entries.push({
           key: step.id,
           kind: "tool",
           tool: { name: "run_command", arg: "", body: step.content, state: "done" },
+          at: step.createdAt,
         });
       }
       continue;
     }
     if (step.type === "diff") {
-      // The pending patch card is rendered separately from detail.pendingPatch.
       continue;
     }
     if (step.type === "error") {
@@ -431,12 +463,16 @@ function buildEntries(userTask: string, steps: AgentStep[]): ChatEntry[] {
         lastTool = null;
         lastToolEntry = null;
       } else {
-        entries.push({ key: step.id, kind: "error", text: step.content });
+        entries.push({
+          key: step.id,
+          kind: "error",
+          text: step.content,
+          at: step.createdAt,
+        });
       }
       continue;
     }
   }
-  // Suppress unused-var warning while keeping the binding for readability.
   void lastToolEntry;
   return entries;
 }
@@ -456,9 +492,10 @@ function appendBody(existing: string, addition: string): string {
 interface PatchCardProps {
   patch: string;
   onOpenApproval: () => void;
+  onReject: () => void;
 }
 
-function PatchCard({ patch, onOpenApproval }: PatchCardProps): JSX.Element {
+function PatchCard({ patch, onOpenApproval, onReject }: PatchCardProps): JSX.Element {
   const stats = useMemo(() => summarizePatch(patch), [patch]);
   return (
     <div className="patch-card">
@@ -495,6 +532,24 @@ function PatchCard({ patch, onOpenApproval }: PatchCardProps): JSX.Element {
         <button className="btn primary" type="button" onClick={onOpenApproval}>
           Review &amp; sign…
         </button>
+        <button className="btn ghost" type="button" onClick={onReject}>
+          Reject
+        </button>
+        <button
+          className="btn ghost"
+          type="button"
+          onClick={() => {
+            const ta = document.querySelector(
+              ".composer textarea",
+            ) as HTMLTextAreaElement | null;
+            if (ta) {
+              ta.focus();
+              ta.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            }
+          }}
+        >
+          Ask for changes
+        </button>
         <span className="hint">⏎ to open</span>
       </div>
     </div>
@@ -524,7 +579,6 @@ export function summarizePatch(patch: string): PatchSummary {
   let v4aAction: "new" | "mod" | "del" = "mod";
 
   for (const line of lines) {
-    // V4A context-patch envelope detection
     if (line === "*** Begin Patch") {
       v4aMode = true;
       continue;
@@ -552,7 +606,6 @@ export function summarizePatch(patch: string): PatchSummary {
       }
       continue;
     }
-    // Unified diff
     const diffHeader = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
     if (diffHeader) {
       if (current) files.push(current);
@@ -585,11 +638,19 @@ interface ComposerProps {
   value: string;
   busy: boolean;
   placeholder: string;
+  maxAutoSteps: number;
   onChange: (value: string) => void;
   onSubmit: () => void;
 }
 
-function Composer({ value, busy, placeholder, onChange, onSubmit }: ComposerProps): JSX.Element {
+function Composer({
+  value,
+  busy,
+  placeholder,
+  maxAutoSteps,
+  onChange,
+  onSubmit,
+}: ComposerProps): JSX.Element {
   const [rows, setRows] = useState(1);
   return (
     <div className="composer">
@@ -611,8 +672,25 @@ function Composer({ value, busy, placeholder, onChange, onSubmit }: ComposerProp
           }}
         />
         <div className="composer-row">
-          <span className="hint">Ctrl+↵ to send</span>
+          <button
+            className="btn ghost"
+            type="button"
+            title="Attach file (coming soon)"
+            disabled
+            aria-label="Attach file"
+          >
+            <Icon name="folder" size={13} />
+          </button>
+          <span className="hint">Ctrl+↵ to run · ↑ recall</span>
           <span style={{ flex: 1 }} />
+          <button
+            className="btn ghost"
+            type="button"
+            title={`Up to ${maxAutoSteps} automatic steps per run · change in Settings → Agent`}
+            disabled
+          >
+            Auto · {maxAutoSteps} steps
+          </button>
           <button
             className="btn primary"
             type="button"
@@ -664,4 +742,29 @@ function formatElapsed(createdAt: number, updatedAt: number): string {
   if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
+}
+
+/**
+ * Format a step timestamp as elapsed-from-run-start, in the design's compact
+ * style: "0:02" for seconds, "1m" / "2m" for minutes, "1h" for hours.
+ */
+function formatStamp(at: number | undefined, runStartedAt: number): string {
+  if (!at) return "";
+  const deltaMs = Math.max(0, at - runStartedAt);
+  const seconds = Math.floor(deltaMs / 1000);
+  if (seconds < 60) {
+    const mm = Math.floor(seconds / 60);
+    const ss = String(seconds % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    const mm = Math.floor(minutes);
+    const ss = String(seconds % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
 }

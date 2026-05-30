@@ -131,6 +131,204 @@ CREATE TABLE IF NOT EXISTS git_actions (
   payload TEXT,
   created_at INTEGER NOT NULL
 );
+
+-- Phase 4: cross-project global patterns
+CREATE TABLE IF NOT EXISTS global_patterns (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  example_snippet TEXT NOT NULL,
+  source_projects TEXT NOT NULL,
+  tags TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 0,
+  embedding BLOB,
+  created_at INTEGER NOT NULL,
+  last_applied_at INTEGER NOT NULL
+);
+
+-- Phase 4: knowledge graph edges
+CREATE TABLE IF NOT EXISTS kg_edges (
+  id TEXT PRIMARY KEY,
+  from_id TEXT NOT NULL,
+  from_kind TEXT NOT NULL,
+  to_id TEXT NOT NULL,
+  to_kind TEXT NOT NULL,
+  edge_kind TEXT NOT NULL,
+  weight REAL NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+
+-- Phase 4: per-workspace contribution mode
+CREATE TABLE IF NOT EXISTS workspace_contribution (
+  workspace_id TEXT PRIMARY KEY,
+  mode TEXT NOT NULL DEFAULT 'isolated',
+  updated_at INTEGER NOT NULL
+);
+
+-- Phase 4: style profile (one row per scope/workspace)
+CREATE TABLE IF NOT EXISTS style_specs (
+  id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  workspace_id TEXT,
+  spec_json TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(scope, workspace_id)
+);
+
+-- Phase 4: feedback signals
+CREATE TABLE IF NOT EXISTS feedback_signals (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  task_node_id TEXT,
+  kind TEXT NOT NULL,
+  before_text TEXT NOT NULL,
+  after_text TEXT,
+  reason TEXT,
+  file_path TEXT,
+  created_at INTEGER NOT NULL
+);
+
+-- Phase 4: preference pairs (curated dataset)
+CREATE TABLE IF NOT EXISTS preference_pairs (
+  id TEXT PRIMARY KEY,
+  dataset_id TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  chosen TEXT NOT NULL,
+  rejected TEXT NOT NULL,
+  category TEXT,
+  quality_score REAL NOT NULL DEFAULT 0,
+  signal_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS preference_datasets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  curation_notes TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+
+-- Phase 4: fine-tune jobs
+CREATE TABLE IF NOT EXISTS finetune_jobs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  base_model TEXT NOT NULL,
+  dataset_id TEXT NOT NULL,
+  method TEXT NOT NULL,
+  status TEXT NOT NULL,
+  eval_result_json TEXT,
+  artifact_path TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Phase 4: model registry
+CREATE TABLE IF NOT EXISTS model_registry (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  base_model TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 0,
+  eval_delta REAL,
+  artifact_path TEXT,
+  created_at INTEGER NOT NULL
+);
+
+-- Phase 4: proactive proposals
+CREATE TABLE IF NOT EXISTS proposals (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  rationale TEXT NOT NULL,
+  estimated_effort TEXT NOT NULL,
+  affected_files TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new',
+  snoozed_until INTEGER,
+  converted_run_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Phase 4: distributed nodes
+CREATE TABLE IF NOT EXISTS worker_nodes (
+  id TEXT PRIMARY KEY,
+  hostname TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  status TEXT NOT NULL,
+  capabilities TEXT NOT NULL,
+  active_assignments TEXT NOT NULL DEFAULT '[]',
+  last_heartbeat INTEGER NOT NULL,
+  registered_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS distributed_assignments (
+  id TEXT PRIMARY KEY,
+  node_id TEXT NOT NULL,
+  task_node_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER
+);
+
+-- Phase 4: plugin installations
+CREATE TABLE IF NOT EXISTS plugin_installations (
+  id TEXT PRIMARY KEY,
+  manifest_json TEXT NOT NULL,
+  install_path TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  approved_permissions TEXT NOT NULL DEFAULT '[]',
+  installed_at INTEGER NOT NULL
+);
+
+-- Phase 4: long-horizon checkpoints
+CREATE TABLE IF NOT EXISTS checkpoints (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  task_node_id TEXT,
+  kind TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  progress_report TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+
+-- Phase 4: evals (L4 + frozen regression suite)
+CREATE TABLE IF NOT EXISTS eval_tasks (
+  id TEXT PRIMARY KEY,
+  level TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  frozen INTEGER NOT NULL DEFAULT 0,
+  verify_command TEXT NOT NULL DEFAULT '',
+  expected_nodes INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS eval_runs (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  pass INTEGER NOT NULL,
+  corrections INTEGER NOT NULL DEFAULT 0,
+  transfer_hits INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS frozen_suite_snapshots (
+  id TEXT PRIMARY KEY,
+  week_start_ts INTEGER NOT NULL,
+  pass_rate REAL NOT NULL,
+  corrections_per_task REAL NOT NULL,
+  transfer_hits INTEGER NOT NULL,
+  total_tasks INTEGER NOT NULL,
+  model_id TEXT NOT NULL,
+  UNIQUE(week_start_ts, model_id)
+);
 `;
 
 /**
@@ -150,6 +348,20 @@ CREATE INDEX IF NOT EXISTS idx_chunks_workspace_file ON semantic_chunks(workspac
 CREATE INDEX IF NOT EXISTS idx_task_nodes_run ON task_nodes(parent_run_id);
 CREATE INDEX IF NOT EXISTS idx_role_messages_node ON role_messages(task_node_id);
 CREATE INDEX IF NOT EXISTS idx_git_actions_run ON git_actions(run_id);
+CREATE INDEX IF NOT EXISTS idx_global_patterns_confidence ON global_patterns(confidence DESC);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_from ON kg_edges(from_id, edge_kind);
+CREATE INDEX IF NOT EXISTS idx_kg_edges_to ON kg_edges(to_id, edge_kind);
+CREATE INDEX IF NOT EXISTS idx_style_specs_scope ON style_specs(scope, workspace_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_signals_workspace ON feedback_signals(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_signals_run ON feedback_signals(run_id);
+CREATE INDEX IF NOT EXISTS idx_preference_pairs_dataset ON preference_pairs(dataset_id);
+CREATE INDEX IF NOT EXISTS idx_finetune_status ON finetune_jobs(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_model_registry_active ON model_registry(active);
+CREATE INDEX IF NOT EXISTS idx_proposals_workspace ON proposals(workspace_id, status);
+CREATE INDEX IF NOT EXISTS idx_worker_nodes_status ON worker_nodes(status);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_run ON checkpoints(run_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_task ON eval_runs(task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_frozen_snapshots_week ON frozen_suite_snapshots(week_start_ts DESC);
 `;
 
 /**

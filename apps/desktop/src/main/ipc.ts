@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { BrowserWindow, dialog } from "electron";
+import { BrowserWindow, app, dialog } from "electron";
 import {
   IPC,
   validateSettings,
@@ -18,6 +18,7 @@ import { readFileTool } from "@coding-agent/tools";
 import type { Services } from "./services.js";
 import { handle } from "./ipc-handle.js";
 import { registerPhase3Ipc } from "./phase3-ipc.js";
+import { registerPhase4Ipc } from "./phase4-ipc.js";
 
 export function registerIpc(services: Services): void {
   const { storage, agent, settings } = services;
@@ -77,6 +78,7 @@ export function registerIpc(services: Services): void {
   handle(IPC.stopAgentRun, (args) => agent.stop((args as RunIdArgs).runId));
   handle(IPC.getAgentRun, (args) => agent.getDetail((args as RunIdArgs).runId));
   handle(IPC.listAgentRuns, (workspaceId) => agent.listRuns(workspaceId as string));
+  handle(IPC.clearAgentRuns, (args) => agent.clearRuns((args as WorkspaceIdArgs).workspaceId));
 
   handle(IPC.runCommand, async (args) => {
     const { workspaceId, command } = args as RunCommandArgs;
@@ -106,6 +108,7 @@ export function registerIpc(services: Services): void {
   });
 
   registerPhase3Ipc(services, requireWorkspaceRoot);
+  registerPhase4Ipc(services, requireWorkspaceRoot, app.getPath("userData"));
 }
 
 /** Broadcast an agent event to every open renderer window. */
