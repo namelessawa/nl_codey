@@ -7,6 +7,7 @@ import type {
   AgentStepType,
   BudgetLimits,
   ChatLLMProvider,
+  LLMMessage,
   LLMToolCall,
   RunCommandOutput,
   TestFailureReport,
@@ -176,12 +177,67 @@ export class AgentService {
     this.addStep(run.id, "message", `Task: ${task}`);
 
     this.setStatus(run.id, "tool_use");
-    void this.driveLoop(run.id, ws.rootPath, task, llm, controller).catch((err) => {
+    const ctx: ToolContext = { workspaceRoot: ws.rootPath, runId: run.id, signal: controller.signal };
+    const initialMessages: LLMMessage[] = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: await this.buildInitialUserMessage(task, ctx) },
+    ];
+    void this.driveLoop(run.id, ws.rootPath, initialMessages, llm, controller).catch((err) => {
       this.addStep(run.id, "error", asMessage(err));
       this.setStatus(run.id, "failed");
       this.controllers.delete(run.id);
     });
     return this.getDetail(run.id);
+  }
+
+  /**
+   * Continue a finished run with a follow-up task. The persisted conversation
+   * (system + prior turns + tool calls + results) is loaded and a new user
+   * message is appended, so the model sees full context. Re-runs the tool loop
+   * on the same runId — sidebar entry stays put, step log extends.
+   *
+   * Throws if the run is currently in flight or has no persisted conversation
+   * (older runs created before multi-turn was added).
+   */
+  async continueTask(runId: string, followUp: string): Promise<AgentRunDetail> {
+    const run = this.storage.getRun(runId);
+    if (!run) throw new Error(`Run not found: ${runId}`);
+    const ws = this.storage.getWorkspace(run.workspaceId);
+    if (!ws) throw new Error(`Workspace not found: ${run.workspaceId}`);
+    if (this.controllers.has(runId)) {
+      throw new Error("Run is already active — wait for it to finish or stop it first.");
+    }
+    const prior = this.storage.loadRunMessages(runId);
+    if (prior.length === 0) {
+      throw new Error(
+        "This run predates multi-turn support; no conversation was persisted. Start a new run instead.",
+      );
+    }
+
+    const controller = new AbortController();
+    this.controllers.set(runId, controller);
+
+    let llm: ChatLLMProvider;
+    try {
+      llm = this.resolveLLM();
+    } catch (err) {
+      this.addStep(runId, "error", asMessage(err));
+      this.setStatus(runId, "failed");
+      this.controllers.delete(runId);
+      return this.getDetail(runId);
+    }
+
+    this.storage.setRunModel(runId, llm.model);
+    this.addStep(runId, "message", `Follow-up: ${followUp}`);
+    this.setStatus(runId, "tool_use");
+
+    const messages: LLMMessage[] = [...prior, { role: "user", content: followUp }];
+    void this.driveLoop(runId, ws.rootPath, messages, llm, controller).catch((err) => {
+      this.addStep(runId, "error", asMessage(err));
+      this.setStatus(runId, "failed");
+      this.controllers.delete(runId);
+    });
+    return this.getDetail(runId);
   }
 
   /** Approve the pending apply_patch, resuming the loop. */
@@ -200,7 +256,7 @@ export class AgentService {
   private async driveLoop(
     runId: string,
     workspaceRoot: string,
-    task: string,
+    messages: LLMMessage[],
     llm: ChatLLMProvider,
     controller: AbortController,
   ): Promise<void> {
@@ -213,12 +269,10 @@ export class AgentService {
     });
     const budget = new BudgetController(this.budgetLimits());
 
-    const messages = [
-      { role: "system" as const, content: SYSTEM_PROMPT },
-      { role: "user" as const, content: await this.buildInitialUserMessage(task, ctx) },
-    ];
-
-    // Regression guard: snapshot the pristine test/build state before any edit.
+    // Regression guard: snapshot the test/build state before any edit in this
+    // turn. For a continueTask, this re-baselines against the (already-modified)
+    // workspace, which is correct — we want to detect regressions relative to
+    // what passes now, not the original pristine state.
     await this.captureBaseline(runId, ctx, settings.allowShellExecution);
 
     try {
@@ -269,6 +323,10 @@ export class AgentService {
           return res.resultText;
         },
       });
+      // Persist the full post-loop conversation so a follow-up (continueTask)
+      // resumes from the exact state the model just left, including any mid-
+      // loop compression.
+      this.storage.saveRunMessages(runId, outcome.finalMessages);
       this.applyOutcome(runId, outcome);
     } finally {
       this.controllers.delete(runId);

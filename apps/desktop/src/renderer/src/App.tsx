@@ -211,7 +211,15 @@ export function App(): JSX.Element {
     guard(async () => {
       const preconditionError = runPreconditionError(Boolean(workspace), composer);
       if (preconditionError) throw new Error(preconditionError);
-      const next = await api.runAgentTask(workspace!.id, composer.trim());
+      const text = composer.trim();
+      // Continue the current run if one is open, not being recomposed, and
+      // already in a finished state. Otherwise spin up a fresh run.
+      const continuing = Boolean(
+        detail && !isComposingNew && !isRunActive(detail.run.status),
+      );
+      const next = continuing
+        ? await api.continueAgentTask(detail!.run.id, text)
+        : await api.runAgentTask(workspace!.id, text);
       setActiveRunId(next.run.id);
       setDetail(next);
       setLiveText("");

@@ -5,6 +5,7 @@ import {
   type AgentApi,
   type AgentEvent,
   type AppSettings,
+  type ContinueAgentTaskArgs,
   type CreateMemoryArgs,
   type DeleteMemoryArgs,
   type EditTaskNodeArgs,
@@ -31,6 +32,8 @@ const api: AgentApi = {
     ipcRenderer.invoke(IPC.listWorkspaceFiles, workspaceId),
   readFile: (args: ReadFileArgs) => ipcRenderer.invoke(IPC.readFile, args),
   runAgentTask: (args: RunAgentTaskArgs) => ipcRenderer.invoke(IPC.runAgentTask, args),
+  continueAgentTask: (args: ContinueAgentTaskArgs) =>
+    ipcRenderer.invoke(IPC.continueAgentTask, args),
   applyAgentPatch: (args: RunIdArgs) => ipcRenderer.invoke(IPC.applyAgentPatch, args),
   rejectAgentPatch: (args: RunIdArgs) => ipcRenderer.invoke(IPC.rejectAgentPatch, args),
   rollbackRun: (args: RunIdArgs) => ipcRenderer.invoke(IPC.rollbackRun, args),
