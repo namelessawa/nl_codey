@@ -1,233 +1,263 @@
-# Coding Agent — Local Windows GUI Coding Agent
+# Coding Agent — 本地 Windows 桌面编码代理
 
-A local desktop coding agent. Open a project, type a task, and the agent drives an
-**autonomous tool-use loop**: it reads code, searches, plans, and edits — proposing
-each change as a patch. Nothing is written until you **approve**. Every step is logged
-to SQLite, every change is snapshotted, and any run can be **rolled back**. All file
-and command access is confined to the workspace root.
+一个本地桌面端的编码代理。打开一个项目，输入一项任务，代理会驱动一个
+**自主工具调用循环**：它读取代码、搜索、规划、并修改 —— 每一次修改都
+以补丁的形式提出。**未经你批准，任何文件都不会被写入。** 每一步都会
+被记录到 SQLite，每一次改动都会被快照,任何一次运行都可以 **回滚**。
+文件和命令访问严格限制在工作区根目录之内。
 
-The project grew across three phases, all now on `main`:
+项目分四个阶段演进，全部已合入 `main`：
 
-- **Phase 1 — safe single-pass MVP.** Path isolation, command whitelist, timeout,
-  output truncation, and explicit approval before any write.
-- **Phase 2 — autonomous tool-use loop.** The model drives a streaming tool-calling
-  loop with a budget breaker, an automatic verify→repair cycle, a regression guard
-  against a pristine test baseline, context compression for long runs, retry-with-backoff
-  on transient LLM failures, the V4A context patch format, a symbol index, and an eval
-  harness. Live trace, iteration timeline, budget indicator, and project card in the GUI.
-- **Phase 3 — long-term project entrustment.** Cross-session memory, a semantic index,
-  task planning (dependency graph + scheduler), multi-agent orchestration
-  (Planner / Coder / Reviewer), git integration (branch / commit / PR), web tools, and
-  WSL/Docker sandbox runners — surfaced behind a "Phase 3" tab.
+- **Phase 1 — 安全的单轮 MVP。** 路径隔离、命令白名单、超时控制、
+  输出截断，写入前必须显式批准。
+- **Phase 2 — 自主工具调用循环。** 模型驱动的流式 tool-calling 循环，
+  带预算熔断器、自动 verify→repair 循环、对照基线测试的回归守卫、
+  长上下文压缩、对 LLM 瞬时失败的指数退避重试、V4A 上下文补丁格式、
+  符号索引以及 eval 测评框架。GUI 中实时显示 trace、迭代时间线、
+  预算指示器和项目卡片。
+- **Phase 3 — 长期项目托付。** 跨会话记忆、语义索引、任务规划
+  （依赖图 + 调度器）、多代理编排（Planner / Coder / Reviewer）、
+  Git 集成（分支 / 提交 / PR）、Web 工具、以及 WSL/Docker 沙箱运行器
+  —— 通过 "Phase 3" 标签页统一呈现。
+- **Phase 4 — 跨项目自演化 + 团队规模。** 七个新的 workspace 包，
+  让代理从"单项目托付"演进到"可证明的跨项目持续改进 + 可扩展到
+  整夜工作"：跨项目知识图谱、风格规范学习器、被动反馈信号收集、
+  可选的 LoRA 微调管道（带三规则评估门）、分布式协调器、只读式
+  技术债扫描提案箱、插件 SDK。每项能力都有独立的功能开关，
+  即使全部禁用，系统也能优雅退化为完整的 Phase 3。
 
-## Architecture
+## 架构
 
-A pnpm monorepo (`apps/*`, `packages/*`). Workspace packages ship raw TypeScript source
-and are **bundled** by `electron-vite`; cross-package imports use the `@coding-agent/*`
-alias with `.js` specifiers (NodeNext/Bundler ESM convention).
+pnpm monorepo 结构（`apps/*`、`packages/*`）。Workspace 包以原始
+TypeScript 源码方式发布，由 `electron-vite` **打包**；跨包引用使用
+`@coding-agent/*` 别名 + `.js` 后缀（NodeNext/Bundler ESM 约定）。
 
 ```
-apps/desktop          Electron app (main / preload / React renderer)
-packages/shared       Types + IPC contract — the dependency hub everything imports
-packages/sandbox      Path isolation, command whitelist/router, WSL + Docker runners
-packages/storage      SQLite (better-sqlite3): workspaces/runs/steps/snapshots + Phase 3 tables
-packages/project-indexer  File scan + ignore rules + project-type detection
-packages/llm          Provider abstraction: streaming chat() + complete(), OpenAI-compat + Anthropic
-packages/tools        The agent's tools (list/read/search/patch/run/git/symbol/web/memory/task)
-packages/agent-core   Tool-use loop, budget, verifier, regression guard, compressor, eval, rollback
-packages/memory       Cross-session memory: decision/preference/failure/fact entries + retriever
-packages/semantic-index   Embedders, chunker, cosine vector search, incremental reindex
-packages/planner      Dependency graph, DAG validation, scheduler waves, LLM decomposer
-packages/orchestrator Planner/Coder/Reviewer roles, message bus, lock manager, worker pool
-packages/git-integration  Branch manager, conventional commit writer, PR generator, diff summarizer
-packages/web-tools    Domain whitelist, readability fetch, search backends
+apps/desktop              Electron 应用（main / preload / React 渲染层）
+packages/shared           类型定义 + IPC 契约 —— 所有包都依赖它,是依赖中枢
+packages/sandbox          路径隔离、命令白名单/路由、WSL + Docker 运行器
+packages/storage          SQLite（better-sqlite3）：workspaces/runs/steps/snapshots + Phase 3/4 表
+packages/project-indexer  文件扫描、忽略规则、项目类型检测
+packages/llm              Provider 抽象：流式 chat() + complete(),OpenAI 兼容 + Anthropic
+packages/tools            代理的工具集（list/read/search/patch/run/git/symbol/web/memory/task）
+packages/agent-core       工具调用循环、预算、verifier、回归守卫、压缩器、eval、rollback
+packages/memory           跨会话记忆：decision/preference/failure/fact 条目 + 检索器
+packages/semantic-index   嵌入器、分块器、余弦向量检索、增量重建索引
+packages/planner          依赖图、DAG 校验、调度波次、LLM 任务分解器
+packages/orchestrator     Planner/Coder/Reviewer 角色、消息总线、锁管理器、worker 池
+packages/git-integration  分支管理、conventional commit 编写器、PR 生成器、diff 摘要
+packages/web-tools        域名白名单、可读性抓取、搜索后端
+packages/global-memory    跨项目知识图谱 + provenance + 隐私范围 + 撤回级联
+packages/style-profile    StyleSpec 数据模型 + 代码风格抽取器 + diff 反馈学习器
+packages/learning         被动信号收集器 + 偏好数据集构建器 + 数据策展
+packages/finetune         可选 LoRA/QLoRA + 三规则评估门 + 模型注册表 + 嵌入 A/B
+packages/distributed      Coordinator + 任务分发器 + 节点恢复 + 单机优雅降级
+packages/proactive        只读技术债扫描 + 提案箱（snooze/dismiss/convert）
+packages/plugin-sdk       Manifest 校验 + 逐次权限重检 + 沙箱路由 + 命令转义
 ```
 
-The renderer never touches Node directly — it talks to the main process through a typed
-`window.agentApi` exposed by the preload bridge (`contextIsolation: true`,
-`nodeIntegration: false`). Live updates flow back via a `broadcast` → `onAgentEvent`
-channel carrying a discriminated `AgentEvent` union.
+渲染进程从不直接接触 Node —— 它通过 preload 桥暴露的类型化
+`window.agentApi` 与主进程通信（`contextIsolation: true`，
+`nodeIntegration: false`）。实时更新通过 `broadcast` → `onAgentEvent`
+通道反向流回，载体是一个判别联合类型 `AgentEvent`。
 
-## Requirements
+## 环境要求
 
-- Node.js 20+ (developed on 24)
+- Node.js 20+（开发环境为 24）
 - pnpm 10+
-- Windows 11 (primary target)
-- A C/C++ build toolchain for the native `better-sqlite3` module
-  (Visual Studio Build Tools "Desktop development with C++", or run
-  `npm install --global windows-build-tools` once).
+- Windows 11（主要目标平台）
+- 一套 C/C++ 构建工具链，用于原生模块 `better-sqlite3`
+  （Visual Studio Build Tools 中的 "Desktop development with C++"，
+  或一次性执行 `npm install --global windows-build-tools`）。
 
-`ripgrep` is **bundled** via `@vscode/ripgrep` — no system install needed. WSL and
-Docker are optional; only the corresponding sandbox modes require them.
+`ripgrep` 已通过 `@vscode/ripgrep` **内置**，无需系统安装。WSL 和
+Docker 是可选的；仅当切换到对应沙箱模式时才需要。
 
-## Install
+## 安装
 
 ```powershell
 pnpm install
 ```
 
-`pnpm install` runs an `electron-rebuild` postinstall step that rebuilds
-`better-sqlite3` against Electron's ABI. If it fails (toolchain missing), install
-the C++ build tools and re-run:
+`pnpm install` 会执行 `electron-rebuild` postinstall 步骤，将
+`better-sqlite3` 重建为 Electron 的 ABI。如果失败（通常是工具链
+缺失），先安装 C++ 构建工具，然后重新运行：
 
 ```powershell
 pnpm rebuild:native
 ```
 
-## Run
+## 启动
 
 ```powershell
 pnpm dev
 ```
 
-This launches the Electron app with HMR. Use **Open** (top-left) to pick a project
-folder, type a task, and click **Run**.
+这会启动带 HMR 的 Electron 应用。点击左上角的 **打开** 选择项目
+文件夹，输入任务，点击 **运行**。
 
-Build a production bundle:
+构建生产包：
 
 ```powershell
 pnpm build
 ```
 
-## Workspace UI
+## 工作区 UI
 
-The left panel keeps recent projects and the current folder structure close at hand; the
-center panel streams the agent's work across several tabs.
+左侧面板把最近项目和当前文件夹结构常驻屏幕；中央面板用多个标签页
+流式展示代理的工作。
 
-- **Recent workspaces** — previously opened folders are listed most-recent-first
-  (persisted in SQLite) so a project can be reopened in one click. Reopening validates
-  the folder still exists before switching to it.
-- **Structured file tree** — the workspace renders as a collapsible folder/file tree
-  (directories first, expandable), not a flat path list.
-- **Project card** — detected project kind (Node/TS, Python, Go, Rust, or unknown), the
-  validation commands the agent prefers, file count, and top extensions.
-- **Formatted output** — agent messages render as markdown (headings, lists, bold/italic,
-  inline and fenced code) via a small dependency-free renderer.
-- **Auto-scroll** — the step stream follows new output as the agent streams, and stops
-  following when you scroll up (re-engaging when you return to the bottom).
-- **Trace / Timeline / Budget** — a Trace tab with per-step timestamps, durations,
-  filtering, search, and JSON export; a Timeline tab visualizing edit→verify→repair
-  iterations; and a top-bar budget indicator (cost / iterations / tool-calls / elapsed)
-  that turns amber past 80% and red past 100%.
-- **Phase 3 tab** — memory panel, task tree, role timeline, git diff preview, failure
-  library, and sandbox indicator.
+- **最近工作区** —— 之前打开过的文件夹按时间倒序列出
+  （持久化到 SQLite），一键即可重新打开。打开前会先验证文件夹是否
+  仍然存在。
+- **结构化文件树** —— 工作区以可折叠的目录/文件树渲染
+  （目录优先，可展开），而不是扁平路径列表。
+- **项目卡片** —— 检测到的项目类型（Node/TS、Python、Go、Rust 或
+  未知）、代理倾向使用的校验命令、文件总数、出现最多的扩展名。
+- **格式化输出** —— 代理消息以 Markdown 渲染（标题、列表、加粗/
+  斜体、行内与围栏代码），由一个无依赖的小型渲染器实现。
+- **自动滚动** —— 步骤流随新输出滚动，向上翻看时会暂停
+  （回到底部时重新启用）。
+- **Trace / Timeline / Budget** —— Trace 标签页显示每步的时间戳、
+  耗时、过滤、搜索和 JSON 导出；Timeline 标签页可视化
+  edit→verify→repair 迭代；顶部预算指示器（成本 / 迭代次数 /
+  工具调用次数 / 已用时间）超过 80% 变琥珀色、超过 100% 变红。
+- **Phase 3 标签页** —— 记忆面板、任务树、角色时间线、git diff
+  预览、失败库、沙箱状态指示器。
+- **Phase 4 标签页** —— 全部七项 Phase 4 能力的开关面板：
+  知识图谱视图、风格规范编辑器、学习仪表盘（信号统计 + 冻结测试
+  集周趋势）、微调管理器（模型注册表 + 一键回滚 + 每个 job 的
+  eval Δ / 留出集 / 回归数）、提案箱（扫描 + 转换/snooze/dismiss）、
+  集群监控（每 10 秒自动刷新）、插件管理器（启用/禁用/卸载，
+  显示权限）。
 
-## Configure the LLM (Settings panel)
+## 配置 LLM（设置面板）
 
-Click the **gear icon** (⚙, top-right of the center toolbar) to open **Settings**.
-It has three groups:
+点击 **齿轮图标**（⚙，中央工具栏右上角）打开 **设置**。
+分为三组：
 
-- **LLM** — Provider (OpenAI / Anthropic / Google Gemini / DeepSeek / OpenRouter /
-  Custom), API Key (masked, with show/hide), Base URL (auto-filled per provider),
-  Model, Temperature (0–2), Max Tokens, Timeout (s), and a **Test connection**
-  button that sends one minimal request and reports 连接成功 / a redacted error.
-- **Agent** — workspace path, allow shell execution, confirm-before-command,
-  max auto steps, sandbox mode.
-- **Interface** — theme (System / Light / Dark), language (zh-CN / en-US), font size.
+- **LLM** —— Provider（OpenAI / Anthropic / Google Gemini /
+  DeepSeek / OpenRouter / Custom）、API Key（带遮罩 + 显隐切换）、
+  Base URL（按 Provider 自动填充）、Model、Temperature（0–2）、
+  Max Tokens、Timeout（秒），以及一个 **测试连接** 按钮（发送一次
+  最小请求，返回"连接成功"或脱敏后的错误）。
+- **Agent** —— 工作区路径、允许 shell 执行、命令执行前确认、
+  最大自动步数、沙箱模式。
+- **Interface** —— 主题（跟随系统 / 浅色 / 深色）、语言
+  （zh-CN / en-US）、字体大小。
 
-Save / Cancel / Reset-to-defaults (with a confirmation) sit in the footer; a toast
-confirms each save.
+页脚是 保存 / 取消 / 重置为默认值（重置时需确认），每次保存会有
+toast 提示。
 
-### Where the API key is stored
+### API Key 存储在哪里
 
-The API key is **encrypted at rest** via Electron `safeStorage` (OS-backed:
-Windows DPAPI / macOS Keychain / Linux Secret Service) in
-`<userData>/apikey.bin`. It is **never** written to `settings.json`, logged, or
-included in error messages (provider errors are redacted). All other settings are
-JSON at `<userData>/settings.json`. On Windows `<userData>` is
-`%APPDATA%/coding-agent`.
+API Key 通过 Electron `safeStorage` **静态加密**（OS 后端：
+Windows DPAPI / macOS Keychain / Linux Secret Service），写入
+`<userData>/apikey.bin`。它 **绝不** 写入 `settings.json`、不记录
+到日志、也不出现在错误消息里（provider 错误会被脱敏）。其他所有
+设置以 JSON 存于 `<userData>/settings.json`。Windows 下
+`<userData>` 是 `%APPDATA%/coding-agent`。
 
-> If the OS reports secure storage unavailable, the panel shows a warning and the
-> key is **not** persisted that session (no plaintext fallback on disk).
+> 如果操作系统报告安全存储不可用，面板会显示警告，且 API Key
+> **本次会话不会持久化**（不会回退到明文存盘）。
 
-### Provider coverage
+### Provider 覆盖
 
-OpenAI, DeepSeek, OpenRouter, Google Gemini, and Custom all use the shared
-OpenAI-compatible `/chat/completions` provider (Gemini via Google's OpenAI-compat
-base URL). Anthropic uses the native `/v1/messages` API. Both expose a streaming
-`chat()` (token deltas + tool calls, SSE reassembly) and a non-streaming `complete()`,
-and retry transient failures with bounded exponential backoff. A **Custom** provider
-only needs a Base URL + API Key + Model.
+OpenAI、DeepSeek、OpenRouter、Google Gemini、Custom 共用同一个
+OpenAI 兼容 `/chat/completions` provider（Gemini 走 Google 的
+OpenAI 兼容 base URL）。Anthropic 使用原生 `/v1/messages` API。
+两类都暴露流式 `chat()`（token 增量 + 工具调用，SSE 重组）和非
+流式 `complete()`，瞬时失败会以指数退避有界重试。**Custom**
+provider 只需 Base URL + API Key + Model。
 
-### Dev fallback (no key configured)
+### 无 Key 时的开发回退
 
-When no API key is saved, LLM calls fall back to the env provider from
-`.env` (copy `.env.example`). Default `LLM_PROVIDER=mock` needs no key and exercises
-the full tool-use / approve / verify / rollback loop without an API key.
+未配置 API Key 时，LLM 调用回退到 `.env` 中的 env provider
+（复制 `.env.example`）。默认 `LLM_PROVIDER=mock` 不需要 Key，
+可以完整跑通 工具调用 / 批准 / 校验 / 回滚 循环。
 
-The SQLite database lives at `<userData>/data/workspace-state.db`.
+SQLite 数据库位于 `<userData>/data/workspace-state.db`。
 
-## The agent's tools
+## 代理的工具
 
-Each tool enforces hard caps so a single step can't flood the model or escape the
-workspace.
+每个工具都强制硬上限，避免单步淹没模型上下文或越界访问工作区。
 
-| Tool | Limits / notes |
+| 工具 | 限制 / 说明 |
 |---|---|
-| `list_files` | workspace-only, ignores `node_modules/.git/dist/build/target/.venv/__pycache__/.next/out`, ≤500 files |
-| `read_file` | workspace-only, ≤200KB, binary rejected |
-| `read_file_range` | inclusive 1-indexed slice, ≤500 lines, reports total line count |
-| `search_text` | ripgrep, ≤100 matches, ≤300 chars context, ignored dirs skipped |
-| `find_symbol` | locate declarations or list a file's symbols (TS/JS, Python, Go, Rust), ≤400 files / ≤50 results |
-| `apply_patch` | unified diff **or** V4A context format; snapshots before write; transactional (no partial corruption); pauses for approval |
-| `run_command` | whitelist (or WSL/Docker per sandbox mode), 60s timeout, 100KB output cap, cwd = workspace root |
-| `git_status` / `git_diff` | branch + change summary; working-tree or staged unified diff |
-| `record_plan` | advisory structured plan recorded into the trace |
-| `semantic_search` | cosine search over the embedded project index |
-| `web_fetch` / `web_search` | readability fetch + search, restricted to a domain whitelist |
-| `read_memory` / `write_memory` | cross-session decision / preference / failure / fact entries |
-| `propose_task_breakdown` / `update_task_status` | task tree for planning and orchestration |
-| `request_review` / `approve_change` / `request_changes` | Coder↔Reviewer orchestration messages |
-| `write_file` | internal (post-approval), snapshot before write |
+| `list_files` | 仅工作区内，忽略 `node_modules/.git/dist/build/target/.venv/__pycache__/.next/out`，≤500 个文件 |
+| `read_file` | 仅工作区内，≤200KB，拒绝二进制文件 |
+| `read_file_range` | 1-索引闭区间切片，≤500 行,报告总行数 |
+| `search_text` | ripgrep，≤100 个匹配，≤300 字符上下文，自动跳过忽略目录 |
+| `find_symbol` | 定位声明或列出文件符号（TS/JS、Python、Go、Rust），≤400 个文件 / ≤50 个结果 |
+| `apply_patch` | 统一 diff **或** V4A 上下文格式；写入前先快照；事务性应用（失败不会留下部分损坏）；等待人工批准 |
+| `run_command` | 白名单（或按沙箱模式走 WSL/Docker），60 秒超时,100KB 输出上限,cwd 锁定工作区根 |
+| `git_status` / `git_diff` | 分支 + 变更摘要；工作树或暂存区的统一 diff |
+| `record_plan` | 把结构化计划写入 trace（仅建议性） |
+| `semantic_search` | 在嵌入式项目索引上做余弦检索 |
+| `web_fetch` / `web_search` | 可读性抓取 + 搜索,限制在域名白名单内 |
+| `read_memory` / `write_memory` | 跨会话的 decision / preference / failure / fact 条目 |
+| `propose_task_breakdown` / `update_task_status` | 用于规划和编排的任务树 |
+| `request_review` / `approve_change` / `request_changes` | Coder↔Reviewer 编排消息 |
+| `write_file` | 内部使用（仅在批准后调用），写入前快照 |
 
-**Command whitelist** (sandbox mode `whitelist`, the default): `npm test`, `npm run test`,
-`npm run build`, `pnpm test`, `pnpm build`, `yarn test`, `yarn build`, `pytest`,
-`pytest .`, `go test ./...`, `cargo test`, `tsc --noEmit`, `npx tsc --noEmit`. To allow a
-new validation command, add it to the whitelist — do not loosen the matcher.
+**命令白名单**（沙箱模式 `whitelist`，默认）：`npm test`、`npm run test`、
+`npm run build`、`pnpm test`、`pnpm build`、`yarn test`、`yarn build`、
+`pytest`、`pytest .`、`go test ./...`、`cargo test`、`tsc --noEmit`、
+`npx tsc --noEmit`。要加入新的校验命令，请加入白名单，**不要** 放宽
+匹配器。
 
-## Sandbox modes
+## 沙箱模式
 
-`run_command` routes through one of three modes (selectable in Settings → Agent):
+`run_command` 通过以下三种模式之一路由（在 设置 → Agent 中选择）：
 
-- **`whitelist`** (default, safest) — exact-match allowlist, screened for dangerous
-  patterns (chaining, substitution, redirection, `rm -rf`, `powershell`, …), spawned on
-  the host with cwd pinned to the workspace root.
-- **`wsl`** — runs inside a WSL Ubuntu instance against a workspace copy.
-- **`docker`** — runs inside an ephemeral container with the workspace bind-mounted.
+- **`whitelist`**（默认,最安全）—— 精确匹配的允许列表,会被危险
+  模式（命令链、命令替换、重定向、`rm -rf`、`powershell` 等）
+  筛查,最终在宿主机上 spawn,cwd 锁定到工作区根。
+- **`wsl`** —— 在 WSL Ubuntu 实例中运行，针对工作区的副本。
+- **`docker`** —— 在临时容器中运行，工作区以绑定挂载方式注入。
 
-WSL/Docker runs default to **no network egress** unless a command opts in, and sync
-changed files back to the host.
+WSL/Docker 运行默认 **无网络出口**，除非某条命令明确开启；改动的
+文件会同步回宿主。
 
-## Test
+## 测试
 
 ```powershell
-pnpm test          # vitest run (all packages)
-pnpm typecheck     # tsc --noEmit across all workspace projects
+pnpm test          # vitest run（所有包）
+pnpm typecheck     # tsc --noEmit 跨所有 workspace 项目
 ```
 
-Coverage spans path isolation (incl. symlink escape), the command whitelist + injection
-rejection + sandbox policy/router, `apply_patch` (unified + V4A, new/modify/delete,
-no-corrupt on failure), the tool-use loop / budget / verifier / regression guard /
-compressor / eval harness, the memory retriever, semantic index, planner graph/scheduler,
-orchestrator message bus / locks / roles, git integration, web tools, the LLM providers
-(streaming chat, retries), and the storage lifecycle.
+覆盖范围包括：路径隔离（含 symlink 逃逸）、命令白名单 + 注入拒绝 +
+沙箱策略/路由、`apply_patch`（统一 diff + V4A，新增/修改/删除，
+失败不破坏文件）、工具调用循环 / 预算 / verifier / 回归守卫 /
+压缩器 / eval 测评框架、记忆检索器、语义索引、Planner 图/调度器、
+Orchestrator 消息总线 / 锁 / 角色、Git 集成、Web 工具、LLM provider
+（流式 chat、重试），以及存储生命周期。
 
-> **Native-module note:** `pnpm test` runs under plain Node, while `better-sqlite3` is
-> rebuilt against Electron's ABI for `pnpm dev`/`build`. The single test that opens a real
-> DB (`packages/storage/src/storage.test.ts`) therefore fails with an ABI mismatch under
-> Node — a toolchain artifact, not a code regression. See `CLAUDE.md`.
+> **原生模块注意：** `pnpm test` 在裸 Node 下运行，而 `better-sqlite3`
+> 在 `pnpm dev`/`build` 流程中是按 Electron 的 ABI 重建的。因此唯一
+> 真正打开 DB 的测试（`packages/storage/src/storage.test.ts`）在 Node
+> 下会因 ABI 不匹配失败 —— 这是工具链层面的现象,不是代码回归。
+> 详见 `CLAUDE.md`。
 
-## Safety model
+## 安全模型
 
-- Every path is `resolve`d and checked to remain inside the workspace root
-  (symlink escapes via `realpath`, Windows separators handled).
-- Commands are exact-matched against the whitelist (or routed through the WSL/Docker
-  sandbox) and screened for dangerous patterns before spawning.
-- Patches snapshot prior content before writing and apply transactionally; cumulative
-  per-iteration snapshots are restored in reverse on rollback.
-- Patch application requires explicit user approval in the GUI — the loop parks until the
-  Apply/Reject IPC resolves.
-- A per-run budget breaker caps cost / iterations / tool-calls / time (hard-capped at
-  $5.00) and stops the run when tripped.
-- Any run is fully reversible via **Rollback**; a run can be cancelled via **Stop**
-  (AbortSignal, checkpointed between phases).
+- 每个路径都被 `resolve` 并校验确实位于工作区根之内（含 `realpath`
+  的 symlink 逃逸检查，正确处理 Windows 路径分隔符）。
+- 命令在 spawn 前要么精确匹配白名单、要么经 WSL/Docker 沙箱路由，
+  并对危险模式做筛查。
+- 补丁在写入前先快照原内容,并以事务方式应用；rollback 时按逆序
+  恢复累计的迭代快照。
+- 补丁的应用必须在 GUI 中显式批准 —— 循环会停在那里等 Apply/Reject
+  IPC 解析。
+- 每次运行有预算熔断器，限制 成本 / 迭代次数 / 工具调用次数 /
+  时长（成本硬上限 $5.00），触发后立即停止。
+- 任意一次运行都可以通过 **Rollback** 完整回滚；运行可以通过
+  **Stop** 取消（AbortSignal,阶段间设有 checkpoint）。
+- **Phase 4 微调** 受三规则评估门保护：候选模型分数 ≥ 基线、零
+  per-task 回归、留出集不崩溃；任何一条不满足都不会被晋升。
+  模型注册表强制"同时只有一个 active 模型"，可一键回滚到基线。
+- **Phase 4 提案箱** 是只读的：扫描器从不修改文件、从不创建任务、
+  从不运行非只读命令；所有动作必须经人工 convert 才会进入 Planner
+  管道。
+- **Phase 4 插件** 必须经人工逐权限批准（永远不会自动批准），插件
+  调用时每次都重新校验权限；命令参数 shell 转义。
