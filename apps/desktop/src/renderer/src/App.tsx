@@ -388,6 +388,17 @@ export function App(): JSX.Element {
     "prev-thread": () => navigateRun(-1),
   });
 
+  // Identifies which view the main slot is currently rendering. Drives the
+  // cross-fade animation keyed by `data-view`; the value is also used as the
+  // React key so each view re-mounts cleanly when the user switches.
+  const viewKind: "empty" | "compose" | "chat" = !workspace
+    ? "empty"
+    : isComposingNew || !detail
+      ? "compose"
+      : "chat";
+  const viewKey =
+    viewKind === "chat" && detail ? `chat:${detail.run.id}` : viewKind;
+
   const main = useMemo(() => {
     if (!workspace) {
       return (
@@ -459,13 +470,15 @@ export function App(): JSX.Element {
         onClearRuns={() => void clearRuns()}
         onOpenQuickPrefs={() => setQuickPrefsOpen((o) => !o)}
       />
-      <div className="main">
+      <div className="main" data-view={viewKind}>
         {error && (
           <div className="error-banner" role="alert">
             {error}
           </div>
         )}
-        {main}
+        <div key={viewKey} className="view-slot" data-view={viewKind}>
+          {main}
+        </div>
         {approvalOpen && detail?.pendingPatch && (
           <ApprovalSheet
             patch={detail.pendingPatch}

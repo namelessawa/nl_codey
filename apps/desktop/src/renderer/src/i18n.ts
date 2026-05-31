@@ -166,6 +166,14 @@ const STRINGS = {
     "zh-CN": "状态脉动 · 面板过渡 · 滚动到底",
     "en-US": "status pulses, panel transitions, scroll-to-bottom",
   },
+  "ui.smoothTransitions": {
+    "zh-CN": "开启平滑切换",
+    "en-US": "Smooth view transitions",
+  },
+  "ui.smoothTransitionsHint": {
+    "zh-CN": "在空白页 / 新建任务 / 对话视图之间淡入淡出 · 关闭动画时自动失效",
+    "en-US": "fade between empty / compose / chat views · ignored when motion is off",
+  },
 
   "quickprefs.title": { "zh-CN": "快速偏好", "en-US": "quick preferences" },
   "quickprefs.allSettings": { "zh-CN": "全部设置…", "en-US": "All settings…" },
