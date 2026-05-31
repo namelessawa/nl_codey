@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppSettings, TestConnectionResult } from "@coding-agent/shared";
+import type { AppSettings, InstallationStatus, TestConnectionResult } from "@coding-agent/shared";
 import { useSettings } from "../hooks/useSettings.js";
 import { t } from "../i18n.js";
 import { Icon } from "./Icons.js";
@@ -13,6 +13,10 @@ export type SettingsTab = "llm" | "agent" | "ui" | "shortcuts";
 type Props = {
   open: boolean;
   initialTab?: SettingsTab;
+  /** Docker availability + skip choice; drives the Agent panel lock-out. */
+  installation: InstallationStatus;
+  /** Re-open the Docker install modal from the locked Agent panel banner. */
+  onRequestDockerInstall: () => void;
   onClose: () => void;
   onSaved: (settings: AppSettings) => void;
   onToast: (kind: "success" | "error", text: string) => void;
@@ -21,6 +25,8 @@ type Props = {
 export function SettingsModal({
   open,
   initialTab = "llm",
+  installation,
+  onRequestDockerInstall,
   onClose,
   onSaved,
   onToast,
@@ -222,6 +228,8 @@ export function SettingsModal({
                     onChange={(agent) => handleSetDraft({ ...draft, agent })}
                     issues={issues}
                     lang={lang}
+                    installation={installation}
+                    onRequestInstall={onRequestDockerInstall}
                   />
                 )}
                 {tab === "ui" && (

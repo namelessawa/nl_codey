@@ -39,6 +39,18 @@ export type AgentDeps = {
   resolveLLM: () => ChatLLMProvider;
   /** Read the latest agent settings (shell toggle, confirmation, etc.). */
   getAgentSettings: () => AgentSettings;
+  /**
+   * Optional gate consulted before EVERY tool dispatch — including the
+   * LLM-initiated tool calls inside the autonomous loop. The installation
+   * gate (apps/desktop/src/main/installation-gate.ts) uses this to refuse
+   * `run_command`/`apply_patch`/`write_file` when Docker is missing and
+   * the user opted to skip the install prompt.
+   *
+   * Must throw a readable Error to deny the call; the executor catches it
+   * and feeds the message back to the model so the run can continue with
+   * a different action instead of crashing.
+   */
+  assertToolAllowed?: (toolName: string) => void;
   emit: (event: AgentEvent) => void;
 };
 
@@ -50,6 +62,7 @@ export class AgentService {
   private readonly storage: Storage;
   private readonly resolveLLM: () => ChatLLMProvider;
   private readonly getAgentSettings: () => AgentSettings;
+  private readonly assertToolAllowed: ((toolName: string) => void) | undefined;
   private readonly emit: (event: AgentEvent) => void;
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
@@ -61,6 +74,7 @@ export class AgentService {
     this.storage = deps.storage;
     this.resolveLLM = deps.resolveLLM;
     this.getAgentSettings = deps.getAgentSettings;
+    this.assertToolAllowed = deps.assertToolAllowed;
     this.emit = deps.emit;
   }
 
@@ -266,6 +280,11 @@ export class AgentService {
       ctx,
       storage: this.storage,
       allowShellExecution: settings.allowShellExecution,
+      // Plumb the installation gate to the tool dispatcher so LLM-initiated
+      // unsafe tool calls are also refused in degraded mode.
+      ...(this.assertToolAllowed
+        ? { assertToolAllowed: this.assertToolAllowed }
+        : {}),
     });
     const budget = new BudgetController(this.budgetLimits());
 

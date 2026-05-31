@@ -3,6 +3,7 @@ import type {
   AgentRun,
   AgentRunDetail,
   AppSettings,
+  InstallationStatus,
   EvalRunResult,
   FeedbackSignal,
   FeedbackSignalInput,
@@ -215,6 +216,19 @@ export const api = {
     unwrap(window.agentApi.getPhase4Settings()),
   updatePhase4Settings: (settings: Phase4Settings): Promise<Phase4Settings> =>
     unwrap(window.agentApi.updatePhase4Settings({ settings })),
+  // --- Installation gate (instruction branch) ---
+  getInstallationStatus: (): Promise<InstallationStatus> =>
+    unwrap(window.agentApi.getInstallationStatus()),
+  recheckDocker: (): Promise<InstallationStatus> =>
+    unwrap(window.agentApi.recheckDocker()),
+  skipInstallationGate: (): Promise<InstallationStatus> =>
+    unwrap(window.agentApi.skipInstallationGate()),
+  resumeInstallationGate: (): Promise<InstallationStatus> =>
+    unwrap(window.agentApi.resumeInstallationGate()),
+  markFirstRunCompleted: (): Promise<InstallationStatus> =>
+    unwrap(window.agentApi.markFirstRunCompleted()),
+  openDockerInstallPage: (): Promise<{ opened: boolean }> =>
+    unwrap(window.agentApi.openDockerInstallPage()),
   onAgentEvent: (handler: (event: AgentEvent) => void): (() => void) =>
     window.agentApi.onAgentEvent(handler),
 };

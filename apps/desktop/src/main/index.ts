@@ -36,6 +36,12 @@ app.whenReady().then(() => {
   registerIpc(services);
   createWindow();
 
+  // Probe Docker on boot. We don't await — the renderer queries
+  // `getInstallationStatus` on mount, and the broadcast that recheck() emits
+  // wakes the modal as soon as the probe lands. A failed probe just means
+  // Docker isn't installed, which is the whole reason we run this.
+  void services.installationGate.recheck();
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
