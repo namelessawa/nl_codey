@@ -35,15 +35,14 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
       return createLLMProvider(config);
     },
     getAgentSettings: () => settings.getSettings().agent,
+    // Tool-dispatch gate: refuse unsafe tools (`run_command`, `apply_patch`,
+    // `write_file`) when Docker is missing and the user skipped the install
+    // prompt. Catches both user-typed commands AND LLM-initiated tool calls
+    // inside the autonomous loop. Bound so `this` inside the gate keeps
+    // pointing at the InstallationGate instance.
+    assertToolAllowed: (toolName: string) => installationGate.assertToolAllowed(toolName),
     emit,
   });
 
   return { storage, settings, agent, installationGate };
 }
-
-// NOTE: tool-dispatch gating for the agent's autonomous loop (refuse
-// `run_command`/`apply_patch`/`write_file` when degraded) currently lives at
-// the IPC boundary (apps/desktop/src/main/ipc.ts → runCommand handler) and the
-// renderer (`useInstallationGate`). Pushing the check into agent-core's
-// tool-registry would catch LLM-initiated tool calls too — tracked as a
-// follow-up in docs/sandbox/appcontainer-spike.md §9.
