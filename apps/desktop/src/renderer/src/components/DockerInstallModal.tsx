@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import type { InstallationStatus } from "@coding-agent/shared";
 import { Icon } from "./Icons.js";
+import { useLang, useT } from "../lang-context.js";
+import { tf } from "../i18n.js";
 
 type Props = {
   open: boolean;
@@ -36,6 +38,8 @@ export function DockerInstallModal({
   onSkip,
   onClose,
 }: Props): JSX.Element | null {
+  const tr = useT();
+  const lang = useLang();
   // Lock body scroll while open — same convention as SettingsModal.
   useEffect(() => {
     if (!open) return;
@@ -67,14 +71,14 @@ export function DockerInstallModal({
         <header className="dim-head">
           <span className="dim-eyebrow">
             <span className="dim-dot dim-dot-red" />
-            Sandbox unavailable
+            {tr("docker.sandboxUnavailable")}
           </span>
-          <h2 id="docker-modal-title">Docker is required for safe operation</h2>
+          <h2 id="docker-modal-title">{tr("docker.required")}</h2>
           {canDismiss ? (
             <button
               type="button"
               className="dim-close"
-              aria-label="Close"
+              aria-label={tr("docker.close")}
               onClick={onClose}
             >
               <Icon name="x" size={16} />
@@ -83,44 +87,33 @@ export function DockerInstallModal({
         </header>
 
         <section id="docker-modal-body" className="dim-body">
-          <p>
-            This coding agent runs commands and edits files in your workspace.
-            Without a container sandbox, any tool call—test runners, build
-            scripts, generated code—executes <strong>directly on your machine</strong>
-            with the full permissions of your user account.
-          </p>
+          <p>{tr("docker.body")}</p>
 
           <ul className="dim-risks">
             <li>
               <Icon name="x" size={12} stroke={2} />
-              A buggy or malicious tool can delete files anywhere you have access
+              {tr("docker.risk1")}
             </li>
             <li>
               <Icon name="x" size={12} stroke={2} />
-              Credentials and SSH keys outside the workspace are reachable
+              {tr("docker.risk2")}
             </li>
             <li>
               <Icon name="x" size={12} stroke={2} />
-              Network egress is unrestricted — leaks and exfiltration are possible
+              {tr("docker.risk3")}
             </li>
           </ul>
 
-          <p className="dim-recommendation">
-            <strong>Install Docker Desktop</strong> to confine every command to an
-            ephemeral container with the workspace bind-mounted and the network
-            blocked by default. This is the same isolation Claude Code uses on
-            Linux/macOS.
-          </p>
+          <p className="dim-recommendation">{tr("docker.recommendation")}</p>
 
           {probeFailed ? (
             <div className="dim-probe-error">
-              Last probe failed: <code>{status.docker.error}</code>
+              {tr("docker.probeFailed")} <code>{status.docker.error}</code>
             </div>
           ) : null}
           {status.docker.installed && !status.docker.daemonRunning ? (
             <div className="dim-probe-error">
-              Docker CLI found ({status.docker.version}) but the daemon isn't
-              running. Start Docker Desktop and click "Re-check".
+              {tf("docker.daemonStopped", lang, { version: status.docker.version ?? "" })}
             </div>
           ) : null}
         </section>
@@ -130,9 +123,9 @@ export function DockerInstallModal({
             type="button"
             className="btn ghost danger"
             onClick={onSkip}
-            title="Disables run_command, apply_patch, write_file until cleared"
+            title={tr("docker.skipTitle")}
           >
-            Skip and accept the risk
+            {tr("docker.skip")}
           </button>
           <div className="dim-foot-spacer" />
           <button
@@ -141,11 +134,11 @@ export function DockerInstallModal({
             onClick={onRecheck}
             disabled={rechecking}
           >
-            {rechecking ? "Re-checking…" : "Re-check"}
+            {rechecking ? tr("docker.rechecking") : tr("docker.recheck")}
           </button>
           <button type="button" className="btn primary" onClick={onInstall}>
             <Icon name="folder" size={13} />
-            Install Docker Desktop
+            {tr("docker.install")}
           </button>
         </footer>
       </div>

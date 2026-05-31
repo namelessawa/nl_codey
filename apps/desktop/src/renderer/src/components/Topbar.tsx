@@ -3,6 +3,7 @@ import { forwardRef } from "react";
 import type { AgentRun, InstallationStatus, Workspace } from "@coding-agent/shared";
 import { Icon } from "./Icons.js";
 import { DockerStatusBadge } from "./DockerStatusBadge.js";
+import { useT } from "../lang-context.js";
 
 interface TopbarProps {
   workspace: Workspace | null;
@@ -37,6 +38,7 @@ export const Topbar = forwardRef(function Topbar(
   }: TopbarProps,
   modelChipRef: ForwardedRef<HTMLButtonElement>,
 ): JSX.Element {
+  const tr = useT();
   const wsName = workspace ? workspaceName(workspace.rootPath) : null;
   return (
     <header className="topbar">
@@ -49,7 +51,11 @@ export const Topbar = forwardRef(function Topbar(
       <button
         className="ws"
         onClick={onSwitchWorkspace}
-        title={workspace ? `Switch workspace · ${workspace.rootPath}` : "Open a workspace"}
+        title={
+          workspace
+            ? `${tr("topbar.switchWorkspace")} · ${workspace.rootPath}`
+            : tr("topbar.openWorkspace")
+        }
         type="button"
       >
         <Icon name="folder" size={13} />
@@ -61,7 +67,7 @@ export const Topbar = forwardRef(function Topbar(
             <Icon name="chev-right" size={11} stroke={2} style={{ opacity: 0.6 }} />
           </>
         ) : (
-          <span className="ws-empty">No workspace open</span>
+          <span className="ws-empty">{tr("topbar.noWorkspace")}</span>
         )}
       </button>
 
@@ -69,9 +75,9 @@ export const Topbar = forwardRef(function Topbar(
 
       {activeRun && (
         <span className="run-counter">
-          run #{shortRunId(activeRun.id)}
+          {tr("topbar.runHash")} #{shortRunId(activeRun.id)}
           {typeof activeRun.iterationCount === "number" && activeRun.iterationCount > 0
-            ? ` · iter ${activeRun.iterationCount}`
+            ? ` · ${tr("topbar.iter")} ${activeRun.iterationCount}`
             : ""}
         </span>
       )}
@@ -79,12 +85,12 @@ export const Topbar = forwardRef(function Topbar(
       <button
         ref={modelChipRef}
         className="model-chip"
-        title="Switch model"
+        title={tr("topbar.switchModel")}
         type="button"
         onClick={onOpenModelSwitcher}
       >
         <Icon name="sparkle" size={12} />
-        <span className="mc-name">{currentModel || "no model"}</span>
+        <span className="mc-name">{currentModel || tr("topbar.noModel")}</span>
         <Icon
           name="chev-right"
           size={10}
@@ -103,15 +109,15 @@ export const Topbar = forwardRef(function Topbar(
             display: "inline-block",
           }}
         />
-        {llmConnected ? "connected" : "not configured"}
+        {llmConnected ? tr("topbar.connected") : tr("topbar.notConfigured")}
       </span>
 
       <DockerStatusBadge status={installation} onClick={onOpenInstallReminder} />
 
       <button
         className="icon-btn"
-        title="Settings"
-        aria-label="Settings"
+        title={tr("topbar.settings")}
+        aria-label={tr("topbar.settings")}
         onClick={onOpenSettings}
         type="button"
       >

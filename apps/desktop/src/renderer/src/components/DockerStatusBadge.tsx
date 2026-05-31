@@ -1,4 +1,6 @@
 import type { InstallationStatus } from "@coding-agent/shared";
+import { useLang, useT } from "../lang-context.js";
+import { tf } from "../i18n.js";
 
 type Props = {
   status: InstallationStatus;
@@ -11,6 +13,8 @@ type Props = {
  * even occupy pixels. Clicking the badge re-opens the install modal.
  */
 export function DockerStatusBadge({ status, onClick }: Props): JSX.Element | null {
+  const tr = useT();
+  const lang = useLang();
   const dockerUsable = status.docker.installed && status.docker.daemonRunning;
   if (dockerUsable) return null;
 
@@ -18,12 +22,12 @@ export function DockerStatusBadge({ status, onClick }: Props): JSX.Element | nul
   // - never installed → "Docker not installed"
   // - installed but daemon stopped → "Docker not running"
   const label = status.docker.installed
-    ? "Docker not running"
-    : "Docker not installed";
+    ? tr("docker.notRunning")
+    : tr("docker.notInstalled");
 
   const title = status.gate.userSkipped
-    ? `${label} · running in degraded mode (unsafe tools disabled). Click to review.`
-    : `${label} · click to open the install guide`;
+    ? tf("docker.badge.degradedTitle", lang, { label })
+    : tf("docker.badge.installTitle", lang, { label });
 
   return (
     <button
@@ -36,7 +40,7 @@ export function DockerStatusBadge({ status, onClick }: Props): JSX.Element | nul
       <span className="dsb-dot" />
       <span className="dsb-label">{label}</span>
       {status.gate.userSkipped ? (
-        <span className="dsb-tag">degraded</span>
+        <span className="dsb-tag">{tr("docker.degraded")}</span>
       ) : null}
     </button>
   );

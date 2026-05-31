@@ -1,4 +1,4 @@
-import type { LLMMessage } from "@coding-agent/shared";
+import type { LanguagePreference, LLMMessage } from "@coding-agent/shared";
 import { estimateMessageTokens } from "@coding-agent/shared";
 
 /** Trigger compression when the estimate exceeds this fraction of the window. */
@@ -6,7 +6,7 @@ const COMPRESS_TRIGGER_RATIO = 0.6;
 /** Number of most-recent messages preserved verbatim. */
 const KEEP_RECENT = 10;
 
-export const SUMMARIZE_PROMPT = `你是一个对话上下文压缩器。请将下面的 NL_Codey 历史对话压缩成简洁摘要。
+const SUMMARIZE_PROMPT_ZH = `你是一个对话上下文压缩器。请将下面的 NL_Codey 历史对话压缩成简洁摘要。
 必须保留：
 - 用户最初的任务目标。
 - 已经探索过的文件路径和关键发现。
@@ -18,6 +18,34 @@ export const SUMMARIZE_PROMPT = `你是一个对话上下文压缩器。请将�
 - 重复的工具调用细节。
 - 中间思考过程。
 输出格式：纯文本，结构清晰，不超过 800 字。`;
+
+const SUMMARIZE_PROMPT_EN = `You are a conversation-context compressor. Compress the following NL_Codey history into a concise summary.
+
+Must preserve:
+- The user's original task goal.
+- File paths that have been explored and key findings.
+- Patches that were attempted and the reasons they failed.
+- Key error messages from test failures.
+- Problems that remain unresolved.
+
+Do not preserve:
+- Full file contents.
+- Duplicate tool-call details.
+- Intermediate reasoning.
+
+Output format: plain text, clearly structured, no more than 800 words.`;
+
+/** Get the summarisation prompt in the requested language. */
+export function getSummarizePrompt(lang: LanguagePreference): string {
+  return lang === "en-US" ? SUMMARIZE_PROMPT_EN : SUMMARIZE_PROMPT_ZH;
+}
+
+/**
+ * Backwards-compatible default — existing imports of `SUMMARIZE_PROMPT`
+ * resolve to the Chinese prompt (the original behaviour). New callers should
+ * use {@link getSummarizePrompt} with the user's language preference.
+ */
+export const SUMMARIZE_PROMPT = SUMMARIZE_PROMPT_ZH;
 
 /** True when the conversation is large enough to warrant compression. */
 export function shouldCompress(messages: LLMMessage[], contextWindow: number): boolean {
