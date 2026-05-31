@@ -8,6 +8,7 @@ import type {
 import { isRunActive } from "@coding-agent/shared";
 import { Markdown } from "./Markdown.js";
 import { Icon } from "./Icons.js";
+import { useT } from "../lang-context.js";
 
 interface ChatRunViewProps {
   detail: AgentRunDetail;
@@ -51,6 +52,7 @@ export function ChatRunView({
   onRejectPatch,
   onRollback,
 }: ChatRunViewProps): JSX.Element {
+  const tr = useT();
   const streamRef = useRef<HTMLDivElement | null>(null);
   const stickToBottom = useRef(true);
 
@@ -93,11 +95,13 @@ export function ChatRunView({
     <div className="chat">
       <div className="chat-head">
         <div className="title-block">
-          <h1>{detail.run.userTask || "(untitled run)"}</h1>
+          <h1>{detail.run.userTask || tr("threads.untitled")}</h1>
           <div className="crumbs">
             {wsName && <span>{wsName}</span>}
             {wsName && <span>·</span>}
-            <span>run {shortRunId(detail.run.id)}</span>
+            <span>
+              {tr("topbar.runHash")} {shortRunId(detail.run.id)}
+            </span>
             <span>·</span>
             <span>{elapsedLabel}</span>
             {detail.run.modelName && (
@@ -111,13 +115,18 @@ export function ChatRunView({
         <div className="actions">
           <StatusPill status={detail.run.status} />
           {isActive && (
-            <button className="btn" type="button" onClick={onStopRun} title="Stop run">
-              <Icon name="stop" size={13} /> Stop
+            <button className="btn" type="button" onClick={onStopRun} title={tr("chat.stop")}>
+              <Icon name="stop" size={13} /> {tr("chat.stop")}
             </button>
           )}
           {isDone && (
-            <button className="btn" type="button" onClick={onRollback} title="Rollback applied changes">
-              <Icon name="undo" size={13} /> Rollback
+            <button
+              className="btn"
+              type="button"
+              onClick={onRollback}
+              title={tr("chat.rollback")}
+            >
+              <Icon name="undo" size={13} /> {tr("chat.rollback")}
             </button>
           )}
         </div>
@@ -130,7 +139,11 @@ export function ChatRunView({
         <div className="fail-banner">
           <Icon name="x" size={14} stroke={2.4} />
           <span>
-            <strong>{detail.run.status === "budget_exceeded" ? "Budget exceeded" : "Failed"}</strong>
+            <strong>
+              {detail.run.status === "budget_exceeded"
+                ? tr("chat.budgetExceeded")
+                : tr("chat.failed")}
+            </strong>
             {detail.run.exitReason ? ` · ${detail.run.exitReason}` : ""}
           </span>
         </div>
@@ -138,7 +151,9 @@ export function ChatRunView({
       {isCancelled && (
         <div className="fail-banner" style={{ background: "var(--surface-3)", color: "var(--ink-2)" }}>
           <Icon name="stop" size={14} />
-          <span><strong>Stopped</strong> · the run was cancelled</span>
+          <span>
+            <strong>{tr("chat.stopped")}</strong> · {tr("chat.cancelled")}
+          </span>
         </div>
       )}
 
@@ -151,7 +166,7 @@ export function ChatRunView({
             <div className="msg-body">
               <div className="msg-head">
                 <span className="who">codey</span>
-                <span className="ts">awaiting</span>
+                <span className="ts">{tr("threads.pill.awaiting")}</span>
               </div>
               <PatchCard
                 patch={detail.pendingPatch ?? ""}
@@ -168,7 +183,7 @@ export function ChatRunView({
             <div className="msg-body">
               <div className="msg-head">
                 <span className="who">codey</span>
-                <span className="ts">streaming</span>
+                <span className="ts">{tr("threads.pill.live")}</span>
                 <span className="dot-pulse" />
               </div>
               <div className="msg-content">{liveText}</div>
@@ -183,10 +198,10 @@ export function ChatRunView({
         maxAutoSteps={maxAutoSteps}
         placeholder={
           isWaiting
-            ? "Reply, ask for changes, or open the patch above to approve…"
+            ? tr("chat.composer.replyOrApprove")
             : isActive
-              ? "Run in progress — interject and the agent will react…"
-              : "Describe a follow-up task…"
+              ? tr("chat.composer.inProgress")
+              : tr("chat.composer.followUp")
         }
         onChange={onComposerChange}
         onSubmit={onSubmitComposer}

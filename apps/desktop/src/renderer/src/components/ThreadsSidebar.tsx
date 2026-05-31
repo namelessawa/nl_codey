@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { AgentRun } from "@coding-agent/shared";
 import { Icon } from "./Icons.js";
+import { useLang, useT } from "../lang-context.js";
+import { tf, t as translate, type I18nKey } from "../i18n.js";
 
 type ThreadStatus = "waiting" | "running" | "applied" | "failed" | "rollback" | "rejected" | "empty";
 
@@ -30,6 +32,8 @@ export function ThreadsSidebar({
   onClearRuns,
   onOpenQuickPrefs,
 }: ThreadsSidebarProps): JSX.Element {
+  const tr = useT();
+  const lang = useLang();
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
     if (!query.trim()) return runs;
@@ -44,41 +48,41 @@ export function ThreadsSidebar({
         <button className="btn-new" onClick={onNewRun} type="button">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Icon name="plus" size={14} stroke={2} />
-            New run
+            {tr("threads.new")}
           </span>
           <span className="kbd">Ctrl+N</span>
         </button>
       </div>
       <div className="side-search">
         <input
-          placeholder="Search runs…"
+          placeholder={tr("threads.search")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         <button
           type="button"
           className="btn ghost side-clear"
-          title="Clear all runs in this workspace"
-          aria-label="Clear all runs"
+          title={tr("threads.clearTitle")}
+          aria-label={tr("threads.clearTitle")}
           disabled={!canClear || runs.length === 0}
           onClick={() => {
-            if (window.confirm(`Delete all ${runs.length} run${runs.length === 1 ? "" : "s"} for this workspace? This cannot be undone.`)) {
+            if (window.confirm(tf("threads.clearConfirm", lang, { n: runs.length }))) {
               onClearRuns();
             }
           }}
         >
-          <Icon name="x" size={12} stroke={2.2} /> Clear
+          <Icon name="x" size={12} stroke={2.2} /> {tr("threads.clear")}
         </button>
       </div>
 
       <ul className="thread-list">
         {groups.length === 0 ? (
-          <li className="thread-empty">No runs yet. Start one with a task above.</li>
+          <li className="thread-empty">{tr("threads.empty")}</li>
         ) : (
           groups.map(([key, group]) => (
             <ThreadGroup
               key={key}
-              label={group.label}
+              label={translate(group.labelKey, lang)}
               runs={group.items}
               activeRunId={isComposingNew ? null : activeRunId}
               onSelectRun={onSelectRun}
@@ -89,14 +93,19 @@ export function ThreadsSidebar({
 
       <div className="side-foot">
         <span className="side-foot-user">{userLabel}</span>
-        <button className="icon-btn" title="History" type="button" aria-label="History">
+        <button
+          className="icon-btn"
+          title={tr("threads.history")}
+          type="button"
+          aria-label={tr("threads.history")}
+        >
           <Icon name="history" size={16} stroke={2} />
         </button>
         <button
           className={`icon-btn${quickPrefsOpen ? " active" : ""}`}
-          title="Quick preferences"
+          title={tr("quickprefs.title")}
           type="button"
-          aria-label="Quick preferences"
+          aria-label={tr("quickprefs.title")}
           onClick={onOpenQuickPrefs}
         >
           <Icon name="gear" size={16} stroke={2} />
@@ -114,6 +123,8 @@ interface ThreadGroupProps {
 }
 
 function ThreadGroup({ label, runs, activeRunId, onSelectRun }: ThreadGroupProps): JSX.Element {
+  const tr = useT();
+  const lang = useLang();
   return (
     <>
       <li className="side-section">{label}</li>
@@ -129,12 +140,16 @@ function ThreadGroup({ label, runs, activeRunId, onSelectRun }: ThreadGroupProps
             >
               <span className="dot" />
               <span className="title">
-                <span className="title-text">{run.userTask || "(untitled run)"}</span>
-                {status === "waiting" && <span className="pill awaiting">awaiting</span>}
-                {status === "running" && <span className="pill live">live</span>}
+                <span className="title-text">{run.userTask || tr("threads.untitled")}</span>
+                {status === "waiting" && (
+                  <span className="pill awaiting">{tr("threads.pill.awaiting")}</span>
+                )}
+                {status === "running" && (
+                  <span className="pill live">{tr("threads.pill.live")}</span>
+                )}
               </span>
               <span className="meta">
-                <span>{metaForRun(run)}</span>
+                <span>{metaForRun(run, lang)}</span>
               </span>
             </button>
           </li>
@@ -171,18 +186,19 @@ function threadStatusForRun(run: AgentRun): ThreadStatus {
   }
 }
 
-function metaForRun(run: AgentRun): string {
-  const elapsed = relativeTime(run.updatedAt);
-  if (run.status === "done") return `applied · ${elapsed}`;
-  if (run.status === "failed") return `failed · ${elapsed}`;
-  if (run.status === "budget_exceeded") return `over budget · ${elapsed}`;
-  if (run.status === "cancelled") return `stopped · ${elapsed}`;
-  if (run.status === "waiting_for_user_approval") return `awaiting · ${elapsed}`;
+function metaForRun(run: AgentRun, lang: "zh-CN" | "en-US"): string {
+  const elapsed = relativeTime(run.updatedAt, lang);
+  if (run.status === "done") return `${translate("threads.meta.applied", lang)} · ${elapsed}`;
+  if (run.status === "failed") return `${translate("threads.meta.failed", lang)} · ${elapsed}`;
+  if (run.status === "budget_exceeded") return `${translate("threads.meta.overBudget", lang)} · ${elapsed}`;
+  if (run.status === "cancelled") return `${translate("threads.meta.stopped", lang)} · ${elapsed}`;
+  if (run.status === "waiting_for_user_approval")
+    return `${translate("threads.meta.awaiting", lang)} · ${elapsed}`;
   return `${run.status.replace(/_/g, " ")} · ${elapsed}`;
 }
 
 interface RecencyGroup {
-  label: string;
+  labelKey: I18nKey;
   items: AgentRun[];
 }
 
@@ -192,10 +208,10 @@ function groupRunsByRecency(runs: AgentRun[]): Array<[string, RecencyGroup]> {
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
   const startOfThisWeek = startOfToday - 6 * 24 * 60 * 60 * 1000;
 
-  const today: RecencyGroup = { label: "today", items: [] };
-  const yesterday: RecencyGroup = { label: "yesterday", items: [] };
-  const earlier: RecencyGroup = { label: "this week", items: [] };
-  const older: RecencyGroup = { label: "older", items: [] };
+  const today: RecencyGroup = { labelKey: "threads.group.today", items: [] };
+  const yesterday: RecencyGroup = { labelKey: "threads.group.yesterday", items: [] };
+  const earlier: RecencyGroup = { labelKey: "threads.group.thisWeek", items: [] };
+  const older: RecencyGroup = { labelKey: "threads.group.older", items: [] };
 
   const sorted = [...runs].sort((a, b) => b.updatedAt - a.updatedAt);
   for (const run of sorted) {
@@ -213,15 +229,15 @@ function groupRunsByRecency(runs: AgentRun[]): Array<[string, RecencyGroup]> {
   return ordered.filter(([, g]) => g.items.length > 0);
 }
 
-function relativeTime(timestamp: number): string {
+function relativeTime(timestamp: number, lang: "zh-CN" | "en-US"): string {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (seconds < 30) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 30) return translate("time.justNow", lang);
+  if (seconds < 60) return tf("time.secondsAgo", lang, { n: seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return tf("time.minutesAgo", lang, { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return tf("time.hoursAgo", lang, { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return tf("time.daysAgo", lang, { n: days });
   return new Date(timestamp).toLocaleDateString();
 }

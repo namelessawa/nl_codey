@@ -7,6 +7,7 @@ import type {
   AgentStepType,
   BudgetLimits,
   ChatLLMProvider,
+  LanguagePreference,
   LLMMessage,
   LLMToolCall,
   RunCommandOutput,
@@ -21,8 +22,8 @@ import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
 import { AGENT_TOOL_SCHEMAS, createToolExecutor } from "./tools-registry.js";
-import { SYSTEM_PROMPT } from "./prompts.js";
-import { SUMMARIZE_PROMPT } from "./compressor.js";
+import { getSystemPrompt } from "./prompts.js";
+import { getSummarizePrompt } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
 import { analyzeRegressions, regressionNote } from "./regression.js";
 
@@ -39,6 +40,13 @@ export type AgentDeps = {
   resolveLLM: () => ChatLLMProvider;
   /** Read the latest agent settings (shell toggle, confirmation, etc.). */
   getAgentSettings: () => AgentSettings;
+  /**
+   * Read the user's UI language preference. The agent system prompt and the
+   * compression prompt are emitted in this language so the model thinks and
+   * replies in the user's language. Optional — when missing, prompts default
+   * to zh-CN for backwards compatibility with the original behaviour.
+   */
+  getLanguage?: () => LanguagePreference;
   /**
    * Optional gate consulted before EVERY tool dispatch — including the
    * LLM-initiated tool calls inside the autonomous loop. The installation
@@ -62,6 +70,7 @@ export class AgentService {
   private readonly storage: Storage;
   private readonly resolveLLM: () => ChatLLMProvider;
   private readonly getAgentSettings: () => AgentSettings;
+  private readonly getLanguage: () => LanguagePreference;
   private readonly assertToolAllowed: ((toolName: string) => void) | undefined;
   private readonly emit: (event: AgentEvent) => void;
   private readonly pending = new Map<string, Pending>();
@@ -74,6 +83,9 @@ export class AgentService {
     this.storage = deps.storage;
     this.resolveLLM = deps.resolveLLM;
     this.getAgentSettings = deps.getAgentSettings;
+    // Default to zh-CN so prior callers (and tests that don't wire getLanguage)
+    // see the original behaviour.
+    this.getLanguage = deps.getLanguage ?? ((): LanguagePreference => "zh-CN");
     this.assertToolAllowed = deps.assertToolAllowed;
     this.emit = deps.emit;
   }
@@ -193,7 +205,7 @@ export class AgentService {
     this.setStatus(run.id, "tool_use");
     const ctx: ToolContext = { workspaceRoot: ws.rootPath, runId: run.id, signal: controller.signal };
     const initialMessages: LLMMessage[] = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: getSystemPrompt(this.getLanguage()) },
       { role: "user", content: await this.buildInitialUserMessage(task, ctx) },
     ];
     void this.driveLoop(run.id, ws.rootPath, initialMessages, llm, controller).catch((err) => {
@@ -450,6 +462,16 @@ export class AgentService {
     return note ? `${verdict.message}\n\n${note}` : verdict.message;
   }
 
+  /**
+   * Localised "budget exhausted" status line, surfaced to the user when the
+   * loop hits its iteration / tool-call / cost cap.
+   */
+  private budgetExceededMessage(reason: string): string {
+    return this.getLanguage() === "en-US"
+      ? `Budget exhausted (${reason}). Changes already applied are preserved; you can roll back or continue manually.`
+      : `预算耗尽（${reason}）。已应用的修改保留，可选择回滚或手动继续。`;
+  }
+
   /** Summarize old conversation context via the LLM (compression callback). */
   private async summarizeContext(
     llm: ChatLLMProvider,
@@ -458,7 +480,7 @@ export class AgentService {
   ): Promise<string> {
     const out = await llm.complete({
       messages: [
-        { role: "system", content: SUMMARIZE_PROMPT },
+        { role: "system", content: getSummarizePrompt(this.getLanguage()) },
         { role: "user", content: text },
       ],
       temperature: 0.2,
@@ -495,11 +517,7 @@ export class AgentService {
         this.setStatus(runId, "cancelled");
         break;
       case "budget_exceeded":
-        this.addStep(
-          runId,
-          "message",
-          `预算耗尽（${outcome.reason}）。已应用的修改保留，可选择回滚或手动继续。`,
-        );
+        this.addStep(runId, "message", this.budgetExceededMessage(outcome.reason));
         this.storage.setRunExitReason(runId, outcome.reason);
         this.setStatus(runId, "budget_exceeded");
         break;

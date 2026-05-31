@@ -31,6 +31,8 @@ import { RightPanel } from "./components/RightPanel.js";
 import { Toast, type ToastMessage } from "./components/Toast.js";
 import { Icon } from "./components/Icons.js";
 import { applyAppearance } from "./appearance.js";
+import { LangProvider, useT } from "./lang-context.js";
+import { t, tf } from "./i18n.js";
 
 export function App(): JSX.Element {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -278,7 +280,7 @@ export function App(): JSX.Element {
       const next = await api.applyAgentPatch(activeRunId);
       setDetail(next);
       setApprovalOpen(false);
-      showToast("success", "Patch applied");
+      showToast("success", t("toast.patchApplied", lang));
     });
 
   const rejectPatch = (): Promise<void> =>
@@ -287,7 +289,7 @@ export function App(): JSX.Element {
       const next = await api.rejectAgentPatch(activeRunId);
       setDetail(next);
       setApprovalOpen(false);
-      showToast("success", "Patch rejected");
+      showToast("success", t("toast.patchRejected", lang));
     });
 
   const rollback = (): Promise<void> =>
@@ -295,7 +297,7 @@ export function App(): JSX.Element {
       if (!activeRunId) return;
       const next = await api.rollbackRun(activeRunId);
       setDetail(next);
-      showToast("success", "Rolled back");
+      showToast("success", t("toast.rolledBack", lang));
     });
 
   const clearRuns = (): Promise<void> =>
@@ -308,7 +310,13 @@ export function App(): JSX.Element {
       setLiveText("");
       setApprovalOpen(false);
       setIsComposingNew(false);
-      showToast("success", deleted === 0 ? "No runs to clear" : `Cleared ${deleted} run${deleted === 1 ? "" : "s"}`);
+      const msg =
+        deleted === 0
+          ? t("toast.noRunsToClear", lang)
+          : deleted === 1
+            ? t("toast.clearedRun", lang)
+            : tf("toast.clearedRuns", lang, { n: deleted });
+      showToast("success", msg);
     });
 
   const isRunBusy = Boolean(detail && isRunActive(detail.run.status));
@@ -339,7 +347,7 @@ export function App(): JSX.Element {
         .updateSettings(next)
         .then((payload) => {
           setSettings(payload.settings);
-          showToast("success", `Switched to ${model}`);
+          showToast("success", tf("toast.switchedModel", lang, { model }));
         })
         .catch((err) => {
           showToast("error", err instanceof Error ? err.message : String(err));
@@ -399,6 +407,11 @@ export function App(): JSX.Element {
   const viewKey =
     viewKind === "chat" && detail ? `chat:${detail.run.id}` : viewKind;
 
+  // Active UI language. Falls back to zh-CN before settings load — matches the
+  // default in DEFAULT_SETTINGS.ui so the very first paint isn't English noise
+  // for a Chinese-speaking user.
+  const lang = settings?.ui.language ?? "zh-CN";
+
   const main = useMemo(() => {
     if (!workspace) {
       return (
@@ -442,6 +455,7 @@ export function App(): JSX.Element {
   }, [workspace, recents, busy, isComposingNew, detail, liveText, composer, userInitials, maxAutoSteps]);
 
   return (
+    <LangProvider value={lang}>
     <div className="app">
       <Topbar
         ref={modelChipRef}
@@ -482,7 +496,7 @@ export function App(): JSX.Element {
         {approvalOpen && detail?.pendingPatch && (
           <ApprovalSheet
             patch={detail.pendingPatch}
-            runIdLabel={`run ${shortRunId(detail.run.id)}`}
+            runIdLabel={`${t("topbar.runHash", lang)} ${shortRunId(detail.run.id)}`}
             taskTitle={detail.run.userTask}
             workspaceName={wsName}
             onClose={() => setApprovalOpen(false)}
@@ -548,6 +562,7 @@ export function App(): JSX.Element {
           exposed for future surfaces (e.g. composer state). */}
       <span style={{ display: "none" }}>{String(isRunBusy)}</span>
     </div>
+    </LangProvider>
   );
 }
 
@@ -566,6 +581,7 @@ function NewRunCompose({
   onComposerChange,
   onSubmit,
 }: NewRunComposeProps): JSX.Element {
+  const tr = useT();
   return (
     <div className="main-inner">
       <div
@@ -592,7 +608,7 @@ function NewRunCompose({
               marginBottom: 12,
             }}
           >
-            bound · {shortName(workspace.rootPath)}
+            {tr("compose.bound")} · {shortName(workspace.rootPath)}
           </div>
           <h1
             style={{
@@ -604,7 +620,8 @@ function NewRunCompose({
               margin: 0,
             }}
           >
-            What should the agent <em style={{ color: "var(--ink-2)" }}>do next?</em>
+            {tr("compose.headingA")}{" "}
+            <em style={{ color: "var(--ink-2)" }}>{tr("compose.headingB")}</em>
           </h1>
           <p
             style={{
@@ -616,8 +633,7 @@ function NewRunCompose({
               margin: "12px auto 0",
             }}
           >
-            Describe a task in plain language. The agent plans, searches, edits, and proposes
-            a patch — you sign before anything writes to disk.
+            {tr("compose.lede")}
           </p>
         </div>
       </div>
@@ -625,7 +641,7 @@ function NewRunCompose({
         <div className="composer-inner">
           <textarea
             rows={3}
-            placeholder="e.g. add a unit test for parseConfig in packages/shared"
+            placeholder={tr("compose.placeholder")}
             value={composer}
             onChange={(e) => onComposerChange(e.target.value)}
             onKeyDown={(e) => {
@@ -636,7 +652,7 @@ function NewRunCompose({
             }}
           />
           <div className="composer-row">
-            <span className="hint">Ctrl+↵ to start the run</span>
+            <span className="hint">{tr("compose.hintStart")}</span>
             <span style={{ flex: 1 }} />
             <button
               className="btn primary"
@@ -645,7 +661,7 @@ function NewRunCompose({
               disabled={busy || !composer.trim()}
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                Start run <Icon name="send" size={12} stroke={2} />
+                {tr("compose.start")} <Icon name="send" size={12} stroke={2} />
               </span>
             </button>
           </div>

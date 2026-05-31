@@ -274,10 +274,277 @@ const STRINGS = {
   },
   "shortcuts.openSettings": { "zh-CN": "打开设置", "en-US": "Open settings" },
   "shortcuts.openSettingsHint": { "zh-CN": "本面板", "en-US": "this panel" },
+
+  // ─────────────  Topbar  ─────────────
+  "topbar.switchWorkspace": { "zh-CN": "切换工作区", "en-US": "Switch workspace" },
+  "topbar.openWorkspace": { "zh-CN": "打开工作区", "en-US": "Open a workspace" },
+  "topbar.noWorkspace": { "zh-CN": "未打开工作区", "en-US": "No workspace open" },
+  "topbar.switchModel": { "zh-CN": "切换模型", "en-US": "Switch model" },
+  "topbar.noModel": { "zh-CN": "未选择模型", "en-US": "no model" },
+  "topbar.connected": { "zh-CN": "已连接", "en-US": "connected" },
+  "topbar.notConfigured": { "zh-CN": "未配置", "en-US": "not configured" },
+  "topbar.settings": { "zh-CN": "设置", "en-US": "Settings" },
+  "topbar.runHash": { "zh-CN": "运行", "en-US": "run" },
+  "topbar.iter": { "zh-CN": "迭代", "en-US": "iter" },
+
+  // ─────────────  EmptyView / cover  ─────────────
+  "empty.runbookCover": { "zh-CN": "运行手册 · 封面", "en-US": "runbook · cover" },
+  "empty.pageLabel": { "zh-CN": "p. 001", "en-US": "p. 001" },
+  "empty.titleA": { "zh-CN": "全新的", "en-US": "A new" },
+  "empty.titleB": { "zh-CN": "运行手册。", "en-US": "runbook." },
+  "empty.lede": {
+    "zh-CN":
+      "把这本手册绑定到一个项目目录。每次对话、每个 diff、每次回滚都会被写进这本手册——一次运行一页，页面可干净撕下。",
+    "en-US":
+      "Bind this notebook to a project folder. Every conversation, every diff, every rollback gets written into the book — one entry per run. Pages tear out cleanly.",
+  },
+  "empty.bindProject": { "zh-CN": "绑定一个项目", "en-US": "Bind a project" },
+  "empty.opening": { "zh-CN": "正在打开…", "en-US": "Opening…" },
+  "empty.dropFolder": { "zh-CN": "把文件夹拖到这里", "en-US": "Drop a folder here" },
+  "empty.dropSub": {
+    "zh-CN": "或点击浏览 · 任意本地项目 · 数据不会离开本机",
+    "en-US": "or click to browse · any local project · nothing leaves your machine",
+  },
+  "empty.recent": { "zh-CN": "继续之前的工作", "en-US": "Pick up where you left off" },
+  "empty.footSigned": {
+    "zh-CN": "未签字之前，不会写入任何内容",
+    "en-US": "nothing is written until you sign for it",
+  },
+  "empty.footSnapshots": {
+    "zh-CN": "每次改动都有快照 · 每次运行可回滚",
+    "en-US": "every change snapshots · every run reverses",
+  },
+
+  // ─────────────  Relative time  ─────────────
+  "time.justNow": { "zh-CN": "刚刚", "en-US": "just now" },
+  "time.secondsAgo": { "zh-CN": "{n} 秒前", "en-US": "{n}s ago" },
+  "time.minutesAgo": { "zh-CN": "{n} 分钟前", "en-US": "{n}m ago" },
+  "time.hoursAgo": { "zh-CN": "{n} 小时前", "en-US": "{n}h ago" },
+  "time.daysAgo": { "zh-CN": "{n} 天前", "en-US": "{n}d ago" },
+
+  // ─────────────  ThreadsSidebar  ─────────────
+  "threads.new": { "zh-CN": "新建运行", "en-US": "New run" },
+  "threads.search": { "zh-CN": "搜索运行…", "en-US": "Search runs…" },
+  "threads.clear": { "zh-CN": "清空", "en-US": "Clear" },
+  "threads.clearTitle": {
+    "zh-CN": "清空此工作区的所有运行",
+    "en-US": "Clear all runs in this workspace",
+  },
+  "threads.clearConfirm": {
+    "zh-CN": "确定要删除此工作区的全部 {n} 条运行吗？此操作不可撤销。",
+    "en-US":
+      "Delete all {n} runs for this workspace? This cannot be undone.",
+  },
+  "threads.empty": {
+    "zh-CN": "暂无运行。在上方输入任务开始一次。",
+    "en-US": "No runs yet. Start one with a task above.",
+  },
+  "threads.untitled": { "zh-CN": "（未命名运行）", "en-US": "(untitled run)" },
+  "threads.pill.awaiting": { "zh-CN": "待批准", "en-US": "awaiting" },
+  "threads.pill.live": { "zh-CN": "进行中", "en-US": "live" },
+  "threads.history": { "zh-CN": "历史记录", "en-US": "History" },
+  "threads.group.today": { "zh-CN": "今天", "en-US": "today" },
+  "threads.group.yesterday": { "zh-CN": "昨天", "en-US": "yesterday" },
+  "threads.group.thisWeek": { "zh-CN": "本周", "en-US": "this week" },
+  "threads.group.older": { "zh-CN": "更早", "en-US": "older" },
+  "threads.meta.applied": { "zh-CN": "已应用", "en-US": "applied" },
+  "threads.meta.failed": { "zh-CN": "失败", "en-US": "failed" },
+  "threads.meta.overBudget": { "zh-CN": "超出预算", "en-US": "over budget" },
+  "threads.meta.stopped": { "zh-CN": "已停止", "en-US": "stopped" },
+  "threads.meta.awaiting": { "zh-CN": "待批准", "en-US": "awaiting" },
+
+  // ─────────────  DockerInstallModal  ─────────────
+  "docker.sandboxUnavailable": { "zh-CN": "沙箱不可用", "en-US": "Sandbox unavailable" },
+  "docker.required": {
+    "zh-CN": "为了安全运行，需要 Docker",
+    "en-US": "Docker is required for safe operation",
+  },
+  "docker.body": {
+    "zh-CN":
+      "本代码 Agent 会在你的工作区中运行命令并修改文件。如果没有容器沙箱，任何工具调用——测试运行器、构建脚本、生成的代码——都会以你的账户权限直接在你的机器上执行。",
+    "en-US":
+      "This coding agent runs commands and edits files in your workspace. Without a container sandbox, any tool call—test runners, build scripts, generated code—executes directly on your machine with the full permissions of your user account.",
+  },
+  "docker.bodyDirect": { "zh-CN": "直接在你的机器上", "en-US": "directly on your machine" },
+  "docker.risk1": {
+    "zh-CN": "有缺陷或恶意的工具可能删除你有访问权限的任意位置的文件",
+    "en-US": "A buggy or malicious tool can delete files anywhere you have access",
+  },
+  "docker.risk2": {
+    "zh-CN": "工作区之外的凭证和 SSH 密钥都能被读取",
+    "en-US": "Credentials and SSH keys outside the workspace are reachable",
+  },
+  "docker.risk3": {
+    "zh-CN": "网络出站不受限制——存在泄露和外传的风险",
+    "en-US": "Network egress is unrestricted — leaks and exfiltration are possible",
+  },
+  "docker.recommendation": {
+    "zh-CN":
+      "安装 Docker Desktop，可以把每条命令都限制在一个临时容器内：工作区以挂载方式接入、网络默认禁用。这正是 Claude Code 在 Linux/macOS 上使用的隔离方式。",
+    "en-US":
+      "Install Docker Desktop to confine every command to an ephemeral container with the workspace bind-mounted and the network blocked by default. This is the same isolation Claude Code uses on Linux/macOS.",
+  },
+  "docker.recommendationStrong": {
+    "zh-CN": "安装 Docker Desktop",
+    "en-US": "Install Docker Desktop",
+  },
+  "docker.probeFailed": { "zh-CN": "上次探测失败：", "en-US": "Last probe failed:" },
+  "docker.daemonStopped": {
+    "zh-CN":
+      "已找到 Docker CLI（{version}），但守护进程未运行。请启动 Docker Desktop 后点击\"重新检测\"。",
+    "en-US":
+      "Docker CLI found ({version}) but the daemon isn't running. Start Docker Desktop and click \"Re-check\".",
+  },
+  "docker.skip": { "zh-CN": "跳过并接受风险", "en-US": "Skip and accept the risk" },
+  "docker.skipTitle": {
+    "zh-CN": "在清除前会禁用 run_command、apply_patch、write_file",
+    "en-US": "Disables run_command, apply_patch, write_file until cleared",
+  },
+  "docker.recheck": { "zh-CN": "重新检测", "en-US": "Re-check" },
+  "docker.rechecking": { "zh-CN": "正在检测…", "en-US": "Re-checking…" },
+  "docker.install": { "zh-CN": "安装 Docker Desktop", "en-US": "Install Docker Desktop" },
+  "docker.close": { "zh-CN": "关闭", "en-US": "Close" },
+
+  // ─────────────  DockerStatusBadge  ─────────────
+  "docker.notInstalled": { "zh-CN": "未安装 Docker", "en-US": "Docker not installed" },
+  "docker.notRunning": { "zh-CN": "Docker 未运行", "en-US": "Docker not running" },
+  "docker.degraded": { "zh-CN": "受限模式", "en-US": "degraded" },
+  "docker.badge.degradedTitle": {
+    "zh-CN": "{label} · 当前为受限模式（不安全工具已禁用）。点击查看详情。",
+    "en-US":
+      "{label} · running in degraded mode (unsafe tools disabled). Click to review.",
+  },
+  "docker.badge.installTitle": {
+    "zh-CN": "{label} · 点击打开安装指南",
+    "en-US": "{label} · click to open the install guide",
+  },
+
+  // ─────────────  ApprovalSheet  ─────────────
+  "approval.crumb.project": { "zh-CN": "项目", "en-US": "project" },
+  "approval.crumb.patch": { "zh-CN": "补丁", "en-US": "patch" },
+  "approval.crumb.runbook": { "zh-CN": "运行手册", "en-US": "runbook" },
+  "approval.headingA": { "zh-CN": "一次改动，", "en-US": "A change," },
+  "approval.headingB": { "zh-CN": "已签字并应用。", "en-US": "signed and applied." },
+  "approval.subtitleFallback": {
+    "zh-CN": "本次运行提议一处改动。",
+    "en-US": "This run proposes a change.",
+  },
+  "approval.subtitleAfter": {
+    "zh-CN": "写入前会生成快照；每次编辑都可通过上方运行头部完全回滚。",
+    "en-US":
+      "A snapshot is taken before write; every edit is fully reversible from the run header above.",
+  },
+  "approval.label.summary": { "zh-CN": "摘要", "en-US": "Summary" },
+  "approval.label.files": { "zh-CN": "文件", "en-US": "Files" },
+  "approval.label.patch": { "zh-CN": "补丁", "en-US": "Patch" },
+  "approval.label.signOff": { "zh-CN": "签字", "en-US": "Sign-off" },
+  "approval.linesAdded": { "zh-CN": "+{n} 行新增", "en-US": "+{n} lines" },
+  "approval.linesRemoved": { "zh-CN": "−{n} 行删除", "en-US": "−{n} lines" },
+  "approval.snapshot": { "zh-CN": "快照 · 自动", "en-US": "snapshot · auto" },
+  "approval.fileSingular": { "zh-CN": "个文件", "en-US": "file" },
+  "approval.filePlural": { "zh-CN": "个文件", "en-US": "files" },
+  "approval.newSuffix": { "zh-CN": " · 新增 {n}", "en-US": " · {n} new" },
+  "approval.moreFiles": {
+    "zh-CN": "本次补丁还有 {n} 个文件",
+    "en-US": "+{n} more files in this patch",
+  },
+  "approval.initial": {
+    "zh-CN": "在下方签字以确认你已审阅本次改动。",
+    "en-US": "Initial here to confirm you've reviewed the change.",
+  },
+  "approval.initialPlaceholder": { "zh-CN": "你的姓名缩写", "en-US": "your initials" },
+  "approval.signAria": { "zh-CN": "用姓名缩写签字", "en-US": "Sign with your initials" },
+  "approval.reversibleStrong": { "zh-CN": "完全可回滚", "en-US": "fully reversible" },
+  "approval.reversibleHint": {
+    "zh-CN": "在运行头部点击一次即可恢复写入前的快照",
+    "en-US": "one click in the run header restores the pre-write snapshot",
+  },
+  "approval.reject": { "zh-CN": "拒绝", "en-US": "Reject" },
+  "approval.askChanges": { "zh-CN": "请求修改…", "en-US": "Ask for changes…" },
+  "approval.apply": { "zh-CN": "签字并应用", "en-US": "Sign & apply" },
+  "approval.close": { "zh-CN": "关闭", "en-US": "Close" },
+
+  // ─────────────  ChatRunView (status / composer / banners)  ─────────────
+  "chat.stop": { "zh-CN": "停止运行", "en-US": "Stop run" },
+  "chat.rollback": { "zh-CN": "回滚已应用的改动", "en-US": "Rollback applied changes" },
+  "chat.budgetExceeded": { "zh-CN": "超出预算", "en-US": "Budget exceeded" },
+  "chat.failed": { "zh-CN": "失败", "en-US": "Failed" },
+  "chat.stopped": { "zh-CN": "已停止", "en-US": "Stopped" },
+  "chat.cancelled": { "zh-CN": "运行已取消", "en-US": "the run was cancelled" },
+  "chat.applied": { "zh-CN": "已应用", "en-US": "Applied" },
+  "chat.composer.replyOrApprove": {
+    "zh-CN": "回复、请求修改，或在上方打开补丁批准…",
+    "en-US": "Reply, ask for changes, or open the patch above to approve…",
+  },
+  "chat.composer.inProgress": {
+    "zh-CN": "运行进行中 — 你可以介入，Agent 会响应…",
+    "en-US": "Run in progress — interject and the agent will react…",
+  },
+  "chat.composer.followUp": {
+    "zh-CN": "描述一个后续任务…",
+    "en-US": "Describe a follow-up task…",
+  },
+  "chat.attachTitle": { "zh-CN": "附加文件（即将推出）", "en-US": "Attach file (coming soon)" },
+  "chat.attachAria": { "zh-CN": "附加文件", "en-US": "Attach file" },
+  "chat.hintSend": { "zh-CN": "Ctrl+↵ 运行 · ↑ 回溯", "en-US": "Ctrl+↵ to run · ↑ recall" },
+
+  // ─────────────  Toast messages  ─────────────
+  "toast.patchApplied": { "zh-CN": "补丁已应用", "en-US": "Patch applied" },
+  "toast.patchRejected": { "zh-CN": "补丁已拒绝", "en-US": "Patch rejected" },
+  "toast.rolledBack": { "zh-CN": "已回滚", "en-US": "Rolled back" },
+  "toast.noRunsToClear": { "zh-CN": "无可清空的运行", "en-US": "No runs to clear" },
+  "toast.clearedRuns": { "zh-CN": "已清空 {n} 条运行", "en-US": "Cleared {n} runs" },
+  "toast.clearedRun": { "zh-CN": "已清空 1 条运行", "en-US": "Cleared 1 run" },
+  "toast.switchedModel": { "zh-CN": "已切换到 {model}", "en-US": "Switched to {model}" },
+
+  // ─────────────  NewRunCompose  ─────────────
+  "compose.bound": { "zh-CN": "已绑定", "en-US": "bound" },
+  "compose.headingA": { "zh-CN": "Agent 接下来应该", "en-US": "What should the agent" },
+  "compose.headingB": { "zh-CN": "做什么？", "en-US": "do next?" },
+  "compose.lede": {
+    "zh-CN":
+      "用自然语言描述任务。Agent 会规划、搜索、编辑并提议一个补丁——在你签字之前，不会写入磁盘。",
+    "en-US":
+      "Describe a task in plain language. The agent plans, searches, edits, and proposes a patch — you sign before anything writes to disk.",
+  },
+  "compose.placeholder": {
+    "zh-CN": "例如：给 packages/shared 中的 parseConfig 加一个单元测试",
+    "en-US": "e.g. add a unit test for parseConfig in packages/shared",
+  },
+  "compose.hintStart": {
+    "zh-CN": "Ctrl+↵ 开始运行",
+    "en-US": "Ctrl+↵ to start the run",
+  },
+  "compose.start": { "zh-CN": "开始运行", "en-US": "Start run" },
+  "compose.openWorkspaceFirst": { "zh-CN": "请先打开工作区", "en-US": "Open a workspace first" },
 } as const;
 
 export type I18nKey = keyof typeof STRINGS;
 
 export function t(key: I18nKey, lang: LanguagePreference): string {
   return STRINGS[key]?.[lang] ?? key;
+}
+
+/**
+ * Interpolate `{name}` placeholders in a translated string. Values are stringified
+ * with String() — pass numbers, strings, anything that has a sensible toString.
+ *
+ *   format(t("threads.clearConfirm", lang), { n: runs.length })
+ */
+export function format(
+  template: string,
+  values: Record<string, string | number>,
+): string {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
+    key in values ? String(values[key]) : match,
+  );
+}
+
+/** Combo: translate a key and interpolate placeholders in one call. */
+export function tf(
+  key: I18nKey,
+  lang: LanguagePreference,
+  values: Record<string, string | number>,
+): string {
+  return format(t(key, lang), values);
 }

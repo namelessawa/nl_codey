@@ -1,5 +1,7 @@
 import type { Workspace } from "@coding-agent/shared";
 import { Icon } from "./Icons.js";
+import { useLang, useT } from "../lang-context.js";
+import { tf } from "../i18n.js";
 
 interface EmptyViewProps {
   recents: Workspace[];
@@ -14,27 +16,28 @@ export function EmptyView({
   onPickWorkspace,
   onOpenRecent,
 }: EmptyViewProps): JSX.Element {
+  const tr = useT();
+  const lang = useLang();
   const today = new Date().toLocaleDateString("en-CA");
   return (
     <div className="main-inner">
       <div className="cover-scroll">
         <div className="cover-page">
           <header className="cover-page-head">
-            <span>runbook · cover</span>
-            <span>p. 001 · {today}</span>
+            <span>{tr("empty.runbookCover")}</span>
+            <span>
+              {tr("empty.pageLabel")} · {today}
+            </span>
           </header>
 
           <div className="cover-body">
             <h1 className="cover-title">
-              A new <em>runbook.</em>
+              {tr("empty.titleA")} <em>{tr("empty.titleB")}</em>
             </h1>
-            <p className="cover-lede">
-              Bind this notebook to a project folder. Every conversation, every diff, every
-              rollback gets written into the book — one entry per run. Pages tear out cleanly.
-            </p>
+            <p className="cover-lede">{tr("empty.lede")}</p>
 
             <section>
-              <div className="cover-label">Bind a project</div>
+              <div className="cover-label">{tr("empty.bindProject")}</div>
               <button
                 className="cover-drop"
                 onClick={onPickWorkspace}
@@ -46,11 +49,9 @@ export function EmptyView({
                 </div>
                 <div className="cover-drop-text">
                   <div className="cover-drop-title">
-                    {busy ? "Opening…" : "Drop a folder here"}
+                    {busy ? tr("empty.opening") : tr("empty.dropFolder")}
                   </div>
-                  <div className="cover-drop-sub">
-                    or click to browse · any local project · nothing leaves your machine
-                  </div>
+                  <div className="cover-drop-sub">{tr("empty.dropSub")}</div>
                 </div>
                 <div className="cover-drop-kbd">
                   <span className="kbdkey">Ctrl+O</span>
@@ -60,7 +61,7 @@ export function EmptyView({
 
             {recents.length > 0 && (
               <section>
-                <div className="cover-label">Pick up where you left off</div>
+                <div className="cover-label">{tr("empty.recent")}</div>
                 <ul className="cover-list">
                   {recents.slice(0, 6).map((ws, i) => {
                     const name = workspaceName(ws.rootPath);
@@ -80,7 +81,7 @@ export function EmptyView({
                             </div>
                             <div className="entry-path">{ws.rootPath}</div>
                           </div>
-                          <span className="entry-last">{relativeTime(ws.openedAt)}</span>
+                          <span className="entry-last">{relativeTime(ws.openedAt, lang)}</span>
                           <Icon name="chev-right" size={13} style={{ color: "var(--muted)" }} />
                         </button>
                       </li>
@@ -91,9 +92,9 @@ export function EmptyView({
             )}
 
             <footer className="cover-foot">
-              <span>nothing is written until you sign for it</span>
+              <span>{tr("empty.footSigned")}</span>
               <span className="cover-foot-mark">✦</span>
-              <span>every change snapshots · every run reverses</span>
+              <span>{tr("empty.footSnapshots")}</span>
             </footer>
           </div>
         </div>
@@ -108,14 +109,16 @@ function workspaceName(rootPath: string): string {
   return segments[segments.length - 1] ?? rootPath;
 }
 
-function relativeTime(timestamp: number): string {
+function relativeTime(timestamp: number, lang: "zh-CN" | "en-US"): string {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (seconds < 60) return "just now";
+  if (seconds < 60) {
+    return lang === "en-US" ? "just now" : "刚刚";
+  }
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return tf("time.minutesAgo", lang, { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return tf("time.hoursAgo", lang, { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return tf("time.daysAgo", lang, { n: days });
   return new Date(timestamp).toLocaleDateString();
 }

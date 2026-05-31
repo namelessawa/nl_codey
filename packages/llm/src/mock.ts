@@ -8,7 +8,7 @@ import type {
   TokenUsage,
 } from "@coding-agent/shared";
 import { computeCostUsd, contextWindowFor } from "@coding-agent/shared";
-import { CODING_AGENT_PLAN_PROMPT, PATCH_GENERATION_PROMPT } from "./prompts.js";
+import { MOCK_PROMPT_PREFIXES } from "./prompts.js";
 
 const MOCK_MODEL = "mock-model";
 
@@ -35,10 +35,10 @@ export class MockLLMProvider implements ChatLLMProvider {
     const system = input.messages.find((m) => m.role === "system")?.content ?? "";
     const task = firstUserText(input.messages);
 
-    if (system.startsWith(CODING_AGENT_PLAN_PROMPT.slice(0, 24))) {
+    if (MOCK_PROMPT_PREFIXES.plan.some((p) => system.startsWith(p))) {
       return { text: this.plan(task) };
     }
-    if (system.startsWith(PATCH_GENERATION_PROMPT.slice(0, 24))) {
+    if (MOCK_PROMPT_PREFIXES.patch.some((p) => system.startsWith(p))) {
       return { text: this.patch(task) };
     }
     // Summarization / compression and other ad-hoc completions.
