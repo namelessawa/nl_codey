@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./Icons.js";
 import { summarizePatch, type PatchSummary } from "./ChatRunView.js";
+import { useLang, useT } from "../lang-context.js";
+import { tf } from "../i18n.js";
 
 interface ApprovalSheetProps {
   patch: string;
@@ -21,6 +23,8 @@ export function ApprovalSheet({
   onApply,
   onReject,
 }: ApprovalSheetProps): JSX.Element {
+  const tr = useT();
+  const lang = useLang();
   const [signature, setSignature] = useState("");
   const summary = useMemo<PatchSummary>(() => summarizePatch(patch), [patch]);
   const fileExcerpts = useMemo(() => splitPatchByFile(patch), [patch]);
@@ -45,9 +49,10 @@ export function ApprovalSheet({
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <div className="num">
-            runbook · {workspaceName || "project"} · {runIdLabel} · patch
+            {tr("approval.crumb.runbook")} · {workspaceName || tr("approval.crumb.project")} ·{" "}
+            {runIdLabel} · {tr("approval.crumb.patch")}
           </div>
-          <button className="close" type="button" onClick={onClose} aria-label="Close">
+          <button className="close" type="button" onClick={onClose} aria-label={tr("approval.close")}>
             <Icon name="x" size={16} />
           </button>
         </div>
@@ -55,30 +60,32 @@ export function ApprovalSheet({
         <div className="sheet-body">
           <div>
             <h2>
-              A change, <em>signed and applied.</em>
+              {tr("approval.headingA")} <em>{tr("approval.headingB")}</em>
             </h2>
             <p className="lede" style={{ marginTop: 8 }}>
-              {taskTitle || "This run proposes a change."} A snapshot is taken before write;
-              every edit is fully reversible from the run header above.
+              {taskTitle || tr("approval.subtitleFallback")} {tr("approval.subtitleAfter")}
             </p>
           </div>
 
           <div className="sheet-section">
-            <div className="label">Summary</div>
+            <div className="label">{tr("approval.label.summary")}</div>
             <div className="sheet-summary">
-              <span className="pill add">+{summary.added} lines</span>
-              <span className="pill del">−{summary.removed} lines</span>
+              <span className="pill add">{tf("approval.linesAdded", lang, { n: summary.added })}</span>
+              <span className="pill del">{tf("approval.linesRemoved", lang, { n: summary.removed })}</span>
               <span className="pill">
-                {summary.files.length} {summary.files.length === 1 ? "file" : "files"}
-                {newCount > 0 ? ` · ${newCount} new` : ""}
+                {summary.files.length}{" "}
+                {summary.files.length === 1
+                  ? tr("approval.fileSingular")
+                  : tr("approval.filePlural")}
+                {newCount > 0 ? tf("approval.newSuffix", lang, { n: newCount }) : ""}
               </span>
-              <span className="snapshot">snapshot · auto</span>
+              <span className="snapshot">{tr("approval.snapshot")}</span>
             </div>
           </div>
 
           {summary.files.length > 0 && (
             <div className="sheet-section">
-              <div className="label">Files</div>
+              <div className="label">{tr("approval.label.files")}</div>
               <div className="sheet-files">
                 {summary.files.map((f) => (
                   <div className="sheet-file" key={f.path}>
@@ -93,7 +100,7 @@ export function ApprovalSheet({
           )}
 
           <div className="sheet-section">
-            <div className="label">Patch</div>
+            <div className="label">{tr("approval.label.patch")}</div>
             {fileExcerpts.length === 0 ? (
               <pre className="diff-block">{patch}</pre>
             ) : (
@@ -127,13 +134,13 @@ export function ApprovalSheet({
                   padding: "4px 0",
                 }}
               >
-                +{fileExcerpts.length - 4} more files in this patch
+                {tf("approval.moreFiles", lang, { n: fileExcerpts.length - 4 })}
               </div>
             )}
           </div>
 
           <div className="sheet-section">
-            <div className="label">Sign-off</div>
+            <div className="label">{tr("approval.label.signOff")}</div>
             <p
               style={{
                 fontFamily: "var(--serif)",
@@ -143,16 +150,16 @@ export function ApprovalSheet({
                 margin: 0,
               }}
             >
-              Initial here to confirm you've reviewed the change.
+              {tr("approval.initial")}
             </p>
             <div className="signature">
               <span className="x">×</span>
               <input
                 value={signature}
                 onChange={(e) => setSignature(e.target.value)}
-                placeholder="your initials"
+                placeholder={tr("approval.initialPlaceholder")}
                 autoFocus
-                aria-label="Sign with your initials"
+                aria-label={tr("approval.signAria")}
               />
             </div>
           </div>
@@ -160,10 +167,11 @@ export function ApprovalSheet({
 
         <div className="sheet-foot">
           <div className="left">
-            <strong>fully reversible</strong> · one click in the run header restores the
-            pre-write snapshot
+            <strong>{tr("approval.reversibleStrong")}</strong> · {tr("approval.reversibleHint")}
           </div>
-          <button className="btn ghost" type="button" onClick={onReject}>Reject</button>
+          <button className="btn ghost" type="button" onClick={onReject}>
+            {tr("approval.reject")}
+          </button>
           <button
             className="btn ghost"
             type="button"
@@ -177,7 +185,7 @@ export function ApprovalSheet({
               }, 60);
             }}
           >
-            Ask for changes…
+            {tr("approval.askChanges")}
           </button>
           <button
             className="btn primary"
@@ -189,7 +197,7 @@ export function ApprovalSheet({
             }}
             onClick={onApply}
           >
-            Sign &amp; apply
+            {tr("approval.apply")}
           </button>
         </div>
       </div>

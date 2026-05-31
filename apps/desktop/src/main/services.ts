@@ -35,6 +35,10 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
       return createLLMProvider(config);
     },
     getAgentSettings: () => settings.getSettings().agent,
+    // Thread the user's UI language into the agent so the system prompt and
+    // the compression summary prompt match the language they're reading the
+    // UI in. Re-read per run so settings changes take effect without restart.
+    getLanguage: () => settings.getSettings().ui.language,
     // Tool-dispatch gate: refuse unsafe tools (`run_command`, `apply_patch`,
     // `write_file`) when Docker is missing and the user skipped the install
     // prompt. Catches both user-typed commands AND LLM-initiated tool calls
