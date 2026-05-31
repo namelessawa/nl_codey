@@ -106,6 +106,51 @@ button { font-family: inherit; }
 .main > .main-inner,
 .main > .cover-scroll { flex: 1; min-height: 0; }
 
+/* ─────────────  Cross-view fade slot  ─────────────
+   The .view-slot wraps Empty / Compose / Chat and re-mounts on view change
+   (App passes a viewKey). When [data-transitions="on"] is set on the root, the
+   slot fades + lifts on mount; when off, it just snaps in. The animation is a
+   GPU-only opacity + translateY so the chat-stream's scroll position is not
+   disturbed and the modal layer above remains crisp.                          */
+.view-slot {
+  flex: 1; min-height: 0; min-width: 0;
+  display: flex; flex-direction: column;
+  /* The slot itself never scrolls — its children own their own scroll
+     containers. Containment keeps repaints scoped to the slot. */
+  contain: layout paint;
+}
+:root[data-transitions="on"] .view-slot {
+  animation: view-enter 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+/* Slightly different curves per view kind for personality, all 220ms so cross
+   views feel cohesive. Chat enters from the bottom-right because the user is
+   moving forward into a conversation; Empty drifts in flatly. */
+:root[data-transitions="on"] .view-slot[data-view="empty"]   { animation-duration: 200ms; }
+:root[data-transitions="on"] .view-slot[data-view="compose"] { animation-duration: 220ms; }
+:root[data-transitions="on"] .view-slot[data-view="chat"]    { animation-duration: 240ms; }
+
+@keyframes view-enter {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0,   0); }
+}
+
+/* Sidebar thread selection — a soft slide for the active indicator. */
+:root[data-transitions="on"] .thread {
+  transition: background 140ms ease-out, color 140ms ease-out;
+}
+:root[data-transitions="on"] .thread .dot {
+  transition: background 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+/* Topbar status pill and icon-btn micro-transitions feel instant without them. */
+:root[data-transitions="on"] .topbar .icon-btn,
+:root[data-transitions="on"] .side-foot .icon-btn,
+:root[data-transitions="on"] .btn {
+  transition: background 120ms ease-out, color 120ms ease-out,
+              border-color 120ms ease-out;
+}
+
 /* ─────────────  Topbar  ───────────── */
 .topbar {
   display: flex; align-items: center; gap: 10px;
