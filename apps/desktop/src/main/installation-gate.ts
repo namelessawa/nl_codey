@@ -27,26 +27,49 @@ import {
   type InstallationGateState,
   type InstallationStatus,
 } from "@coding-agent/shared";
-import { probeDockerStatus } from "@coding-agent/sandbox";
+import {
+  probeDockerStatus,
+  type DockerProbeResult,
+} from "@coding-agent/sandbox";
 
 const STATE_FILE = "installation-gate.json";
+
+/**
+ * Optional overrides for tests. Defaults to the real Electron shell and
+ * the real Docker probe. Tests inject mocks here instead of stubbing
+ * module imports — keeps the production path untouched and the test
+ * deterministic.
+ */
+export type InstallationGateDeps = {
+  probeFn?: () => Promise<DockerProbeResult>;
+  openExternal?: (url: string) => Promise<void>;
+};
 
 export class InstallationGate {
   private docker: DockerStatus = DEFAULT_DOCKER_STATUS;
   private gate: InstallationGateState = DEFAULT_INSTALLATION_GATE;
   private readonly statePath: string;
+  private readonly probeFn: () => Promise<DockerProbeResult>;
+  private readonly openExternal: (url: string) => Promise<void>;
 
   constructor(
     userDataDir: string,
     private readonly emit: (event: AgentEvent) => void,
+    deps: InstallationGateDeps = {},
   ) {
     this.statePath = path.join(userDataDir, STATE_FILE);
+    this.probeFn = deps.probeFn ?? probeDockerStatus;
+    this.openExternal =
+      deps.openExternal ??
+      (async (url) => {
+        await shell.openExternal(url);
+      });
     this.loadFromDisk();
   }
 
   /** Probe Docker availability and broadcast the new status. */
   async recheck(): Promise<InstallationStatus> {
-    const probe = await probeDockerStatus();
+    const probe = await this.probeFn();
     this.docker = {
       installed: probe.installed,
       version: probe.version,
@@ -131,7 +154,7 @@ export class InstallationGate {
   /** Open the Docker download page in the user's default browser. */
   async openInstallPage(): Promise<{ opened: boolean }> {
     try {
-      await shell.openExternal(DOCKER_INSTALL_URL);
+      await this.openExternal(DOCKER_INSTALL_URL);
       return { opened: true };
     } catch {
       return { opened: false };

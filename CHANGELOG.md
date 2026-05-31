@@ -5,6 +5,64 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Added
+- **Installation gate — first-run Docker guidance + degraded-mode lockout.**
+  On first launch the main process probes for Docker (`docker --version`
+  followed by `docker info`). If neither succeeds, a non-dismissible modal
+  explains the security risk of running tool calls on the host without a
+  container sandbox and offers three exits: **Install Docker Desktop**
+  (opens the download page via `shell.openExternal`), **Re-check** (re-runs
+  the probe), or **Skip and accept the risk** (red ghost button). The skip
+  choice persists to `<userData>/installation-gate.json`. While "skipped +
+  Docker missing" the app runs in `degraded` mode:
+  - A red **Docker not installed** / **Docker not running** badge appears in
+    the top bar; clicking it re-opens the install modal.
+  - The Settings → Agent panel renders a red warning banner (click to
+    re-open the install modal) and disables the entire fieldset via
+    `<fieldset disabled>` + opacity/greyscale so users cannot accidentally
+    re-enable unsafe options.
+  - The agent loop's tool dispatcher (`createToolExecutor`) consults
+    `assertToolAllowed(toolName)` before every dispatch — LLM-initiated
+    `run_command` / `apply_patch` / `write_file` calls fail closed with a
+    readable error fed back to the model, not a crash. The IPC `runCommand`
+    handler enforces the same check for the user-typed Run Command panel.
+  - Status changes are pushed live to every renderer window via a new
+    `installation_status` `AgentEvent`; clicking **Re-check** after
+    installing Docker silently lifts the lockout without a restart.
+  Persistence survives corrupt JSON (falls back to defaults rather than
+  crashing the boot path). 13 vitest cases lock the state-machine contract;
+  3 additional `tools-registry.test.ts` cases lock the gate's "fail before
+  side effects" guarantee.
+
+### Changed
+- **Sandbox child-process hardening — Job Object + correct env scrubbing.**
+  Every WSL/Docker/Windows child spawned by `runChild` is now assigned to a
+  Windows Job Object created via inline PowerShell P/Invoke. The job sets
+  `KILL_ON_JOB_CLOSE` + per-process memory cap (1 GB default) + total CPU
+  time cap (10 min default) + active process limit (16 default), so a
+  hung/runaway tool can no longer outlive the Electron parent and Electron
+  quit / run cancel drops the entire process tree atomically. On
+  non-Windows the job is a no-op so callers don't branch on platform.
+  Also fixes a long-standing bug where `filteredEnv` was imported into
+  `wsl-runner.ts` but never passed to `child_process.spawn` — process
+  env (including `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`)
+  was leaking to every tool's stdout/stderr. The whitelisted env is now
+  threaded through correctly.
+
+### Documentation
+- **AppContainer feasibility spike — `docs/sandbox/appcontainer-spike.md`.**
+  Design-only writeup for the long-term route to a true Windows-native OS
+  sandbox: Win32 AppContainer SIDs + capability gates + ACL-restricted
+  workspace, equivalent to `bwrap` on Linux. Includes Rust+TS code
+  skeletons, dependency choice (windows-rs + napi-rs + prebuildify), ~1075
+  LOC budget, and a ~10-day phased rollout plan. Framed so the team can
+  decide whether to invest after telemetry from the installation gate
+  shows whether users actually adopt Docker.
+- **README — Docker installation guidance is now front and center.**
+  New section explains why Docker is the recommended sandbox on Windows,
+  how to install Docker Desktop, what happens when it's missing, and how
+  the degraded-mode lockout protects users who explicitly skip it.
+
 ### Changed
 - **Product renamed to NL_Codey.** `productName`, `appId`, `shortcutName`, window
   title, README heading, and the system / patch / plan / summarize prompts now
