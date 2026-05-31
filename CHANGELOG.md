@@ -6,6 +6,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Smooth view transitions across the main shell.** The main slot
+  (`EmptyView` → `NewRunCompose` → `ChatRunView`) now cross-fades on swap
+  via a 200–240 ms GPU-only opacity + `translate3d` keyframe (`view-enter`)
+  scoped to a new `.view-slot` wrapper. The slot re-mounts on a stable
+  `viewKey` derived from `(workspace, isComposingNew, detail?.run.id)`,
+  so each view animates in from scratch instead of receiving a half-stale
+  layout. Sidebar threads, top-bar buttons, and footer icon buttons gained
+  matching 120–160 ms background/color transitions for cohesion.
+- **`smoothTransitions` toggle in `UISettings`.** New boolean (`default true`)
+  controls the cross-view fade. Applied as `data-transitions="on|off"` on
+  `<html>` via `applyAppearance`; gated under `reduceMotion` so accessibility
+  always wins. A toggle row was added to the Settings → Interface pane with
+  bilingual labels (`ui.smoothTransitions` / `ui.smoothTransitionsHint`).
+
+### Fixed
+- **Settings modal scroll lag.** The scroll panes (`.sm-content`, `.sm-tabs`)
+  gained `contain: content` + `overscroll-behavior: contain` so wheel events
+  no longer invalidate ancestor layout, and the modal itself now lives on
+  its own composite layer (`transform: translateZ(0)` + `contain: layout
+  paint`) so the heavy box-shadow caches once instead of re-rasterising
+  every scroll frame. The scrim's `backdrop-filter` is hinted with
+  `will-change: backdrop-filter` for the same reason. On a Windows laptop
+  this turns a juddery scroll into a smooth one — the dominant cost was
+  re-painting the modal drop-shadow and the scrim blur on every wheel tick.
+
+### Added
 - **Installation gate — first-run Docker guidance + degraded-mode lockout.**
   On first launch the main process probes for Docker (`docker --version`
   followed by `docker info`). If neither succeeds, a non-dismissible modal

@@ -66,6 +66,12 @@ export type UISettings = {
   showPipeline: boolean;
   /** When true, hides animations and pulsing indicators. */
   reduceMotion: boolean;
+  /**
+   * When true, the main shell cross-fades between EmptyView / NewRunCompose /
+   * ChatRunView and the right panel animates its contents on swap. Subordinate
+   * to {@link reduceMotion} — turning motion off disables transitions regardless.
+   */
+  smoothTransitions: boolean;
 };
 
 /** Map of action id → key combo (e.g. "Ctrl+Enter"). Empty string = unbound. */
@@ -165,6 +171,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     density: "comfy",
     showPipeline: true,
     reduceMotion: false,
+    smoothTransitions: true,
   },
   shortcuts: { ...DEFAULT_SHORTCUTS },
 };

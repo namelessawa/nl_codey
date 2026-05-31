@@ -122,6 +122,13 @@ export function UISettings({ value, onChange, lang }: Props): JSX.Element {
           label={t("ui.motion", lang)}
           hint={t("ui.motionHint", lang)}
         />
+        <ToggleRow
+          id="ui-smooth"
+          checked={value.smoothTransitions && !value.reduceMotion}
+          onChange={(c) => set("smoothTransitions", c)}
+          label={t("ui.smoothTransitions", lang)}
+          hint={t("ui.smoothTransitionsHint", lang)}
+        />
       </div>
     </div>
   );
