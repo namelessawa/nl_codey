@@ -69,9 +69,52 @@ packages/plugin-sdk       Manifest 校验 + 逐次权限重检 + 沙箱路由 + 
 - 一套 C/C++ 构建工具链，用于原生模块 `better-sqlite3`
   （Visual Studio Build Tools 中的 "Desktop development with C++"，
   或一次性执行 `npm install --global windows-build-tools`）。
+- **Docker Desktop（强烈推荐）。** 见下节"安装 Docker"。
 
-`ripgrep` 已通过 `@vscode/ripgrep` **内置**，无需系统安装。WSL 和
-Docker 是可选的；仅当切换到对应沙箱模式时才需要。
+`ripgrep` 已通过 `@vscode/ripgrep` **内置**，无需系统安装。WSL 是
+可选的；仅当选择 `wsl` 沙箱模式时才需要。
+
+## 安装 Docker（强烈推荐）
+
+应用首次启动时会自动检测 Docker。**没有 Docker 时,代理的工具调用
+(运行测试、应用补丁、写入文件) 会直接在你的宿主机上以你的用户权限执行**
+—— 一个有 bug 的脚本或恶意的生成代码可以删除工作区之外的文件、
+读取你的 SSH 私钥、向外网泄漏数据。
+
+安装 Docker Desktop 可让 `docker` 模式把每条命令都关进一个临时容器,
+工作区以 bind-mount 注入,网络默认关闭。这与 Claude Code 在 Linux/macOS
+上使用的隔离思路一致。
+
+### 安装步骤(Windows)
+
+1. 访问 [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+   并下载 **Docker Desktop for Windows**。
+2. 双击安装程序;若提示启用 WSL 2 或 Hyper-V,接受默认选项。
+3. 安装完成后启动 Docker Desktop,等待右下角图标变为常亮(daemon 就绪)。
+4. 回到 NL_Codey,点击右上角红色徽章 **Docker not installed** 旁的
+   **Re-check** —— 检测成功后徽章自动消失,Agent 设置面板自动解锁。
+
+> Docker Desktop 在个人使用、教育用途和小公司(<250 员工 + 年营收 <
+> $10M)是免费的。详情见 [Docker Desktop 订阅条款](https://www.docker.com/pricing/)。
+
+### 如果你选择不安装 Docker
+
+首次启动的安装提醒模态框右下角有一个红色的 **Skip and accept the risk** 按钮。
+点击后应用会进入 **降级模式 (degraded mode)**:
+
+- 顶栏始终显示一个红色 **Docker not installed** 徽章,点击重新打开安装指引;
+- **设置 → Agent** 栏目顶部出现红色警告横幅,且整个栏目被锁定 —— 你无法
+  修改工作区路径、沙箱模式、自动步数等任何 Agent 设置,直到你安装 Docker
+  或主动取消 skip;
+- 代理循环中所有 `run_command` / `apply_patch` / `write_file` 工具调用
+  **失败关闭** —— LLM 自主选择这些工具时会拿到一个可读的拒绝消息,
+  允许它换一个工具继续。
+- 唯一仍然工作的是只读工具(`read_file`、`list_files`、`search_text`、
+  `find_symbol`、`git_status` / `git_diff` 等);代理可以理解你的代码并
+  给出建议,但 **不会** 修改任何文件。
+
+你随时可以装上 Docker 再点击红色徽章 → **Re-check** 来解除降级模式 ——
+应用会广播状态变化,所有 UI 实时刷新,无需重启。
 
 ## 安装
 
@@ -212,12 +255,23 @@ SQLite 数据库位于 `<userData>/data/workspace-state.db`。
 
 - **`whitelist`**（默认,最安全）—— 精确匹配的允许列表,会被危险
   模式（命令链、命令替换、重定向、`rm -rf`、`powershell` 等）
-  筛查,最终在宿主机上 spawn,cwd 锁定到工作区根。
+  筛查,最终在宿主机上 spawn,cwd 锁定到工作区根。子进程被分配到一个
+  Windows **Job Object**(`KILL_ON_JOB_CLOSE` + 内存/CPU/进程数上限),
+  Electron 退出或运行取消时整棵进程树原子化销毁。
 - **`wsl`** —— 在 WSL Ubuntu 实例中运行，针对工作区的副本。
 - **`docker`** —— 在临时容器中运行，工作区以绑定挂载方式注入。
+  推荐生产使用,见上节"安装 Docker"。
 
 WSL/Docker 运行默认 **无网络出口**，除非某条命令明确开启；改动的
 文件会同步回宿主。
+
+> **关于"开箱即用"的真沙箱:** Windows 原生没有等价于 Linux `bwrap` /
+> macOS `sandbox-exec` 的用户态工具(它们是 Linux 内核命名空间或
+> Seatbelt 的特性),因此应用打包内不能自带强隔离。AppContainer 是
+> Windows 原生可选的真沙箱方案,长期路线已在
+> [`docs/sandbox/appcontainer-spike.md`](docs/sandbox/appcontainer-spike.md)
+> 记录(~10 工作日的 native addon 工作)。在那之前,Docker 是
+> Windows 上能拿到的最强隔离。
 
 ## 测试
 

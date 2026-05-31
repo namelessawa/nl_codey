@@ -5,11 +5,14 @@ import { createLLMProvider, createLLMProviderFromEnv } from "@coding-agent/llm";
 import { Storage } from "@coding-agent/storage";
 import type { AgentEvent } from "@coding-agent/shared";
 import { SettingsStore } from "./settings/store.js";
+import { InstallationGate } from "./installation-gate.js";
 
 export type Services = {
   storage: Storage;
   settings: SettingsStore;
   agent: AgentService;
+  /** Docker availability + user skip choice (instruction branch). */
+  installationGate: InstallationGate;
 };
 
 /** Build the storage + settings + agent service. `emit` broadcasts live events. */
@@ -19,6 +22,7 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
   const dbPath = path.join(dataDir, "workspace-state.db");
   const storage = new Storage(dbPath);
   const settings = new SettingsStore(userData);
+  const installationGate = new InstallationGate(userData, emit);
 
   const agent = new AgentService({
     storage,
@@ -31,8 +35,14 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
       return createLLMProvider(config);
     },
     getAgentSettings: () => settings.getSettings().agent,
+    // Tool-dispatch gate: refuse unsafe tools (`run_command`, `apply_patch`,
+    // `write_file`) when Docker is missing and the user skipped the install
+    // prompt. Catches both user-typed commands AND LLM-initiated tool calls
+    // inside the autonomous loop. Bound so `this` inside the gate keeps
+    // pointing at the InstallationGate instance.
+    assertToolAllowed: (toolName: string) => installationGate.assertToolAllowed(toolName),
     emit,
   });
 
-  return { storage, settings, agent };
+  return { storage, settings, agent, installationGate };
 }

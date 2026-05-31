@@ -17,12 +17,14 @@ import {
 } from "@coding-agent/shared";
 import { api } from "./api.js";
 import { useShortcuts } from "./hooks/useShortcuts.js";
+import { useInstallationGate } from "./hooks/useInstallationGate.js";
 import { Topbar } from "./components/Topbar.js";
 import { ThreadsSidebar } from "./components/ThreadsSidebar.js";
 import { EmptyView } from "./components/EmptyView.js";
 import { ChatRunView } from "./components/ChatRunView.js";
 import { ApprovalSheet } from "./components/ApprovalSheet.js";
 import { SettingsModal, type SettingsTab } from "./components/SettingsModal.js";
+import { DockerInstallModal } from "./components/DockerInstallModal.js";
 import { QuickPrefsPopover } from "./components/QuickPrefsPopover.js";
 import { ModelSwitcher } from "./components/ModelSwitcher.js";
 import { RightPanel } from "./components/RightPanel.js";
@@ -52,6 +54,41 @@ export function App(): JSX.Element {
   const [modelSwitcherOpen, setModelSwitcherOpen] = useState<boolean>(false);
   const [modelAnchor, setModelAnchor] = useState<DOMRect | null>(null);
   const [gitRefreshTick, setGitRefreshTick] = useState<number>(0);
+  const [installModalOpen, setInstallModalOpen] = useState<boolean>(false);
+
+  const installation = useInstallationGate();
+
+  // First-run rule: open the install modal automatically the first time the
+  // app boots without a usable Docker. Subsequent launches re-open it only
+  // when the user explicitly clicks the red badge or the settings warning.
+  useEffect(() => {
+    if (installation.loading) return;
+    const dockerUsable =
+      installation.status.docker.installed && installation.status.docker.daemonRunning;
+    const firstRun = !installation.status.gate.firstRunCompleted;
+    if (!dockerUsable && firstRun) {
+      setInstallModalOpen(true);
+    }
+  }, [installation.loading, installation.status]);
+
+  const openInstallReminder = useCallback(() => {
+    setInstallModalOpen(true);
+  }, []);
+
+  const closeInstallReminder = useCallback(() => {
+    setInstallModalOpen(false);
+    if (!installation.status.gate.firstRunCompleted) {
+      void installation.markFirstRunCompleted();
+    }
+  }, [installation]);
+
+  const handleSkipInstall = useCallback(() => {
+    void installation.skip().then(() => setInstallModalOpen(false));
+  }, [installation]);
+
+  const handleOpenDockerPage = useCallback(() => {
+    void installation.openInstallPage();
+  }, [installation]);
 
   const activeRunIdRef = useRef<string | null>(null);
   activeRunIdRef.current = activeRunId;
@@ -401,12 +438,14 @@ export function App(): JSX.Element {
         activeRun={detail?.run ?? null}
         llmConnected={llmConnected}
         currentModel={currentModel}
+        installation={installation.status}
         onSwitchWorkspace={() => void openWorkspace()}
         onOpenModelSwitcher={openModelSwitcher}
         onOpenSettings={() => {
           setSettingsInitialTab("llm");
           setSettingsOpen(true);
         }}
+        onOpenInstallReminder={openInstallReminder}
       />
       <ThreadsSidebar
         runs={runs}
@@ -462,9 +501,23 @@ export function App(): JSX.Element {
       <SettingsModal
         open={settingsOpen}
         initialTab={settingsInitialTab}
+        installation={installation.status}
+        onRequestDockerInstall={() => {
+          setSettingsOpen(false);
+          setInstallModalOpen(true);
+        }}
         onClose={() => setSettingsOpen(false)}
         onSaved={onSettingsSaved}
         onToast={showToast}
+      />
+      <DockerInstallModal
+        open={installModalOpen}
+        status={installation.status}
+        rechecking={installation.rechecking}
+        onRecheck={() => void installation.recheck()}
+        onInstall={handleOpenDockerPage}
+        onSkip={handleSkipInstall}
+        onClose={closeInstallReminder}
       />
       <QuickPrefsPopover
         open={quickPrefsOpen}

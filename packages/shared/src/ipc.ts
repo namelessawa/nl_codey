@@ -34,6 +34,7 @@ import type {
   WorkerNode,
   WorkspaceContributionMode,
 } from "./phase4.js";
+import type { InstallationStatus, InstallationEvent } from "./installation.js";
 
 /** Consistent response envelope for every IPC call. */
 export type IpcResult<T> =
@@ -128,6 +129,13 @@ export const IPC = {
   // --- Phase 4: settings ---
   getPhase4Settings: "phase4:getSettings",
   updatePhase4Settings: "phase4:updateSettings",
+  // --- Installation gate (instruction branch) ---
+  getInstallationStatus: "installation:getStatus",
+  recheckDocker: "installation:recheckDocker",
+  skipInstallationGate: "installation:skipGate",
+  resumeInstallationGate: "installation:resumeGate",
+  markFirstRunCompleted: "installation:markFirstRunCompleted",
+  openDockerInstallPage: "installation:openInstallPage",
 } as const;
 
 /** Push channel: main -> renderer live updates while a run progresses. */
@@ -144,7 +152,9 @@ export type AgentEvent =
   /** Phase 3: a new inter-role message was emitted. */
   | { kind: "role_message"; runId: string; message: RoleMessage }
   /** Phase 3: semantic index build progress. */
-  | { kind: "index_status"; workspaceId: string; status: SemanticIndexStatus };
+  | { kind: "index_status"; workspaceId: string; status: SemanticIndexStatus }
+  /** Instruction branch: Docker availability or gate state changed. */
+  | InstallationEvent;
 
 export type RunAgentTaskArgs = { workspaceId: string; task: string };
 export type ContinueAgentTaskArgs = { runId: string; followUp: string };
@@ -262,6 +272,19 @@ export interface AgentApi {
   // --- Phase 4: settings ---
   getPhase4Settings(): Promise<IpcResult<Phase4Settings>>;
   updatePhase4Settings(args: { settings: Phase4Settings }): Promise<IpcResult<Phase4Settings>>;
+  // --- Installation gate (instruction branch) ---
+  /** Snapshot of Docker availability and the user's skip decision. */
+  getInstallationStatus(): Promise<IpcResult<InstallationStatus>>;
+  /** Force a fresh probe (user clicked "Re-check" in the modal). */
+  recheckDocker(): Promise<IpcResult<InstallationStatus>>;
+  /** User clicked "Skip and accept the risk". */
+  skipInstallationGate(): Promise<IpcResult<InstallationStatus>>;
+  /** User cleared the skip flag from the red badge or settings warning. */
+  resumeInstallationGate(): Promise<IpcResult<InstallationStatus>>;
+  /** Renderer signals the install modal has been shown at least once. */
+  markFirstRunCompleted(): Promise<IpcResult<InstallationStatus>>;
+  /** Open the Docker Desktop download page in the user's default browser. */
+  openDockerInstallPage(): Promise<IpcResult<{ opened: boolean }>>;
   onAgentEvent(handler: (event: AgentEvent) => void): () => void;
 }
 

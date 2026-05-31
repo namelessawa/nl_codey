@@ -64,3 +64,49 @@ describe("createToolExecutor guards", () => {
     expect(Array.isArray(parsed.symbols)).toBe(true);
   });
 });
+
+describe("createToolExecutor assertToolAllowed gate", () => {
+  // The installation gate is consulted BEFORE the dispatcher's switch. A
+  // throwing gate must produce a structured error result rather than
+  // crashing the executor — that's the loop's contract.
+  function withGate(blockedTools: Set<string>) {
+    return createToolExecutor({
+      ctx: { workspaceRoot: process.cwd(), runId: "test-run" },
+      storage: noopStorage,
+      allowShellExecution: true,
+      assertToolAllowed: (toolName: string) => {
+        if (blockedTools.has(toolName)) {
+          throw new Error(`Tool "${toolName}" is disabled in degraded mode`);
+        }
+      },
+    });
+  }
+
+  it("blocks run_command before the dispatcher runs the host command", async () => {
+    const exec = withGate(new Set(["run_command"]));
+    const res = await exec(call("run_command", { command: "pnpm test" }));
+    expect(res.isError).toBe(true);
+    expect(res.resultText).toContain("degraded mode");
+    // The gate fires before the run_command branch, so no command output
+    // should be attached to the result.
+    expect(res.command).toBeUndefined();
+  });
+
+  it("blocks apply_patch before the dispatcher writes any snapshot", async () => {
+    const exec = withGate(new Set(["apply_patch"]));
+    const res = await exec(call("apply_patch", { patch: "*** Begin Patch\n*** End Patch" }));
+    expect(res.isError).toBe(true);
+    expect(res.resultText).toContain("degraded mode");
+    expect(res.patch).toBeUndefined();
+    expect(res.changedFiles).toBeUndefined();
+  });
+
+  it("lets safe read-only tools through when the gate allows them", async () => {
+    // Only block unsafe tools; read_file_range should still work normally.
+    const exec = withGate(new Set(["run_command", "apply_patch"]));
+    const res = await exec(
+      call("read_file_range", { path: "package.json", startLine: 1, endLine: 5 }),
+    );
+    expect(res.isError).toBe(false);
+  });
+});

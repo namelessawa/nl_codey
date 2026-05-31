@@ -118,6 +118,13 @@ const api: AgentApi = {
   // --- Phase 4: settings ---
   getPhase4Settings: () => ipcRenderer.invoke(IPC.getPhase4Settings),
   updatePhase4Settings: (args) => ipcRenderer.invoke(IPC.updatePhase4Settings, args),
+  // --- Installation gate (instruction branch) ---
+  getInstallationStatus: () => ipcRenderer.invoke(IPC.getInstallationStatus),
+  recheckDocker: () => ipcRenderer.invoke(IPC.recheckDocker),
+  skipInstallationGate: () => ipcRenderer.invoke(IPC.skipInstallationGate),
+  resumeInstallationGate: () => ipcRenderer.invoke(IPC.resumeInstallationGate),
+  markFirstRunCompleted: () => ipcRenderer.invoke(IPC.markFirstRunCompleted),
+  openDockerInstallPage: () => ipcRenderer.invoke(IPC.openDockerInstallPage),
   onAgentEvent: (handler: (event: AgentEvent) => void) => {
     const listener = (_e: unknown, payload: AgentEvent): void => handler(payload);
     ipcRenderer.on(IPC_EVENT, listener);

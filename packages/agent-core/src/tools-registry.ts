@@ -175,6 +175,19 @@ export type ToolExecutorOptions = {
   ctx: ToolContext;
   storage: SnapshotStore;
   allowShellExecution: boolean;
+  /**
+   * Optional gate consulted before every tool dispatch. Used by the
+   * installation gate to refuse `run_command`/`apply_patch`/`write_file`
+   * when Docker is missing and the user opted to skip the install prompt.
+   *
+   * The function should throw a readable Error when the tool is disallowed;
+   * the executor catches it and returns a structured error result so the
+   * loop can feed the failure back to the model without crashing the run.
+   *
+   * Optional so existing callers (tests, CLI harnesses) don't have to
+   * provide it. When omitted, no extra gating is applied.
+   */
+  assertToolAllowed?: (toolName: string) => void;
 };
 
 /**
@@ -185,9 +198,22 @@ export type ToolExecutorOptions = {
 export function createToolExecutor(
   opts: ToolExecutorOptions,
 ): (call: LLMToolCall) => Promise<ExecutedTool> {
-  const { ctx, storage, allowShellExecution } = opts;
+  const { ctx, storage, allowShellExecution, assertToolAllowed } = opts;
 
   return async (call: LLMToolCall): Promise<ExecutedTool> => {
+    // Installation-gate check FIRST — refuse before we touch the workspace.
+    // Catch + return-error keeps the loop alive: the model sees the failure
+    // and can either stop or pick a different tool.
+    if (assertToolAllowed) {
+      try {
+        assertToolAllowed(call.name);
+      } catch (gateErr) {
+        return err(
+          call.name,
+          gateErr instanceof Error ? gateErr.message : String(gateErr),
+        );
+      }
+    }
     const args = isRecord(call.args) ? call.args : {};
     try {
       switch (call.name) {
