@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { FileSnapshot, LLMToolCall } from "@coding-agent/shared";
-import { AGENT_TOOL_SCHEMAS, createToolExecutor } from "./tools-registry.js";
+import {
+  AGENT_TOOL_SCHEMAS,
+  FILE_MUTATING_TOOLS,
+  agentToolSchemas,
+  createToolExecutor,
+} from "./tools-registry.js";
 
 const noopStorage = {
   addSnapshot(): FileSnapshot {
@@ -35,6 +40,55 @@ describe("AGENT_TOOL_SCHEMAS", () => {
       "git_diff",
       "record_plan",
     ]);
+  });
+});
+
+describe("agentToolSchemas read-only mode", () => {
+  it("returns the full schema list when not read-only", () => {
+    expect(agentToolSchemas()).toEqual(AGENT_TOOL_SCHEMAS);
+    expect(agentToolSchemas({ readOnly: false })).toEqual(AGENT_TOOL_SCHEMAS);
+  });
+
+  it("strips every file-mutating tool when read-only", () => {
+    const names = agentToolSchemas({ readOnly: true }).map((t) => t.name);
+    for (const mutating of FILE_MUTATING_TOOLS) {
+      expect(names).not.toContain(mutating);
+    }
+    // apply_patch is the mutating tool actually present in the base list.
+    expect(names).not.toContain("apply_patch");
+    // Read-only tools are untouched.
+    expect(names).toContain("read_file");
+    expect(names).toContain("search_text");
+    expect(names).toContain("find_symbol");
+  });
+});
+
+describe("createToolExecutor read-only guard", () => {
+  function readOnlyExecutor() {
+    return createToolExecutor({
+      ctx: { workspaceRoot: process.cwd(), runId: "test-run" },
+      storage: noopStorage,
+      allowShellExecution: true,
+      readOnly: true,
+    });
+  }
+
+  it("refuses apply_patch before writing any snapshot", async () => {
+    const res = await readOnlyExecutor()(
+      call("apply_patch", { patch: "*** Begin Patch\n*** End Patch" }),
+    );
+    expect(res.isError).toBe(true);
+    expect(res.resultText).toContain("read-only");
+    // The guard fires before the apply_patch branch — no patch metadata leaks.
+    expect(res.patch).toBeUndefined();
+    expect(res.changedFiles).toBeUndefined();
+  });
+
+  it("still allows read-only tools through", async () => {
+    const res = await readOnlyExecutor()(
+      call("read_file_range", { path: "package.json", startLine: 1, endLine: 5 }),
+    );
+    expect(res.isError).toBe(false);
   });
 });
 

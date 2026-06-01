@@ -3,11 +3,17 @@ export { BudgetController } from "./budget.js";
 export { runToolLoop, consumeStream, type ToolLoopOutcome, type ToolLoopDeps } from "./loop.js";
 export {
   AGENT_TOOL_SCHEMAS,
+  FILE_MUTATING_TOOLS,
+  agentToolSchemas,
   createToolExecutor,
   type ExecutedTool,
   type ToolExecutorOptions,
 } from "./tools-registry.js";
-export { SYSTEM_PROMPT } from "./prompts.js";
+export {
+  SYSTEM_PROMPT,
+  READONLY_SYSTEM_PROMPT,
+  getReadonlySystemPrompt,
+} from "./prompts.js";
 export {
   buildPhase4PromptAugmentation,
   MODEL_IDENTITY_REMINDER,
