@@ -13,7 +13,9 @@ type IconName =
   | "stop"
   | "sparkle"
   | "doc"
-  | "search";
+  | "search"
+  | "panel-left"
+  | "panel-right";
 
 interface IconProps {
   name: IconName;
@@ -130,6 +132,20 @@ export function Icon({ name, size = 14, stroke = 1.6, style, className }: IconPr
         <svg {...common}>
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" />
+        </svg>
+      );
+    case "panel-left":
+      return (
+        <svg {...common}>
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d="M9 4v16" />
+        </svg>
+      );
+    case "panel-right":
+      return (
+        <svg {...common}>
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d="M15 4v16" />
         </svg>
       );
   }

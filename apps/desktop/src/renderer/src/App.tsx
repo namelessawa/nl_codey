@@ -57,8 +57,25 @@ export function App(): JSX.Element {
   const [modelAnchor, setModelAnchor] = useState<DOMRect | null>(null);
   const [gitRefreshTick, setGitRefreshTick] = useState<number>(0);
   const [installModalOpen, setInstallModalOpen] = useState<boolean>(false);
+  const [leftCollapsed, setLeftCollapsed] = useState<boolean>(() => readBoolLocal(LEFT_COLLAPSED_KEY));
+  const [rightCollapsed, setRightCollapsed] = useState<boolean>(() => readBoolLocal(RIGHT_COLLAPSED_KEY));
 
   const installation = useInstallationGate();
+
+  const toggleLeft = useCallback(() => {
+    setLeftCollapsed((c) => {
+      const next = !c;
+      writeBoolLocal(LEFT_COLLAPSED_KEY, next);
+      return next;
+    });
+  }, []);
+  const toggleRight = useCallback(() => {
+    setRightCollapsed((c) => {
+      const next = !c;
+      writeBoolLocal(RIGHT_COLLAPSED_KEY, next);
+      return next;
+    });
+  }, []);
 
   // First-run rule: open the install modal automatically the first time the
   // app boots without a usable Docker. Subsequent launches re-open it only
@@ -454,9 +471,14 @@ export function App(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace, recents, busy, isComposingNew, detail, liveText, composer, userInitials, maxAutoSteps]);
 
+  const appClass =
+    "app" +
+    (leftCollapsed ? " collapsed-left" : "") +
+    (rightCollapsed ? " collapsed-right" : "");
+
   return (
     <LangProvider value={lang}>
-    <div className="app">
+    <div className={appClass}>
       <Topbar
         ref={modelChipRef}
         workspace={workspace}
@@ -464,6 +486,10 @@ export function App(): JSX.Element {
         llmConnected={llmConnected}
         currentModel={currentModel}
         installation={installation.status}
+        leftCollapsed={leftCollapsed}
+        rightCollapsed={rightCollapsed}
+        onToggleLeft={toggleLeft}
+        onToggleRight={toggleRight}
         onSwitchWorkspace={() => void openWorkspace()}
         onOpenModelSwitcher={openModelSwitcher}
         onOpenSettings={() => {
@@ -701,4 +727,23 @@ function isTerminalStatus(status: AgentRunState): boolean {
     status === "cancelled" ||
     status === "budget_exceeded"
   );
+}
+
+const LEFT_COLLAPSED_KEY = "ui.leftCollapsed";
+const RIGHT_COLLAPSED_KEY = "ui.rightCollapsed";
+
+function readBoolLocal(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeBoolLocal(key: string, value: boolean): void {
+  try {
+    window.localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // localStorage unavailable (e.g. private mode) — non-fatal, state still works in-memory.
+  }
 }

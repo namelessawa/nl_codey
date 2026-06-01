@@ -12,6 +12,11 @@ interface TopbarProps {
   currentModel: string;
   /** Docker availability + gate state for the red badge. */
   installation: InstallationStatus;
+  /** Whether the left/right side panels are currently collapsed. */
+  leftCollapsed: boolean;
+  rightCollapsed: boolean;
+  onToggleLeft: () => void;
+  onToggleRight: () => void;
   onSwitchWorkspace: () => void;
   onOpenModelSwitcher: () => void;
   onOpenSettings: () => void;
@@ -31,6 +36,10 @@ export const Topbar = forwardRef(function Topbar(
     llmConnected,
     currentModel,
     installation,
+    leftCollapsed,
+    rightCollapsed,
+    onToggleLeft,
+    onToggleRight,
     onSwitchWorkspace,
     onOpenModelSwitcher,
     onOpenSettings,
@@ -40,6 +49,8 @@ export const Topbar = forwardRef(function Topbar(
 ): JSX.Element {
   const tr = useT();
   const wsName = workspace ? workspaceName(workspace.rootPath) : null;
+  const leftLabel = leftCollapsed ? tr("topbar.expandLeft") : tr("topbar.collapseLeft");
+  const rightLabel = rightCollapsed ? tr("topbar.expandRight") : tr("topbar.collapseRight");
   return (
     <header className="topbar">
       <div className="brand">
@@ -47,6 +58,17 @@ export const Topbar = forwardRef(function Topbar(
         <span>codey</span>
         <span className="brand-version">· v0.2 · phase 1</span>
       </div>
+
+      <button
+        className={`icon-btn${leftCollapsed ? "" : " active"}`}
+        title={leftLabel}
+        aria-label={leftLabel}
+        aria-pressed={!leftCollapsed}
+        onClick={onToggleLeft}
+        type="button"
+      >
+        <Icon name="panel-left" size={16} stroke={2} />
+      </button>
 
       <button
         className="ws"
@@ -113,6 +135,17 @@ export const Topbar = forwardRef(function Topbar(
       </span>
 
       <DockerStatusBadge status={installation} onClick={onOpenInstallReminder} />
+
+      <button
+        className={`icon-btn${rightCollapsed ? "" : " active"}`}
+        title={rightLabel}
+        aria-label={rightLabel}
+        aria-pressed={!rightCollapsed}
+        onClick={onToggleRight}
+        type="button"
+      >
+        <Icon name="panel-right" size={16} stroke={2} />
+      </button>
 
       <button
         className="icon-btn"

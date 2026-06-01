@@ -78,7 +78,17 @@ export async function compressConversation(
   if (!firstUser) return null;
 
   // The compressible middle excludes system msgs, the first user msg, and the tail.
-  const tailStart = Math.max(firstUserIdx + 1, messages.length - KEEP_RECENT);
+  let tailStart = Math.max(firstUserIdx + 1, messages.length - KEEP_RECENT);
+  // A `tool` message must follow an `assistant` message with matching `tool_calls`
+  // (enforced by OpenAI / DeepSeek / Anthropic). If `tailStart` lands on a `tool`
+  // message, its parent assistant is in the middle and gets folded into the
+  // summary — the result is an orphan `tool` at the head of `recent` and the
+  // next API call rejects the request with 400. Advance `tailStart` past any
+  // leading `tool` messages so `recent` always begins with a self-contained
+  // message (system/user/assistant).
+  while (tailStart < messages.length && messages[tailStart]?.role === "tool") {
+    tailStart += 1;
+  }
   const middle = messages.slice(firstUserIdx + 1, tailStart);
   if (middle.length < 2) return null; // not enough to bother
 
