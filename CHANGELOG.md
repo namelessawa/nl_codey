@@ -5,7 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Fixed
+- **DeepSeek 400 "tool must be a response to a preceding message with
+  tool_calls" after mid-run compression.** When the conversation crossed
+  `COMPRESS_TRIGGER_RATIO`, `compressConversation` could land `tailStart` on a
+  `tool` message — the parent `assistant(tool_calls=...)` was folded into the
+  summary, leaving the tool message orphaned at the head of `recent`, and the
+  next request was rejected by DeepSeek / OpenAI. `compressConversation` now
+  advances `tailStart` past every leading `tool` message so `recent` always
+  begins with a self-contained system/user/assistant entry. A regression test
+  in `compressor.test.ts` asserts `recent` never starts with a `tool` role and
+  that every surviving `tool` references a preceding assistant's `tool_calls`.
+
 ### Added
+- **Collapsible left and right side panels.** Two new icon buttons in the
+  Topbar (`panel-left` / `panel-right`) toggle the threads sidebar and the
+  inspector right panel independently. State persists across launches via
+  `localStorage` (`ui.leftCollapsed` / `ui.rightCollapsed`). The grid reflows
+  smoothly (180 ms cubic-bezier on `grid-template-columns`) into 2-column or
+  full-width layouts; with both collapsed, the chat takes the entire width.
+  Existing responsive breakpoints (1280 / 1080) honour the collapse state.
 - **Read-only ("instruction") agent mode — query, never modify.** The shipped
   agent now runs as a query-only assistant: it can read, search, list, find
   symbols, and inspect `git status`/`git diff`, but it is completely forbidden

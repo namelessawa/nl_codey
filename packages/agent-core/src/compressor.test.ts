@@ -90,6 +90,49 @@ describe("compressConversation", () => {
     expect(summarize).not.toHaveBeenCalled();
   });
 
+  it("never lets `recent` begin with an orphan tool message", async () => {
+    // The exact bug behind the deepseek 400: KEEP_RECENT slices through an
+    // assistant(tool_calls)/tool pair, dropping the assistant into the middle
+    // (folded into the summary) and leaving an orphan `tool` at the head of
+    // `recent`. The fix advances tailStart past leading tool messages.
+    const filler = "x".repeat(400);
+    const messages: LLMMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "do the thing" },
+    ];
+    for (let i = 0; i < 20; i += 1) {
+      messages.push({
+        role: "assistant",
+        content: `${filler} step ${i}`,
+        toolCalls: [{ id: `t${i}`, name: "read_file", args: { path: `f${i}` } }],
+      });
+      messages.push({ role: "tool", toolCallId: `t${i}`, content: `${filler} result ${i}` });
+    }
+    // 2 + 40 = 42. KEEP_RECENT=10 → tailStart=32, which is a tool message.
+
+    const summarize = vi.fn(async () => "SUMMARY");
+    const result = await compressConversation(messages, SMALL_WINDOW, summarize);
+    expect(result).not.toBeNull();
+    const compressed = result!.messages;
+
+    // After the summary, the first message of `recent` must NOT be a tool
+    // message — otherwise deepseek/OpenAI reject the request with:
+    // "Messages with role 'tool' must be a response to a preceding message
+    //  with 'tool_calls'".
+    const recent = compressed.slice(3); // skip system + first user + summary
+    expect(recent[0]?.role).not.toBe("tool");
+
+    // Every tool message in `recent` must follow an assistant with matching tool_calls.
+    for (let i = 0; i < recent.length; i += 1) {
+      const m = recent[i]!;
+      if (m.role !== "tool") continue;
+      const prev = recent[i - 1];
+      expect(prev?.role).toBe("assistant");
+      const callIds = prev?.role === "assistant" ? prev.toolCalls?.map((c) => c.id) ?? [] : [];
+      expect(callIds).toContain(m.toolCallId);
+    }
+  });
+
   it("feeds serialized middle messages to the summarizer", async () => {
     const messages = buildConversation(20, 400);
     let received = "";

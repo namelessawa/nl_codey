@@ -286,6 +286,10 @@ const STRINGS = {
   "topbar.settings": { "zh-CN": "设置", "en-US": "Settings" },
   "topbar.runHash": { "zh-CN": "运行", "en-US": "run" },
   "topbar.iter": { "zh-CN": "迭代", "en-US": "iter" },
+  "topbar.collapseLeft": { "zh-CN": "收起左侧栏", "en-US": "Collapse left sidebar" },
+  "topbar.expandLeft": { "zh-CN": "展开左侧栏", "en-US": "Expand left sidebar" },
+  "topbar.collapseRight": { "zh-CN": "收起右侧栏", "en-US": "Collapse right panel" },
+  "topbar.expandRight": { "zh-CN": "展开右侧栏", "en-US": "Expand right panel" },
 
   // ─────────────  EmptyView / cover  ─────────────
   "empty.runbookCover": { "zh-CN": "运行手册 · 封面", "en-US": "runbook · cover" },

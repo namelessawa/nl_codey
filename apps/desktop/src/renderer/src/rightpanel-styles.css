@@ -6,25 +6,52 @@
     "side   main   right";
 }
 .rightpanel { grid-area: right; min-height: 0; }
-.app.no-right {
+.app.no-right,
+.app.collapsed-right {
   grid-template-columns: 268px 1fr;
   grid-template-areas:
     "topbar topbar"
     "side   main";
 }
-.app.no-right .rightpanel { display: none; }
+.app.no-right .rightpanel,
+.app.collapsed-right .rightpanel { display: none; }
+
+/* User-collapsed LEFT sidebar — hides the threads pane via grid reflow. */
+.app.collapsed-left {
+  grid-template-columns: 1fr 320px;
+  grid-template-areas:
+    "topbar topbar"
+    "main   right";
+}
+.app.collapsed-left .side { display: none; }
+
+/* Both panels collapsed — chat takes the full width. */
+.app.collapsed-left.collapsed-right {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "topbar"
+    "main";
+}
+
 @media (max-width: 1280px) {
   .app { grid-template-columns: 240px 1fr 268px; }
+  .app.collapsed-right { grid-template-columns: 240px 1fr; }
+  .app.collapsed-left { grid-template-columns: 1fr 268px; }
+  .app.collapsed-left.collapsed-right { grid-template-columns: 1fr; }
 }
 @media (max-width: 1080px) {
-  .app {
+  .app:not(.collapsed-left) {
     grid-template-columns: 240px 1fr;
     grid-template-areas:
       "topbar topbar"
       "side   main";
   }
-  .rightpanel { display: none; }
+  .app:not(.collapsed-left) .rightpanel { display: none; }
 }
+
+/* Smooth grid transition when toggling. The grid-template-columns animation
+   is supported by Chromium/Electron and degrades gracefully where it isn't. */
+.app { transition: grid-template-columns 180ms cubic-bezier(0.22, 0.61, 0.36, 1); }
 
 /* ─────────────  Model chip in topbar  ───────────── */
 .model-chip {
