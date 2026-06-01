@@ -157,6 +157,26 @@ export const AGENT_TOOL_SCHEMAS: ToolSchema[] = [
   },
 ];
 
+/**
+ * Tools that create, modify, or delete files in the workspace. In read-only
+ * ("instruction") mode the agent is a query-only assistant: these tools are
+ * stripped from the schema the model sees (see {@link agentToolSchemas}) AND
+ * hard-refused at dispatch (see {@link createToolExecutor}). The dual check is
+ * deliberate defense in depth — a model can emit a tool call for a name it was
+ * never offered, so we must also fail closed in the executor.
+ */
+export const FILE_MUTATING_TOOLS: readonly string[] = ["apply_patch", "write_file"];
+
+/**
+ * The tool schemas advertised to the model. In read-only mode the file-mutating
+ * tools are filtered out so the model never even attempts an edit; otherwise the
+ * full {@link AGENT_TOOL_SCHEMAS} list is returned.
+ */
+export function agentToolSchemas(options: { readOnly?: boolean } = {}): ToolSchema[] {
+  if (!options.readOnly) return AGENT_TOOL_SCHEMAS;
+  return AGENT_TOOL_SCHEMAS.filter((tool) => !FILE_MUTATING_TOOLS.includes(tool.name));
+}
+
 /** Outcome of executing one tool call, with metadata for step recording/UI. */
 export type ExecutedTool = {
   name: string;
@@ -188,6 +208,14 @@ export type ToolExecutorOptions = {
    * provide it. When omitted, no extra gating is applied.
    */
   assertToolAllowed?: (toolName: string) => void;
+  /**
+   * Read-only ("instruction") mode. When true, any {@link FILE_MUTATING_TOOLS}
+   * call is refused with a readable error before it can touch the workspace —
+   * the agent becomes a query-only assistant that can never modify or delete a
+   * file. Pair with {@link agentToolSchemas}`({ readOnly: true })` so the model
+   * is not even offered the tool. Defaults to false (full read/write agent).
+   */
+  readOnly?: boolean;
 };
 
 /**
@@ -198,9 +226,19 @@ export type ToolExecutorOptions = {
 export function createToolExecutor(
   opts: ToolExecutorOptions,
 ): (call: LLMToolCall) => Promise<ExecutedTool> {
-  const { ctx, storage, allowShellExecution, assertToolAllowed } = opts;
+  const { ctx, storage, allowShellExecution, assertToolAllowed, readOnly } = opts;
 
   return async (call: LLMToolCall): Promise<ExecutedTool> => {
+    // Read-only ("instruction") mode: refuse any file-mutating tool before it
+    // can write or delete. These tools are also stripped from the advertised
+    // schema, but a model can still emit a call for a name it was never
+    // offered, so we fail closed here too (defense in depth).
+    if (readOnly && FILE_MUTATING_TOOLS.includes(call.name)) {
+      return err(
+        call.name,
+        `Tool "${call.name}" is disabled: the agent is in read-only (query) mode and must not modify or delete files. Read and explain the code instead — propose changes in prose for the user to apply.`,
+      );
+    }
     // Installation-gate check FIRST — refuse before we touch the workspace.
     // Catch + return-error keeps the loop alive: the model sees the failure
     // and can either stop or pick a different tool.

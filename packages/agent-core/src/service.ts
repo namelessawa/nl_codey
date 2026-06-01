@@ -21,8 +21,8 @@ import { listFilesTool, parseTestFailure, runCommandTool } from "@coding-agent/t
 import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
-import { AGENT_TOOL_SCHEMAS, createToolExecutor } from "./tools-registry.js";
-import { getSystemPrompt } from "./prompts.js";
+import { agentToolSchemas, createToolExecutor } from "./tools-registry.js";
+import { getReadonlySystemPrompt, getSystemPrompt } from "./prompts.js";
 import { getSummarizePrompt } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
 import { analyzeRegressions, regressionNote } from "./regression.js";
@@ -59,6 +59,15 @@ export type AgentDeps = {
    * a different action instead of crashing.
    */
   assertToolAllowed?: (toolName: string) => void;
+  /**
+   * Read-only ("instruction") mode. When true, the agent runs as a query-only
+   * assistant: file-mutating tools (apply_patch / write_file) are stripped from
+   * the model's tool schema and hard-refused at dispatch, the read-only system
+   * prompt is used, and the pre-edit regression baseline is skipped (there are
+   * no edits to guard). Defaults to false. Set by the desktop app so users can
+   * query — but never modify — their project.
+   */
+  readOnly?: boolean;
   emit: (event: AgentEvent) => void;
 };
 
@@ -72,6 +81,7 @@ export class AgentService {
   private readonly getAgentSettings: () => AgentSettings;
   private readonly getLanguage: () => LanguagePreference;
   private readonly assertToolAllowed: ((toolName: string) => void) | undefined;
+  private readonly readOnly: boolean;
   private readonly emit: (event: AgentEvent) => void;
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
@@ -87,6 +97,7 @@ export class AgentService {
     // see the original behaviour.
     this.getLanguage = deps.getLanguage ?? ((): LanguagePreference => "zh-CN");
     this.assertToolAllowed = deps.assertToolAllowed;
+    this.readOnly = deps.readOnly ?? false;
     this.emit = deps.emit;
   }
 
@@ -204,8 +215,11 @@ export class AgentService {
 
     this.setStatus(run.id, "tool_use");
     const ctx: ToolContext = { workspaceRoot: ws.rootPath, runId: run.id, signal: controller.signal };
+    const systemPrompt = this.readOnly
+      ? getReadonlySystemPrompt(this.getLanguage())
+      : getSystemPrompt(this.getLanguage());
     const initialMessages: LLMMessage[] = [
-      { role: "system", content: getSystemPrompt(this.getLanguage()) },
+      { role: "system", content: systemPrompt },
       { role: "user", content: await this.buildInitialUserMessage(task, ctx) },
     ];
     void this.driveLoop(run.id, ws.rootPath, initialMessages, llm, controller).catch((err) => {
@@ -292,6 +306,7 @@ export class AgentService {
       ctx,
       storage: this.storage,
       allowShellExecution: settings.allowShellExecution,
+      readOnly: this.readOnly,
       // Plumb the installation gate to the tool dispatcher so LLM-initiated
       // unsafe tool calls are also refused in degraded mode.
       ...(this.assertToolAllowed
@@ -303,13 +318,16 @@ export class AgentService {
     // Regression guard: snapshot the test/build state before any edit in this
     // turn. For a continueTask, this re-baselines against the (already-modified)
     // workspace, which is correct — we want to detect regressions relative to
-    // what passes now, not the original pristine state.
-    await this.captureBaseline(runId, ctx, settings.allowShellExecution);
+    // what passes now, not the original pristine state. Skipped in read-only
+    // mode: no edits can happen, so there is nothing to guard against.
+    if (!this.readOnly) {
+      await this.captureBaseline(runId, ctx, settings.allowShellExecution);
+    }
 
     try {
       const outcome = await runToolLoop(messages, {
         llm,
-        tools: AGENT_TOOL_SCHEMAS,
+        tools: agentToolSchemas({ readOnly: this.readOnly }),
         budget,
         signal: controller.signal,
         temperature: 0.2,
