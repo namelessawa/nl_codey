@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 ## [Unreleased]
 
 ### Added
+- **Read-only ("instruction") agent mode — query, never modify.** The shipped
+  agent now runs as a query-only assistant: it can read, search, list, find
+  symbols, and inspect `git status`/`git diff`, but it is completely forbidden
+  from modifying or deleting files. The file-mutating tools (`apply_patch`,
+  `write_file`) are enforced in two layers (defense in depth):
+  - **Schema:** `agentToolSchemas({ readOnly: true })` strips every
+    `FILE_MUTATING_TOOLS` entry from the tool list advertised to the model, so
+    the LLM is never even offered a way to edit.
+  - **Dispatch:** `createToolExecutor({ readOnly: true })` hard-refuses any
+    file-mutating call before it touches the workspace — a model can still emit
+    a call for a name it was never offered, so the executor fails closed with a
+    readable error fed back to the model rather than writing.
+  A dedicated read-only system prompt (`getReadonlySystemPrompt`, ZH + EN)
+  tells the model it has no write capability and must propose changes in prose
+  for the user to apply. The pre-edit regression baseline is skipped in this
+  mode (no edits to guard). Wired on via `AgentService`'s `readOnly` dep, set
+  to `true` in the desktop app — a fixed policy, not a user-toggleable setting,
+  so it holds regardless of Agent settings. 5 new `tools-registry.test.ts`
+  cases lock the schema-filter and fail-closed-dispatch contract.
 - **Smooth view transitions across the main shell.** The main slot
   (`EmptyView` → `NewRunCompose` → `ChatRunView`) now cross-fades on swap
   via a 200–240 ms GPU-only opacity + `translate3d` keyframe (`view-enter`)
