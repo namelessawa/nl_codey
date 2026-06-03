@@ -4,11 +4,6 @@ import fs from "node:fs";
 import { dialog } from "electron";
 import {
   IPC,
-  type CreateMemoryArgs,
-  type DeleteMemoryArgs,
-  type EditTaskNodeArgs,
-  type ImportMemoryArgs,
-  type ListMemoryArgs,
   type MemoryEntry,
   type MemoryExport,
   type PRDescription,
@@ -16,14 +11,20 @@ import {
   type SemanticHit,
   type SemanticIndexStatus,
   type SemanticSearchArgs,
-  type SetSandboxModeArgs,
   type TaskChangeSummary,
   type TaskNode,
-  type UpdateMemoryArgs,
-  type WorkspaceIdArgs,
-  type RunIdArgs,
-  type TaskNodeIdArgs,
 } from "@coding-agent/shared";
+import {
+  validateCreateMemory,
+  validateDeleteMemory,
+  validateEditTaskNode,
+  validateListMemory,
+  validateRunId,
+  validateSetSandboxMode,
+  validateTaskNodeId,
+  validateUpdateMemory,
+  validateWorkspaceId,
+} from "./validators.js";
 import { scanFiles } from "@coding-agent/project-indexer";
 import {
   createEntry,
@@ -52,12 +53,12 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
 
   // --- memory ---
   handle(IPC.listMemoryEntries, (raw): MemoryEntry[] => {
-    const args = raw as ListMemoryArgs;
+    const args = validateListMemory(raw);
     return listEntries(storage, args.workspaceId, args.filter);
   });
 
   handle(IPC.createMemoryEntry, async (raw): Promise<MemoryEntry> => {
-    const args = raw as CreateMemoryArgs;
+    const args = validateCreateMemory(raw);
     const embedding = await embedEntryText(phase3, `${args.entry.title}\n${args.entry.body}`);
     return embedding
       ? createEntry(storage, args.workspaceId, args.entry, embedding)
@@ -65,19 +66,19 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
   });
 
   handle(IPC.updateMemoryEntry, (raw): MemoryEntry => {
-    const args = raw as UpdateMemoryArgs;
+    const args = validateUpdateMemory(raw);
     const updated = updateEntry(storage, args.id, args.patch);
     if (!updated) throw new Error("Memory entry not found");
     return updated;
   });
 
   handle(IPC.deleteMemoryEntry, (raw): { deleted: boolean } => {
-    const args = raw as DeleteMemoryArgs;
+    const args = validateDeleteMemory(raw);
     return { deleted: deleteEntry(storage, args.id) };
   });
 
   handle(IPC.exportMemory, async (raw): Promise<{ filePath: string }> => {
-    const args = raw as WorkspaceIdArgs;
+    const args = validateWorkspaceId(raw);
     const envelope = buildMemoryExport(storage, args.workspaceId);
     const result = await dialog.showSaveDialog({
       title: "Export project memory",
@@ -89,16 +90,30 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
     return { filePath: result.filePath };
   });
 
-  handle(IPC.importMemory, (raw): { imported: number } => {
-    const args = raw as ImportMemoryArgs;
-    const text = fs.readFileSync(args.filePath, "utf8");
+  // SECURITY: the file path is now picked main-side via the OS dialog, NOT
+  // received from the renderer. Previously the renderer supplied any path it
+  // wanted and the main process happily read it with main's privileges (a
+  // compromised renderer could read arbitrary host files). Now the user has
+  // to explicitly point at the JSON file every time.
+  handle(IPC.importMemory, async (raw): Promise<{ imported: number; filePath: string | null }> => {
+    const args = validateWorkspaceId(raw);
+    const result = await dialog.showOpenDialog({
+      title: "Import project memory",
+      properties: ["openFile"],
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { imported: 0, filePath: null };
+    }
+    const filePath = result.filePaths[0]!;
+    const text = fs.readFileSync(filePath, "utf8");
     const data = JSON.parse(text) as MemoryExport;
-    return { imported: importMemoryEnvelope(storage, args.workspaceId, data) };
+    return { imported: importMemoryEnvelope(storage, args.workspaceId, data), filePath };
   });
 
   // --- semantic index ---
   handle(IPC.rebuildSemanticIndex, async (raw): Promise<SemanticIndexStatus> => {
-    const args = raw as WorkspaceIdArgs;
+    const args = validateWorkspaceId(raw);
     const root = requireRoot(args.workspaceId);
     const files = await collectIndexFiles(root);
     const indexer = phase3.indexer();
@@ -107,7 +122,7 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
   });
 
   handle(IPC.getSemanticIndexStatus, async (raw): Promise<SemanticIndexStatus> => {
-    const args = raw as WorkspaceIdArgs;
+    const args = validateWorkspaceId(raw);
     const root = requireRoot(args.workspaceId);
     const total = (await scanFiles(root)).filter(isIndexableFile).length;
     return phase3.indexer().status(args.workspaceId, total);
@@ -115,12 +130,17 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
 
   handle(IPC.semanticSearch, async (raw): Promise<SemanticHit[]> => {
     const args = raw as SemanticSearchArgs;
-    return searchChunks(storage, phase3.embedder(), args.workspaceId, args.query, args.opts);
+    // Shape-validate the required scalars even if we don't run a full schema.
+    const ws = validateWorkspaceId({ workspaceId: args.workspaceId });
+    if (typeof args.query !== "string" || args.query.length === 0) {
+      throw new Error("IPC payload rejected: query must be a non-empty string");
+    }
+    return searchChunks(storage, phase3.embedder(), ws.workspaceId, args.query, args.opts);
   });
 
   // --- task tree ---
   handle(IPC.getTaskTree, (raw): TaskNode[] => {
-    const args = raw as RunIdArgs;
+    const args = validateRunId(raw);
     return storage.listTaskNodes(args.runId);
   });
 
@@ -131,14 +151,14 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
   });
 
   handle(IPC.editTaskNode, (raw): TaskNode => {
-    const args = raw as EditTaskNodeArgs;
+    const args = validateEditTaskNode(raw);
     const updated = storage.updateTaskNode(args.taskNodeId, args.patch);
     if (!updated) throw new Error("Task node not found");
     return updated;
   });
 
   handle(IPC.cancelTaskNode, (raw): TaskNode => {
-    const args = raw as TaskNodeIdArgs;
+    const args = validateTaskNodeId(raw);
     storage.setTaskNodeStatus(args.taskNodeId, "cancelled");
     const node = storage.getTaskNode(args.taskNodeId);
     if (!node) throw new Error("Task node not found");
@@ -147,18 +167,18 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
 
   // --- role messages ---
   handle(IPC.listRoleMessages, (raw): RoleMessage[] => {
-    const args = raw as TaskNodeIdArgs;
+    const args = validateTaskNodeId(raw);
     return storage.listRoleMessages(args.taskNodeId).map(parseRow);
   });
 
   // --- git ---
   handle(IPC.getGitStatus, async (raw) => {
-    const args = raw as WorkspaceIdArgs;
+    const args = validateWorkspaceId(raw);
     return getWorkingTreeStatus(requireRoot(args.workspaceId));
   });
 
   handle(IPC.generatePRDescription, async (raw): Promise<PRDescription> => {
-    const args = raw as RunIdArgs;
+    const args = validateRunId(raw);
     const run = storage.getRun(args.runId);
     if (!run) throw new Error("Run not found");
     const root = requireRoot(run.workspaceId);
@@ -178,7 +198,7 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
   });
 
   handle(IPC.discardAgentBranch, async (raw): Promise<{ discarded: boolean }> => {
-    const args = raw as RunIdArgs;
+    const args = validateRunId(raw);
     const run = storage.getRun(args.runId);
     if (!run) throw new Error("Run not found");
     const root = requireRoot(run.workspaceId);
@@ -193,12 +213,12 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
 
   // --- sandbox ---
   handle(IPC.getSandboxMode, (raw) => {
-    const args = raw as WorkspaceIdArgs;
+    const args = validateWorkspaceId(raw);
     return phase3.getSandboxMode(args.workspaceId);
   });
 
   handle(IPC.setSandboxMode, (raw) => {
-    const args = raw as SetSandboxModeArgs;
+    const args = validateSetSandboxMode(raw);
     return phase3.setSandboxMode(args.workspaceId, args.mode);
   });
 }

@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { dialog } from "electron";
 import {
   DEFAULT_PHASE4_SETTINGS,
   IPC,
@@ -10,6 +11,7 @@ import {
   type FinetuneJobInput,
   type GlobalPatternInput,
   type Phase4Settings,
+  type PluginInstallation,
   type PluginManifest,
   type PluginPermission,
   type StyleScope,
@@ -37,8 +39,14 @@ import {
   scanForDebt,
   dedupeAgainstInbox,
 } from "@coding-agent/proactive";
+import {
+  PluginLoader,
+  type PermissionPrompter,
+  type PluginRepository,
+} from "@coding-agent/plugin-sdk";
 import { handle } from "./ipc-handle.js";
 import type { Services } from "./services.js";
+import { validateInstallPlugin } from "./validators.js";
 
 type RequireRoot = (workspaceId: string) => string;
 
@@ -216,25 +224,67 @@ export function registerPhase4Ipc(services: Services, requireRoot: RequireRoot, 
   });
 
   // ----- Plugins -----
+  // The PluginLoader is the ONLY path that may install a plugin: it runs the
+  // SDK manifest validator (rejects bad semver, non-snake_case tools, unknown
+  // permissions), then asks the user to approve each requested permission via
+  // an OS dialog before anything reaches the database. The previous
+  // installPlugin handler skipped both steps and trusted whatever the
+  // renderer sent — a compromised renderer could install a plugin claiming
+  // any permission set. Fixed.
+  const pluginRepo: PluginRepository = {
+    installPlugin: (manifest, installPath, perms) =>
+      storage.phase4.installPlugin(manifest, installPath, perms),
+    listPlugins: () => storage.phase4.listPlugins(),
+    setPluginEnabled: (id, enabled) => storage.phase4.setPluginEnabled(id, enabled),
+    uninstallPlugin: (id) => storage.phase4.uninstallPlugin(id),
+  };
+  const pluginPrompter: PermissionPrompter = {
+    async ask(manifest, requested) {
+      if (requested.length === 0) return [];
+      const lines = requested.map((p, i) => `${i + 1}. ${p}`).join("\n");
+      const result = await dialog.showMessageBox({
+        type: "warning",
+        title: `Install plugin: ${manifest.name}`,
+        message: `Approve permissions for "${manifest.name}" v${manifest.version}?`,
+        detail:
+          `This plugin requests the following permissions:\n\n${lines}\n\n` +
+          `Click "Approve all" to grant every permission, or "Cancel" to abort the install. ` +
+          `Per-permission approval will be available in a future release.`,
+        buttons: ["Cancel", "Approve all"],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      return result.response === 1 ? requested : [];
+    },
+  };
+  const pluginLoader = new PluginLoader(pluginRepo, pluginPrompter);
+
   handle(IPC.listPlugins, () => storage.phase4.listPlugins());
-  handle(IPC.installPlugin, (args) => {
-    const a = args as {
-      manifest: PluginManifest;
-      installPath: string;
-      approvedPermissions: PluginPermission[];
-    };
+  handle(IPC.installPlugin, async (raw): Promise<PluginInstallation> => {
     if (!phase4Settings.get().pluginsEnabled) {
       throw new Error("Plugins feature is disabled in Phase 4 settings");
     }
-    return storage.phase4.installPlugin(a.manifest, a.installPath, a.approvedPermissions);
+    const validated = validateInstallPlugin(raw);
+    const result = await pluginLoader.install(validated.manifest, validated.installPath);
+    if (!result.ok) throw new Error(result.reason);
+    return result.installation;
   });
   handle(IPC.setPluginEnabled, (args) => {
-    const { id, enabled } = args as { id: string; enabled: boolean };
-    return storage.phase4.setPluginEnabled(id, enabled);
+    const a = args as { id: string; enabled: boolean };
+    if (typeof a.id !== "string" || a.id.length === 0) {
+      throw new Error("IPC payload rejected: id must be a non-empty string");
+    }
+    if (typeof a.enabled !== "boolean") {
+      throw new Error("IPC payload rejected: enabled must be a boolean");
+    }
+    return storage.phase4.setPluginEnabled(a.id, a.enabled);
   });
   handle(IPC.uninstallPlugin, (args) => {
-    const { id } = args as { id: string };
-    return { uninstalled: storage.phase4.uninstallPlugin(id) };
+    const a = args as { id: string };
+    if (typeof a.id !== "string" || a.id.length === 0) {
+      throw new Error("IPC payload rejected: id must be a non-empty string");
+    }
+    return { uninstalled: storage.phase4.uninstallPlugin(a.id) };
   });
 
   // ----- Evals -----

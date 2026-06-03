@@ -5,6 +5,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Security (Sprint 2 — IPC validation + privileged-entry lockdown)
+- **P1: every IPC handler now runtime-validates its payload before touching
+  the storage / filesystem / agent.** Previously each handler did
+  `args as XYZArgs` and trusted that the renderer sent the right shape. A
+  compromised renderer (XSS in a future plugin, malicious fetched HTML
+  rendered with `dangerouslySetInnerHTML`, etc.) could send garbage and rely
+  on `undefined.runId` exceptions surfacing later. New hand-rolled validators
+  (`apps/desktop/src/main/validators.ts`) reject bad shapes at the IPC
+  boundary with a readable error fed through the existing
+  `{ok:false,error}` envelope. Covered: `runAgentTask`, `continueAgentTask`,
+  `runCommand`, `readFile`, `applyAgentPatch`/`rejectAgentPatch`/
+  `rollbackRun`/`stopAgentRun`/`getAgentRun`, `clearAgentRuns`,
+  `openRecentWorkspace`, `testLLMConnection`, every memory CRUD,
+  semantic-search, task-tree, role-message, git, sandbox-mode, and the
+  plugin-install path. 21 new `validators.test.ts` cases lock the contract
+  (rejects non-objects, empty strings, unknown enums, missing required
+  fields; accepts the network-scoped permission template literal).
+- **P1: `importMemory` no longer reads renderer-supplied file paths.**
+  Previously the renderer passed `{workspaceId, filePath}` and the main
+  process happily `fs.readFileSync(filePath)` with main's privileges — a
+  compromised renderer could read any host file. Now the IPC contract is
+  `{workspaceId}` only; the main process opens an Electron
+  `dialog.showOpenDialog` so the **user** picks the JSON file every time. The
+  IPC return type carries the chosen `filePath` back to the renderer for
+  display. `MemoryPanel.tsx` updated: the "paste path" text input is gone,
+  the Import button now opens the dialog directly. Shared `AgentApi` and
+  `ImportMemoryArgs` types updated in lockstep.
+- **P1: `installPlugin` now routes through `PluginLoader`.** The handler
+  used to skip both the SDK manifest validator and the user-permission
+  prompt — `storage.phase4.installPlugin(a.manifest, a.installPath,
+  a.approvedPermissions)` ran with whatever shape the renderer sent. A
+  compromised renderer could install a plugin claiming any permission set
+  with no user interaction. New wiring instantiates a `PluginLoader` with a
+  `PluginRepository` adapter over `Phase4Storage` and a `PermissionPrompter`
+  backed by `dialog.showMessageBox` (all-or-nothing approval for now;
+  per-permission UI is a follow-up). The handler validates the manifest
+  shape via the new validator, then calls `pluginLoader.install()` which
+  internally runs `validateManifest` (rejects bad semver, non-snake_case
+  tool names, unknown permissions) and `prompter.ask` (user must click
+  "Approve all" in an OS dialog) before anything reaches the database.
+  `setPluginEnabled` / `uninstallPlugin` gained inline shape checks too.
+
 ### Security (Sprint 1 — unified security model)
 - **P0: docker/wsl `run_command` bypassed the approval/snapshot/rollback gate
   and wrote straight through the bind-mounted host workspace.** Previously,
