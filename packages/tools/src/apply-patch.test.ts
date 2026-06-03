@@ -121,6 +121,97 @@ describe("applyPatchTool", () => {
     expect(fs.existsSync(path.join(root, "old.ts"))).toBe(false);
   });
 
+  it("V4A Add File refuses to overwrite an existing file", async () => {
+    fs.writeFileSync(path.join(root, "existing.ts"), "original\n");
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: existing.ts",
+      "+brand new",
+      "*** End Patch",
+    ].join("\n");
+
+    await expect(applyPatchTool({ runId: "run-1", patch }, ctx(root), store)).rejects.toThrow(
+      /already exists.*Use "Update File"/,
+    );
+    // Crucially, the existing file was NOT clobbered.
+    expect(fs.readFileSync(path.join(root, "existing.ts"), "utf8")).toBe("original\n");
+  });
+
+  it("rolls back already-written files when a mid-batch write fails", async () => {
+    // First file: a normal text file we can prove was restored.
+    fs.writeFileSync(path.join(root, "ok.ts"), "original-ok\n");
+    // Second file: replace it with a read-only DIRECTORY so writing a file
+    // by the same name fails inside the batch — the realistic crash path on
+    // Windows when an antivirus locks a target, or when permissions block
+    // an overwrite mid-loop.
+    fs.mkdirSync(path.join(root, "blocked.ts"));
+
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: ok.ts",
+      "-original-ok",
+      "+updated-ok",
+      "*** Add File: blocked.ts",
+      "+this can never write because the path is a directory",
+      "*** End Patch",
+    ].join("\n");
+
+    // The V4A planner notices `blocked.ts` exists as a directory entry, so the
+    // Add File rejection fires during planning — workspace stays pristine.
+    // To exercise mid-batch rollback specifically, swap the planner check off
+    // for this case by using a unified diff that won't trip the V4A "already
+    // exists" guard. We instead set up a patch with two updates where the
+    // second targets a path that fails at write time.
+    fs.rmdirSync(path.join(root, "blocked.ts"));
+    fs.writeFileSync(path.join(root, "second.ts"), "original-second\n");
+    // Replace the second file with a directory so the write step fails.
+    fs.unlinkSync(path.join(root, "second.ts"));
+    fs.mkdirSync(path.join(root, "second.ts"));
+
+    const patch2 = [
+      "*** Begin Patch",
+      "*** Update File: ok.ts",
+      "-original-ok",
+      "+updated-ok",
+      "*** End Patch",
+    ].join("\n");
+    // First confirm the OK update lands cleanly so we can compare rollback later.
+    const okOut = await applyPatchTool({ runId: "run-1", patch: patch2 }, ctx(root), store);
+    expect(okOut.applied).toBe(true);
+    expect(fs.readFileSync(path.join(root, "ok.ts"), "utf8")).toBe("updated-ok\n");
+
+    // Reset for the rollback case.
+    fs.writeFileSync(path.join(root, "ok.ts"), "original-ok\n");
+    // Two-step patch: succeed on ok.ts, then fail on second.ts (path is a dir).
+    const patch3 = [
+      "*** Begin Patch",
+      "*** Update File: ok.ts",
+      "-original-ok",
+      "+updated-ok",
+      "*** Add File: second.ts/inner",
+      "+nope",
+      "*** End Patch",
+    ].join("\n");
+    // Removing the empty `second.ts` directory so the Add File can be planned
+    // (existed=false), but then the write should fail because `second.ts` is
+    // a regular file at runtime — we create it after planning, before write.
+    // The simplest cross-platform way to force a mid-loop failure is to plan
+    // a write into `<dir>/<file>` where `<dir>` is actually a file. Make
+    // `second.ts` a file again so writeFile to `second.ts/inner` errors with
+    // ENOTDIR partway through.
+    fs.rmdirSync(path.join(root, "second.ts"));
+    fs.writeFileSync(path.join(root, "second.ts"), "not-a-dir\n");
+
+    await expect(
+      applyPatchTool({ runId: "run-1", patch: patch3 }, ctx(root), store),
+    ).rejects.toBeInstanceOf(ToolError);
+
+    // Rollback verification: ok.ts must be back to the pre-patch contents.
+    expect(fs.readFileSync(path.join(root, "ok.ts"), "utf8")).toBe("original-ok\n");
+    // second.ts must still be the original file we placed (Add File rolled back).
+    expect(fs.readFileSync(path.join(root, "second.ts"), "utf8")).toBe("not-a-dir\n");
+  });
+
   it("does NOT corrupt files when a V4A context block is not found", async () => {
     const onDisk = "totally different\n";
     fs.writeFileSync(path.join(root, "a.ts"), onDisk);

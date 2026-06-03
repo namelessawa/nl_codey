@@ -195,9 +195,18 @@ export function registerPhase4Ipc(services: Services, requireRoot: RequireRoot, 
   });
   handle(IPC.convertProposal, (args) => {
     const { id } = args as { id: string };
-    // Placeholder: in a real flow this would hand off to the Planner pipeline
-    // and pass back the resulting run id. For now we record a synthetic id.
-    return proposalInbox.convert(id, `pending-${id}`);
+    // EXPERIMENTAL: this handler used to record a synthetic `pending-<id>`
+    // run id and mark the proposal "converted", but that synthetic id was
+    // never wired to the Planner pipeline — clicking "Convert" looked like
+    // it did something but produced no actual run. Until the proper handoff
+    // to AgentService/Planner is built, refuse the call so the user gets a
+    // clear "not yet available" message instead of a silent no-op. The
+    // proposal itself is left untouched; snooze and dismiss still work.
+    void id;
+    throw new Error(
+      "Converting a proposal to a run is not yet wired to the Planner pipeline. " +
+        "Use snooze or dismiss for now; the conversion flow will land in a future release.",
+    );
   });
   handle(IPC.scanDebtNow, async (args) => {
     const { workspaceId } = args as WorkspaceIdArgs;

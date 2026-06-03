@@ -5,6 +5,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Changed (Sprint 3 — storage integrity + apply_patch hardening + Phase 4 cleanup)
+- **Storage gains foreign keys, unique constraints, cascade deletes, and a
+  proper version-tracked migration path.** The Phase 1 tables (`agent_runs`,
+  `agent_steps`, `agent_run_messages`, `file_snapshots`) used to declare
+  `workspace_id` / `run_id` as bare `TEXT NOT NULL` with no `REFERENCES`
+  even though `PRAGMA foreign_keys = ON` was set, so consistency relied on
+  application code calling `DELETE` in the right order. New schema adds
+  `workspaces.root_path UNIQUE`, foreign keys with `ON DELETE CASCADE` on
+  every `workspace_id` / `run_id` column, and a `UNIQUE (run_id, seq)` index
+  on `agent_run_messages` so a buggy double-save fails loudly instead of
+  silently creating duplicate conversation rows. A new `schema_meta` table
+  tracks the structural version; `STRUCTURAL_MIGRATIONS` rebuild the
+  affected tables in a transaction (copy → drop → rename) when upgrading a
+  legacy v1 database, dropping orphan rows first so the new FK rules apply
+  cleanly. Fresh installs jump straight to the latest version. The native
+  test (`storage.test.ts`) still hits the pre-existing better-sqlite3 ABI
+  issue documented in CLAUDE.md.
+- **`apply_patch` now refuses to overwrite an existing file from V4A
+  "Add File"** instead of silently clobbering it. The model must use
+  `*** Update File:` for any intentional rewrite — accidental Adds are
+  almost always the model misreading the workspace, and refusing surfaces
+  the mistake immediately instead of corrupting the file. Error message
+  points the model at the correct operation.
+- **`apply_patch` rolls back partial writes on a mid-batch failure.** The
+  doc-string already promised "transactional", but Phase B (the write
+  loop) just iterated without unwind logic — a write failing on file N
+  left files 1..N-1 mutated and the workspace in an inconsistent half-
+  patched state. The loop now tracks every file it touches in this call
+  and, on a write error, reverses each change (deletes any file it added,
+  restores the bytes of any file it modified or deleted) before re-throwing
+  the originating error. Rollback errors are appended to the thrown message
+  so the user knows when manual recovery is needed. 2 new tests in
+  `apply-patch.test.ts` lock the contract.
+- **`convertProposal` (Phase 4) marked experimental and refuses to run.**
+  The handler used to record a synthetic `pending-<id>` run id that was
+  never wired to the Planner pipeline — clicking "Convert" looked like it
+  did something but produced no actual run. It now throws a clear
+  "not yet wired to the Planner pipeline" error; the proposal row is left
+  intact. The "Convert" button in `ProposalInbox` is disabled with a
+  tooltip explaining the status. Snooze and dismiss still work and the
+  proposal scan is unchanged.
+
 ### Security (Sprint 2 — IPC validation + privileged-entry lockdown)
 - **P1: every IPC handler now runtime-validates its payload before touching
   the storage / filesystem / agent.** Previously each handler did

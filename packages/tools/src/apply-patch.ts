@@ -26,6 +26,12 @@ type PlannedChange = {
  *
  * Supports two formats: V4A (context-based, preferred — detected by the
  * `*** Begin Patch` envelope) and unified diff (Phase 1 compatibility).
+ *
+ * If a write or delete partway through Phase B fails (disk full, permission,
+ * antivirus locked the file), the helper rolls back every file it already
+ * touched in this call to its pre-patch contents using the snapshots taken
+ * moments earlier. The originating error is then re-thrown. This keeps the
+ * workspace consistent — either all of the patch lands, or none of it does.
  */
 export async function applyPatchTool(
   input: ApplyPatchInput,
@@ -40,18 +46,52 @@ export async function applyPatchTool(
     throw new ToolError(TOOL_CODES.patchInvalid, "Patch contains no file changes");
   }
 
-  // Phase B — snapshot + write/delete. Safe to mutate now that all changes resolved.
+  // Phase B — snapshot + write/delete. Safe to mutate now that all changes
+  // resolved cleanly. Track every file we touched so a mid-loop failure can
+  // unwind back to the pre-patch state.
   const changedFiles: string[] = [];
+  const applied: PlannedChange[] = [];
   for (const change of planned) {
     const snap = store.addSnapshot(input.runId, change.relPath, change.before);
-    if (change.op === "delete") {
-      if (change.existed) await fs.rm(change.absPath, { force: true });
-      store.setSnapshotAfter(snap.id, "");
-    } else {
-      await fs.mkdir(dirOf(change.absPath), { recursive: true });
-      await fs.writeFile(change.absPath, change.after, "utf8");
-      store.setSnapshotAfter(snap.id, change.after);
+    try {
+      if (change.op === "delete") {
+        if (change.existed) await fs.rm(change.absPath, { force: true });
+        store.setSnapshotAfter(snap.id, "");
+      } else {
+        await fs.mkdir(dirOf(change.absPath), { recursive: true });
+        await fs.writeFile(change.absPath, change.after, "utf8");
+        store.setSnapshotAfter(snap.id, change.after);
+      }
+    } catch (writeErr) {
+      // Roll back every file we managed to mutate in this call so the
+      // workspace returns to the pre-patch state instead of being left half-
+      // written. Failures inside the rollback itself are surfaced after the
+      // primary error.
+      const rollbackErrors: string[] = [];
+      for (const prior of [...applied].reverse()) {
+        try {
+          if (prior.op === "add") {
+            // We created the file; restore by deleting it.
+            await fs.rm(prior.absPath, { force: true });
+          } else {
+            // We modified or deleted an existing file; restore the bytes.
+            await fs.mkdir(dirOf(prior.absPath), { recursive: true });
+            await fs.writeFile(prior.absPath, prior.before, "utf8");
+          }
+        } catch (rollbackErr) {
+          rollbackErrors.push(
+            `${prior.relPath}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+          );
+        }
+      }
+      const primary = writeErr instanceof Error ? writeErr.message : String(writeErr);
+      const note =
+        rollbackErrors.length === 0
+          ? `Patch write failed on ${change.relPath} (${primary}); rolled back ${applied.length} prior file change(s).`
+          : `Patch write failed on ${change.relPath} (${primary}); rollback also failed for: ${rollbackErrors.join("; ")}. Manual recovery may be needed.`;
+      throw new ToolError(TOOL_CODES.patchApplyFailed, note);
     }
+    applied.push(change);
     changedFiles.push(change.relPath);
   }
 
@@ -100,6 +140,17 @@ async function planV4A(patch: string, ctx: ToolContext): Promise<PlannedChange[]
       }
       planned.push({ op: "delete", relPath: op.path, absPath, before, after: "", existed });
     } else if (op.op === "add") {
+      // V4A "Add File" must NOT silently overwrite an existing file. A
+      // conflict here is almost always the model misreading the workspace —
+      // refusing instead of clobbering gives the loop a chance to either
+      // emit an Update File patch or stop and ask. Use Update File for any
+      // intentional rewrite.
+      if (existed) {
+        throw new ToolError(
+          TOOL_CODES.patchApplyFailed,
+          `Cannot add ${op.path}: file already exists. Use "Update File" to modify, or delete it first.`,
+        );
+      }
       planned.push({ op: "add", relPath: op.path, absPath, before, after: op.content, existed });
     } else {
       if (!existed) {
