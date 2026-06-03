@@ -1,9 +1,11 @@
 import type {
   LLMToolCall,
   RunCommandOutput,
+  SandboxPolicy,
   ToolContext,
   ToolSchema,
 } from "@coding-agent/shared";
+import type { FileChange } from "@coding-agent/sandbox";
 import {
   applyPatchTool,
   findSymbolTool,
@@ -12,7 +14,7 @@ import {
   listFilesTool,
   readFileRangeTool,
   readFileTool,
-  runCommandTool,
+  runCommandWithPolicy,
   searchTextTool,
   type SnapshotStore,
 } from "@coding-agent/tools";
@@ -216,6 +218,24 @@ export type ToolExecutorOptions = {
    * is not even offered the tool. Defaults to false (full read/write agent).
    */
   readOnly?: boolean;
+  /**
+   * Active sandbox policy for `run_command`. When mode is `docker` or `wsl`
+   * commands are routed through the strong-sandbox runners; otherwise they
+   * fall back to the legacy whitelist runner. Optional so existing callers
+   * (tests, headless harnesses) that don't care about isolation keep working.
+   */
+  sandboxPolicy?: SandboxPolicy;
+  /**
+   * Called when an LLM-initiated `run_command` in docker/wsl mode produced
+   * file writes. Must resolve `true` to sync the changes to the host
+   * workspace (snapshotted for rollback) or `false` to discard. When omitted
+   * the executor defaults to discarding any sandboxed writes — safe but
+   * potentially surprising, so the AgentService always provides this.
+   */
+  requestSandboxWriteApproval?: (
+    call: LLMToolCall,
+    changes: FileChange[],
+  ) => Promise<boolean>;
 };
 
 /**
@@ -226,7 +246,15 @@ export type ToolExecutorOptions = {
 export function createToolExecutor(
   opts: ToolExecutorOptions,
 ): (call: LLMToolCall) => Promise<ExecutedTool> {
-  const { ctx, storage, allowShellExecution, assertToolAllowed, readOnly } = opts;
+  const {
+    ctx,
+    storage,
+    allowShellExecution,
+    assertToolAllowed,
+    readOnly,
+    sandboxPolicy,
+    requestSandboxWriteApproval,
+  } = opts;
 
   return async (call: LLMToolCall): Promise<ExecutedTool> => {
     // Read-only ("instruction") mode: refuse any file-mutating tool before it
@@ -328,7 +356,24 @@ export function createToolExecutor(
               "Shell execution is disabled in settings. Ask the user to enable it, or finish without running commands.",
             );
           }
-          const out = await runCommandTool.run({ command }, ctx);
+          // LLM-initiated command: any sandbox writes must go through the
+          // user approval gate before they reach the real workspace. When no
+          // gate is wired (test harnesses), default to "discard" so a
+          // sandbox-mode test never leaks sandbox-side writes into the host.
+          const writeback =
+            sandboxPolicy && sandboxPolicy.mode !== "whitelist" && requestSandboxWriteApproval
+              ? {
+                  kind: "approve" as const,
+                  onApprove: (changes: FileChange[]) =>
+                    requestSandboxWriteApproval(call, changes),
+                }
+              : { kind: "discard" as const };
+          const out = await runCommandWithPolicy({ command }, ctx, {
+            ...(sandboxPolicy ? { policy: sandboxPolicy } : {}),
+            writeback,
+            snapshotStore: storage,
+          });
+          const writebackNote = describeWriteback(out.changes, out.binaryConflicts, out.applied, writeback.kind);
           return {
             name: "run_command",
             resultText: JSON.stringify({
@@ -337,6 +382,7 @@ export function createToolExecutor(
               timedOut: out.timedOut,
               stdout: truncate(out.stdout),
               stderr: truncate(out.stderr),
+              ...(writebackNote ? { writeback: writebackNote } : {}),
             }),
             isError: out.exitCode !== 0 || out.timedOut,
             command: out,
@@ -357,6 +403,27 @@ function truncate(text: string): string {
   return text.length > MAX_TOOL_RESULT_OUTPUT
     ? `${text.slice(0, MAX_TOOL_RESULT_OUTPUT)}…(truncated)`
     : text;
+}
+
+/**
+ * Human-readable note for the model summarising what happened to the
+ * sandbox's writes — applied, awaiting approval (rejected by user), discarded
+ * (no gate wired), or blocked because the command produced binary output.
+ * Returned as a short string the model can read alongside the command output.
+ */
+function describeWriteback(
+  changes: FileChange[],
+  binaryConflicts: { path: string; kind: string }[],
+  applied: boolean,
+  mode: "auto" | "approve" | "discard",
+): string | null {
+  if (binaryConflicts.length > 0) {
+    return `${binaryConflicts.length} binary file change(s) detected; sandbox writeback refused (binary blobs are never auto-synced).`;
+  }
+  if (changes.length === 0) return null;
+  if (applied) return `Applied ${changes.length} file change(s) to the workspace (snapshotted for rollback).`;
+  if (mode === "approve") return `User rejected ${changes.length} file change(s); workspace untouched.`;
+  return `Discarded ${changes.length} sandbox-side file change(s); workspace untouched.`;
 }
 
 function ok(name: string, resultText: string): ExecutedTool {

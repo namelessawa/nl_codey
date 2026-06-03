@@ -43,6 +43,14 @@ const STRINGS = {
     "zh-CN": "执行命令前需要确认",
     "en-US": "Confirm before running commands",
   },
+  "agent.readOnly": {
+    "zh-CN": "只读（指令）模式",
+    "en-US": "Read-only (instruction) mode",
+  },
+  "agent.readOnlyHint": {
+    "zh-CN": "开启后 agent 不能修改任何文件——只能读取、搜索、运行验证命令并以文字给出建议。",
+    "en-US": "When on, the agent cannot modify any file — it can only read, search, run verification commands, and propose changes in prose.",
+  },
   "agent.maxAutoSteps": { "zh-CN": "最大连续自动执行步数", "en-US": "Max auto steps" },
   "agent.sandbox": { "zh-CN": "启用沙箱模式", "en-US": "Sandbox mode" },
 

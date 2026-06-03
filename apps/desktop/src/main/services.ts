@@ -39,12 +39,6 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
     // the compression summary prompt match the language they're reading the
     // UI in. Re-read per run so settings changes take effect without restart.
     getLanguage: () => settings.getSettings().ui.language,
-    // Read-only ("instruction") mode: the shipped agent is a query-only
-    // assistant. It can read, search, and explain the project but the
-    // file-mutating tools (apply_patch / write_file) are stripped from its
-    // schema and hard-refused at dispatch — the LLM can never modify or delete
-    // a file. This is a fixed branch policy, not a user-toggleable setting.
-    readOnly: true,
     // Tool-dispatch gate: refuse unsafe tools (`run_command`, `apply_patch`,
     // `write_file`) when Docker is missing and the user skipped the install
     // prompt. Catches both user-typed commands AND LLM-initiated tool calls

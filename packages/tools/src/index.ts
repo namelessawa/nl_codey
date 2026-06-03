@@ -2,6 +2,7 @@ export { listFilesTool } from "./list-files.js";
 export { readFileTool } from "./read-file.js";
 export { searchTextTool } from "./search-text.js";
 export { runCommandTool } from "./run-command.js";
+export { runCommandWithPolicy, defaultDockerImage } from "./run-command-routed.js";
 export { applyPatchTool } from "./apply-patch.js";
 export { writeFileTool } from "./write-file.js";
 export { parseTestFailure } from "./parse-test-failure.js";

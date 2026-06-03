@@ -55,6 +55,13 @@ export type AgentSettings = {
   sandboxMode: SandboxMode;
   /** Dollar ceiling per run. Hard-capped at $5 by validation. */
   budgetUsd: number;
+  /**
+   * Query-only mode (instruction mode): file-mutating tools (apply_patch /
+   * write_file) are stripped from the LLM schema and hard-refused at
+   * dispatch. The agent can read, search, list, run validation commands —
+   * but never modify or delete a file. Default `false` (full read/write).
+   */
+  readOnly: boolean;
 };
 
 export type UISettings = {
@@ -163,6 +170,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     sandboxEnabled: true,
     sandboxMode: "whitelist",
     budgetUsd: 1.0,
+    readOnly: false,
   },
   ui: {
     theme: "system",

@@ -11,13 +11,15 @@ import type {
   LLMMessage,
   LLMToolCall,
   RunCommandOutput,
+  SandboxPolicy,
   TestFailureReport,
   ToolContext,
 } from "@coding-agent/shared";
 import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
+import type { FileChange } from "@coding-agent/sandbox";
 import type { Storage } from "@coding-agent/storage";
 import { detectProject } from "@coding-agent/project-indexer";
-import { listFilesTool, parseTestFailure, runCommandTool } from "@coding-agent/tools";
+import { listFilesTool, parseTestFailure, runCommandWithPolicy } from "@coding-agent/tools";
 import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
@@ -60,18 +62,31 @@ export type AgentDeps = {
    */
   assertToolAllowed?: (toolName: string) => void;
   /**
-   * Read-only ("instruction") mode. When true, the agent runs as a query-only
-   * assistant: file-mutating tools (apply_patch / write_file) are stripped from
-   * the model's tool schema and hard-refused at dispatch, the read-only system
-   * prompt is used, and the pre-edit regression baseline is skipped (there are
-   * no edits to guard). Defaults to false. Set by the desktop app so users can
-   * query — but never modify — their project.
+   * Optional fixed read-only override. When set, every run forces query-only
+   * mode regardless of {@link AgentSettings.readOnly}. Useful for headless
+   * tests and CI harnesses; production wiring should leave this undefined
+   * and let the per-run settings drive the behaviour instead.
    */
   readOnly?: boolean;
   emit: (event: AgentEvent) => void;
 };
 
-type Pending = { patch: string; command: string | null };
+/**
+ * A {@link Pending} entry parks the loop while it waits on the user.
+ *
+ * - `patch`: the LLM emitted an `apply_patch` tool call — `patch` is the V4A
+ *   or unified diff the model wants to apply.
+ * - `command_writeback`: an LLM-initiated `run_command` running in
+ *   docker/wsl mode produced file changes; `patch` is the unified diff we
+ *   synthesised so the GUI's existing diff renderer can preview the changes.
+ *
+ * Both shapes share the same {@link Approval} lifecycle (resolved by the
+ * applyPatch / rejectPatch IPC); the kind discriminates only for logging.
+ */
+type Pending =
+  | { kind: "patch"; patch: string; command: string | null }
+  | { kind: "command_writeback"; patch: string; command: string }
+  | { kind: "command_confirm"; patch: string; command: string };
 type Approval = { resolve: (approved: boolean) => void };
 
 /** GUI-agnostic agent orchestrator. One instance per main process. */
@@ -81,7 +96,8 @@ export class AgentService {
   private readonly getAgentSettings: () => AgentSettings;
   private readonly getLanguage: () => LanguagePreference;
   private readonly assertToolAllowed: ((toolName: string) => void) | undefined;
-  private readonly readOnly: boolean;
+  /** Hard override; when undefined, per-run settings.agent.readOnly wins. */
+  private readonly readOnlyOverride: boolean | undefined;
   private readonly emit: (event: AgentEvent) => void;
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
@@ -97,8 +113,14 @@ export class AgentService {
     // see the original behaviour.
     this.getLanguage = deps.getLanguage ?? ((): LanguagePreference => "zh-CN");
     this.assertToolAllowed = deps.assertToolAllowed;
-    this.readOnly = deps.readOnly ?? false;
+    this.readOnlyOverride = deps.readOnly;
     this.emit = deps.emit;
+  }
+
+  /** Effective read-only flag: hard override beats settings; default false. */
+  private effectiveReadOnly(): boolean {
+    if (this.readOnlyOverride !== undefined) return this.readOnlyOverride;
+    return this.getAgentSettings().readOnly === true;
   }
 
   listRuns(workspaceId: string): AgentRun[] {
@@ -185,7 +207,33 @@ export class AgentService {
     if (!this.getAgentSettings().allowShellExecution) {
       throw new Error("Shell 执行已在设置中禁用，请在设置中开启后重试。");
     }
-    return runCommandTool.run({ command }, { workspaceRoot: ws.rootPath, runId: "adhoc" });
+    // Direct user-typed run: the user explicitly invoked this command, so
+    // any side effects belong to the project lifecycle. Apply writeback
+    // automatically (still snapshotted so rollback works), no approval gate.
+    return runCommandWithPolicy(
+      { command },
+      { workspaceRoot: ws.rootPath, runId: "adhoc" },
+      {
+        policy: this.sandboxPolicy(),
+        writeback: { kind: "auto" },
+        snapshotStore: this.storage,
+      },
+    );
+  }
+
+  /**
+   * Build the active sandbox policy from current settings. When the user has
+   * disabled sandboxing (or left the legacy "whitelist" mode), commands run
+   * through the host whitelist (Phase 2 behavior). Re-read per call so a user
+   * toggling the mode in the GUI takes effect on the next command without a
+   * restart.
+   */
+  private sandboxPolicy(): SandboxPolicy {
+    const s = this.getAgentSettings();
+    if (!s.sandboxEnabled || s.sandboxMode === "whitelist") {
+      return { mode: "whitelist", allowNetwork: false };
+    }
+    return { mode: s.sandboxMode, allowNetwork: false };
   }
 
   /**
@@ -215,7 +263,7 @@ export class AgentService {
 
     this.setStatus(run.id, "tool_use");
     const ctx: ToolContext = { workspaceRoot: ws.rootPath, runId: run.id, signal: controller.signal };
-    const systemPrompt = this.readOnly
+    const systemPrompt = this.effectiveReadOnly()
       ? getReadonlySystemPrompt(this.getLanguage())
       : getSystemPrompt(this.getLanguage());
     const initialMessages: LLMMessage[] = [
@@ -302,16 +350,26 @@ export class AgentService {
   ): Promise<void> {
     const ctx: ToolContext = { workspaceRoot, runId, signal: controller.signal };
     const settings = this.getAgentSettings();
+    // Snapshot read-only at loop entry so a settings change mid-run can't flip
+    // the policy on the live conversation (would surprise the model and the
+    // user). Followups re-enter driveLoop and re-read settings.
+    const readOnly = this.effectiveReadOnly();
     const execute = createToolExecutor({
       ctx,
       storage: this.storage,
       allowShellExecution: settings.allowShellExecution,
-      readOnly: this.readOnly,
+      readOnly,
+      sandboxPolicy: this.sandboxPolicy(),
       // Plumb the installation gate to the tool dispatcher so LLM-initiated
       // unsafe tool calls are also refused in degraded mode.
       ...(this.assertToolAllowed
         ? { assertToolAllowed: this.assertToolAllowed }
         : {}),
+      // Sandbox writeback approval: only meaningful when the sandbox is
+      // active. The executor falls back to "discard" when no callback is
+      // wired, so omitting this on the whitelist path is safe.
+      requestSandboxWriteApproval: (call, changes) =>
+        this.awaitWritebackApproval(runId, call, changes),
     });
     const budget = new BudgetController(this.budgetLimits());
 
@@ -320,14 +378,14 @@ export class AgentService {
     // workspace, which is correct — we want to detect regressions relative to
     // what passes now, not the original pristine state. Skipped in read-only
     // mode: no edits can happen, so there is nothing to guard against.
-    if (!this.readOnly) {
+    if (!readOnly) {
       await this.captureBaseline(runId, ctx, settings.allowShellExecution);
     }
 
     try {
       const outcome = await runToolLoop(messages, {
         llm,
-        tools: agentToolSchemas({ readOnly: this.readOnly }),
+        tools: agentToolSchemas({ readOnly }),
         budget,
         signal: controller.signal,
         temperature: 0.2,
@@ -355,8 +413,13 @@ export class AgentService {
         },
         verifyAfterPatch: (_call, result) =>
           this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
-        requiresApproval: (call) => call.name === "apply_patch",
-        waitForApproval: (call) => this.awaitApproval(runId, call),
+        requiresApproval: (call) =>
+          call.name === "apply_patch" ||
+          (call.name === "run_command" && settings.requireConfirmationBeforeCommand),
+        waitForApproval: (call) =>
+          call.name === "run_command"
+            ? this.awaitCommandConfirmation(runId, call)
+            : this.awaitApproval(runId, call),
         onToolCall: (call) => {
           this.storage.addRunUsage(runId, { toolCalls: 1 });
           this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
@@ -406,7 +469,16 @@ export class AgentService {
       return;
     }
     try {
-      const out = await runCommandTool.run({ command }, ctx);
+      // Baseline runs the project's verify command (pytest/npm test/etc.) for
+      // its pass/fail status. Cache files (`.pytest_cache`, `__pycache__`)
+      // are already in the hard-ignore set so they never appear in diff;
+      // anything else the test writes (coverage reports, etc.) is part of the
+      // project's own lifecycle, so we auto-apply without prompting.
+      const out = await runCommandWithPolicy({ command }, ctx, {
+        policy: this.sandboxPolicy(),
+        writeback: { kind: "auto" },
+        snapshotStore: this.storage,
+      });
       const report = parseTestFailure({
         command: out.command,
         stdout: out.stdout,
@@ -455,7 +527,13 @@ export class AgentService {
     this.addStep(runId, "tool_call", `verify $ ${command}`);
     let out;
     try {
-      out = await runCommandTool.run({ command }, ctx);
+      // Verify-after-patch runs the same project-native command as baseline;
+      // same writeback policy applies (see captureBaseline).
+      out = await runCommandWithPolicy({ command }, ctx, {
+        policy: this.sandboxPolicy(),
+        writeback: { kind: "auto" },
+        snapshotStore: this.storage,
+      });
     } catch (err) {
       this.addStep(runId, "error", `自动验证无法运行：${asMessage(err)}`);
       return `自动验证命令无法运行（${asMessage(err)}）。请检查后继续。`;
@@ -512,7 +590,60 @@ export class AgentService {
     const patch = patchArg(call);
     this.addStep(runId, "diff", patch);
     this.emit({ kind: "patch_ready", runId, patch });
-    this.pending.set(runId, { patch, command: null });
+    this.pending.set(runId, { kind: "patch", patch, command: null });
+    this.setStatus(runId, "waiting_for_user_approval");
+    return new Promise<boolean>((resolve) => {
+      this.approvals.set(runId, { resolve });
+    });
+  }
+
+  /**
+   * Park the loop on a docker/wsl run_command that produced file writes. The
+   * user sees a synthesised unified diff in the existing approval UI; the
+   * executor's `onApprove` callback waits on this promise and applies (or
+   * discards) the staged changes based on the user's choice.
+   */
+  private awaitWritebackApproval(
+    runId: string,
+    call: LLMToolCall,
+    changes: FileChange[],
+  ): Promise<boolean> {
+    const command = commandArg(call);
+    const patch = synthesizeUnifiedDiff(changes);
+    this.addStep(
+      runId,
+      "message",
+      `命令 \`${command}\` 在沙盒内修改了 ${changes.length} 个文件，等待你审批后再同步到工作区。`,
+    );
+    this.addStep(runId, "diff", patch);
+    this.emit({ kind: "patch_ready", runId, patch });
+    this.pending.set(runId, { kind: "command_writeback", patch, command });
+    this.setStatus(runId, "waiting_for_user_approval");
+    return new Promise<boolean>((resolve) => {
+      this.approvals.set(runId, { resolve });
+    });
+  }
+
+  /**
+   * Pre-execution approval for `run_command` calls when
+   * {@link AgentSettings.requireConfirmationBeforeCommand} is on. The user
+   * confirms that the command may run; the existing apply/reject IPC handlers
+   * resolve the same approval promise (true → execute, false → skip).
+   * The pending "patch" payload is a `$ <command>` line so the existing diff
+   * renderer in the GUI can show it as a single context line; richer UI can
+   * later branch on `Pending.kind`.
+   */
+  private awaitCommandConfirmation(runId: string, call: LLMToolCall): Promise<boolean> {
+    const command = commandArg(call);
+    const preview = `$ ${command}`;
+    this.addStep(
+      runId,
+      "message",
+      `等待你确认是否执行命令 \`${command}\`（已在设置中开启"运行前确认"）。`,
+    );
+    this.addStep(runId, "diff", preview);
+    this.emit({ kind: "patch_ready", runId, patch: preview });
+    this.pending.set(runId, { kind: "command_confirm", patch: preview, command });
     this.setStatus(runId, "waiting_for_user_approval");
     return new Promise<boolean>((resolve) => {
       this.approvals.set(runId, { resolve });
@@ -559,8 +690,19 @@ export class AgentService {
     ].join("\n");
   }
 
+  /**
+   * Build the per-run budget from the live agent settings. `maxAutoSteps` is
+   * surfaced in the GUI as "auto-iteration ceiling", `budgetUsd` as "dollar
+   * cap"; both run through {@link clampBudgetLimits} so a misconfigured
+   * settings.json can never exceed the absolute hard caps.
+   */
   private budgetLimits(): BudgetLimits {
-    return clampBudgetLimits(DEFAULT_BUDGET_LIMITS);
+    const s = this.getAgentSettings();
+    return clampBudgetLimits({
+      ...DEFAULT_BUDGET_LIMITS,
+      maxIterations: s.maxAutoSteps,
+      maxCostUsd: s.budgetUsd,
+    });
   }
 
   private addStep(runId: string, type: AgentStepType, content: string): void {
@@ -595,6 +737,67 @@ function patchArg(call: LLMToolCall): string {
     if (typeof patch === "string") return patch;
   }
   return "";
+}
+
+function commandArg(call: LLMToolCall): string {
+  const args = call.args;
+  if (typeof args === "object" && args !== null && "command" in args) {
+    const cmd = (args as { command: unknown }).command;
+    if (typeof cmd === "string") return cmd;
+  }
+  return "";
+}
+
+/**
+ * Build a unified diff string from a sandbox change set so the existing
+ * approval UI (which already renders unified diffs for `apply_patch`) can
+ * preview a `run_command` writeback without a separate code path. Added /
+ * deleted files use `/dev/null` markers the way git does. Plain text — no
+ * locale-dependent formatting — so the front-end can rely on a stable shape.
+ */
+function synthesizeUnifiedDiff(changes: FileChange[]): string {
+  const blocks: string[] = [];
+  for (const change of changes) {
+    if (change.kind === "added") {
+      const lines = change.content.split("\n");
+      // If the content ends with "\n", split() yields a trailing empty
+      // element which would print as an empty "+" line — strip it.
+      const trailingNewline = change.content.endsWith("\n");
+      const bodyLines = trailingNewline ? lines.slice(0, -1) : lines;
+      blocks.push(
+        `--- /dev/null\n+++ b/${change.path}\n@@ -0,0 +1,${bodyLines.length} @@\n` +
+          bodyLines.map((l) => `+${l}`).join("\n") +
+          (bodyLines.length > 0 ? "\n" : ""),
+      );
+    } else if (change.kind === "deleted") {
+      const lines = change.before.split("\n");
+      const trailingNewline = change.before.endsWith("\n");
+      const bodyLines = trailingNewline ? lines.slice(0, -1) : lines;
+      blocks.push(
+        `--- a/${change.path}\n+++ /dev/null\n@@ -1,${bodyLines.length} +0,0 @@\n` +
+          bodyLines.map((l) => `-${l}`).join("\n") +
+          (bodyLines.length > 0 ? "\n" : ""),
+      );
+    } else {
+      // modified — emit a coarse "replace everything" hunk. Real per-line
+      // hunking would require the `diff` package; the GUI renders this fine
+      // as a unified diff, so we keep the synthesis dependency-light.
+      const beforeLines = change.before.split("\n");
+      const afterLines = change.after.split("\n");
+      const trimTrailing = (lines: string[], src: string): string[] =>
+        src.endsWith("\n") ? lines.slice(0, -1) : lines;
+      const b = trimTrailing(beforeLines, change.before);
+      const a = trimTrailing(afterLines, change.after);
+      blocks.push(
+        `--- a/${change.path}\n+++ b/${change.path}\n@@ -1,${b.length} +1,${a.length} @@\n` +
+          b.map((l) => `-${l}`).join("\n") +
+          (b.length > 0 ? "\n" : "") +
+          a.map((l) => `+${l}`).join("\n") +
+          (a.length > 0 ? "\n" : ""),
+      );
+    }
+  }
+  return blocks.join("\n");
 }
 
 function summarizeArgs(call: LLMToolCall): string {

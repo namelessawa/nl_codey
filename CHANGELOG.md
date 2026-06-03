@@ -5,7 +5,103 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Security (Sprint 1 — unified security model)
+- **P0: docker/wsl `run_command` bypassed the approval/snapshot/rollback gate
+  and wrote straight through the bind-mounted host workspace.** Previously,
+  `runCommandWithPolicy` only enforced the host whitelist on the
+  `whitelist` branch; the `docker` and `wsl` branches handed the request to
+  `routeCommand` → `DockerRunner` / `WslRunner`, both of which bind-mounted
+  the **real** workspace (`-v <workspace>:/work` for docker, `--cd <workspace>`
+  for wsl) and ran `sh -lc <command>` with no diff capture, no approval, no
+  snapshot. The model could `rm -rf .` or `echo 'pwned' > index.ts` and the
+  writes hit the user's source tree directly. Now every sandboxed command goes
+  through a per-command copy-on-write staging directory under `os.tmpdir()`
+  (new `WorkspaceSandbox` class in `packages/sandbox`): the workspace is
+  copied into staging (hard-ignoring `node_modules` / `.git` / `dist` / etc.,
+  capped at 8000 files / 200 MB), the runner is repointed at the staging dir
+  instead of the host workspace, and after the command finishes a diff
+  (`WorkspaceSandbox.diff`) reports which files were added/modified/deleted.
+  Those changes are then handled per the caller's declared `writeback` mode:
+  `auto` syncs + snapshots immediately (used by user-typed Run Command panel
+  + baseline/verify), `approve` parks for explicit user approval via the
+  existing patch-approval UI (used by every LLM-initiated `run_command` in
+  docker/wsl mode), `discard` drops them (the safe default). Binary writes are
+  surfaced as `binaryConflicts` and never auto-synced — opaque blobs must be
+  reviewed by a human. New `requestSandboxWriteApproval` callback on the tool
+  executor + new `awaitWritebackApproval` on `AgentService` synthesise a
+  unified diff from the change set so the renderer's existing diff renderer
+  shows the preview. Verified end-to-end against a real Docker container:
+  `echo pwned > sandbox-only.txt` produces a change in staging but **does
+  not** touch the host workspace until the user clicks Apply. 8 new
+  `workspace-sandbox.test.ts` cases lock the CoW + diff contract; 3 new
+  `e2e-docker.test.ts` cases lock the three writeback policies.
+- **P0: read-only ("instruction") agent mode was hard-coded OFF by a
+  DEBUG/TEST OVERRIDE in `apps/desktop/src/main/services.ts` (`readOnly:
+  false`).** Removed the override and made the policy driven by a new
+  `AgentSettings.readOnly` boolean (default `false`, exposed as a toggle in
+  Settings → Agent). `AgentService` reads it per-run via a new
+  `effectiveReadOnly()` helper; a hard override can still be set via
+  `AgentDeps.readOnly` for headless harnesses, but the production wiring
+  now respects the user's choice. Default remains `false` to preserve the
+  current effective behaviour — users who want the safer instruction-only
+  mode opt in via the toggle.
+
+### Changed (Sprint 1 — unified configuration sources)
+- **Budget limits now come from `AppSettings.agent`.** `service.ts`
+  previously called `clampBudgetLimits(DEFAULT_BUDGET_LIMITS)` with no
+  reference to the GUI's "Max auto steps" or "Budget cap (USD)" sliders —
+  the user could move them all they wanted, the loop ignored them. Fixed:
+  `budgetLimits()` now reads `s.maxAutoSteps` → `maxIterations` and
+  `s.budgetUsd` → `maxCostUsd` from the live settings, with
+  `clampBudgetLimits` still enforcing the absolute hard caps (100 / $5 / 200 /
+  30 min) so a misconfigured `settings.json` can never blow past them.
+- **`requireConfirmationBeforeCommand` now actually pauses for confirmation.**
+  The setting was wired into the UI for months but never consulted by the
+  loop's `requiresApproval` predicate — only `apply_patch` was ever gated. Now
+  `requiresApproval(call)` also returns true for `run_command` when the
+  setting is on; the new `awaitCommandConfirmation` helper parks the loop on
+  a `command_confirm` `Pending` entry whose payload is the `$ <command>`
+  preview, so the existing Apply/Reject buttons act as run/skip for the
+  pending command.
+- **Single source of truth for sandbox mode.** `Phase3Services` previously
+  kept its own per-workspace in-memory `Map<workspaceId, SandboxMode>` that
+  the `getSandboxMode` / `setSandboxMode` IPC handlers read/wrote; meanwhile
+  `AgentService.sandboxPolicy()` was reading from `settings.agent.sandboxMode`.
+  The GUI selector and the dispatching loop saw different worlds. Both IPC
+  handlers now read/write `AppSettings.agent.sandboxMode` directly (workspaceId
+  parameter retained for API compatibility but ignored — sandbox mode is a
+  global runtime choice, not a per-project one). The legacy `sandboxModes`
+  field is gone from `Phase3Services`.
+
 ### Fixed
+- **`run_command` ignored `sandboxMode` and always routed to the whitelist
+  runner.** Even with `sandboxMode: "docker"` configured, every command
+  dispatched by the agent (and by the baseline / verify-after-patch passes) was
+  exact-matched against the host whitelist — so `pip install`, `ls -la`,
+  `python --version`, and anything else outside the 13-entry allowlist returned
+  `"Command not in whitelist"` instead of running in a container. The Phase-3
+  `routeCommand` / `DockerRunner` / `WslRunner` plumbing was already wired but
+  no caller actually used it. Fix: new
+  `packages/tools/src/run-command-routed.ts` exposes `runCommandWithPolicy`,
+  which dispatches through `routeCommand` when the policy is `docker` / `wsl`
+  and falls back to the legacy whitelist runner otherwise. Wired into
+  `agent-core/tools-registry.ts` (new `sandboxPolicy` option) and the three
+  service.ts callers (loop dispatch, baseline, verify) via a new
+  `sandboxPolicy()` helper that reads from current settings each call. Also
+  auto-picks a Docker image based on detected project kind
+  (`python:3.12-slim`, `node:22-slim`, etc.) when the policy doesn't pin one,
+  with extended detection that recognises freshly-generated `*.py` /
+  `requirements.txt` even before `pyproject.toml` exists. Verified end-to-end:
+  agent generated a Python project in `test/`, ran 6 unittest cases in
+  `python:3.12-slim`, all passed. Followed up with a headless harness at
+  `packages/tools/src/e2e-docker.test.ts` that exercises every tool against
+  the real workspace (17 cases — list_files / read_file / read_file_range /
+  search_text / find_symbol / apply_patch V4A / write_file / git_status /
+  git_diff / parse_test_failure / defaultDockerImage / four docker
+  `run_command` paths covering happy path, non-zero exit, network
+  block, and bind-mount readback / two whitelist fallback paths). All 17
+  pass; full `pnpm exec vitest run packages/tools` stays green at 55/55,
+  plus packages/agent-core and packages/sandbox at 94/94.
 - **DeepSeek 400 "tool must be a response to a preceding message with
   tool_calls" after mid-run compression.** When the conversation crossed
   `COMPRESS_TRIGGER_RATIO`, `compressConversation` could land `tailStart` on a
