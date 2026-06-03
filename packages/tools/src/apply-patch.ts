@@ -128,40 +128,87 @@ async function planUnified(patch: string, ctx: ToolContext): Promise<PlannedChan
 /** Phase A for V4A patches: resolve each file op against current content. */
 async function planV4A(patch: string, ctx: ToolContext): Promise<PlannedChange[]> {
   const ops = parseV4A(patch);
-  const planned: PlannedChange[] = [];
+
+  // Track per-path evolving state as ops apply in order. Critical for patches
+  // with multiple Update / Add / Delete blocks on the same file: a second op's
+  // hunk must see the first op's result, NOT the unmodified on-disk content.
+  // Without this, Phase A planned the second op against stale bytes and
+  // Phase B's two writes would silently overwrite each other (last-write-wins,
+  // earlier hunk dropped). The collapse at the end also dedups `changedFiles`.
+  type FileState = {
+    absPath: string;
+    initialBefore: string;
+    initialExisted: boolean;
+    current: string;
+    exists: boolean;
+  };
+  const states = new Map<string, FileState>();
+
   for (const op of ops) {
     const absPath = assertInsideWorkspace(ctx.workspaceRoot, op.path);
-    const existed = existsSync(absPath);
-    const before = existed ? await fs.readFile(absPath, "utf8") : "";
+    let state = states.get(op.path);
+    if (!state) {
+      const existed = existsSync(absPath);
+      const before = existed ? await fs.readFile(absPath, "utf8") : "";
+      state = {
+        absPath,
+        initialBefore: before,
+        initialExisted: existed,
+        current: before,
+        exists: existed,
+      };
+      states.set(op.path, state);
+    }
 
     if (op.op === "delete") {
-      if (!existed) {
+      if (!state.exists) {
         throw new ToolError(TOOL_CODES.patchApplyFailed, `Cannot delete missing file: ${op.path}`);
       }
-      planned.push({ op: "delete", relPath: op.path, absPath, before, after: "", existed });
+      state.current = "";
+      state.exists = false;
     } else if (op.op === "add") {
-      // V4A "Add File" must NOT silently overwrite an existing file. A
-      // conflict here is almost always the model misreading the workspace —
-      // refusing instead of clobbering gives the loop a chance to either
-      // emit an Update File patch or stop and ask. Use Update File for any
-      // intentional rewrite.
-      if (existed) {
+      // V4A "Add File" must NOT silently overwrite a file that exists in the
+      // current (in-memory) state — either it was on disk pre-patch or an
+      // earlier op already created it. Refusing keeps the model honest:
+      // intentional rewrites must use "Update File".
+      if (state.exists) {
         throw new ToolError(
           TOOL_CODES.patchApplyFailed,
           `Cannot add ${op.path}: file already exists. Use "Update File" to modify, or delete it first.`,
         );
       }
-      planned.push({ op: "add", relPath: op.path, absPath, before, after: op.content, existed });
+      state.current = op.content;
+      state.exists = true;
     } else {
-      if (!existed) {
+      if (!state.exists) {
         throw new ToolError(
           TOOL_CODES.patchApplyFailed,
           `Cannot update missing file: ${op.path} (use Add File instead)`,
         );
       }
-      const after = applyV4AHunks(before, op.hunks, op.path);
-      planned.push({ op: "update", relPath: op.path, absPath, before, after, existed });
+      state.current = applyV4AHunks(state.current, op.hunks, op.path);
     }
+  }
+
+  // Collapse each path's final state into one PlannedChange. Net-zero paths
+  // (e.g. add-then-delete of a file that didn't exist) are skipped — Phase B
+  // has nothing to do for them. Paths reborn (delete-then-add when the file
+  // initially existed) collapse to a single "update" with the rewritten body.
+  const planned: PlannedChange[] = [];
+  for (const [relPath, s] of states) {
+    if (!s.initialExisted && !s.exists) continue;
+    let op: ChangeOp;
+    if (!s.initialExisted && s.exists) op = "add";
+    else if (s.initialExisted && !s.exists) op = "delete";
+    else op = "update";
+    planned.push({
+      op,
+      relPath,
+      absPath: s.absPath,
+      before: s.initialBefore,
+      after: op === "delete" ? "" : s.current,
+      existed: s.initialExisted,
+    });
   }
   return planned;
 }

@@ -121,6 +121,69 @@ describe("applyPatchTool", () => {
     expect(fs.existsSync(path.join(root, "old.ts"))).toBe(false);
   });
 
+  it("V4A collapses multiple Update blocks on the same file into one applied change", async () => {
+    // Regression for the multi-Update bug: previously each op read the
+    // unmodified on-disk content in Phase A, then Phase B wrote them in
+    // order so the second write silently overwrote the first. With the
+    // in-memory state map, both hunks land and `changedFiles` is dedup'd.
+    fs.writeFileSync(
+      path.join(root, "calc.py"),
+      "def add(a, b):\n    # BUG\n    return a - b\n\n\ndef mul(a, b):\n    # BUG\n    return a + b\n",
+    );
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: calc.py",
+      "@@ def add(a, b):",
+      "     # BUG",
+      "-    return a - b",
+      "+    return a + b",
+      "*** Update File: calc.py",
+      "@@ def mul(a, b):",
+      "     # BUG",
+      "-    return a + b",
+      "+    return a * b",
+      "*** End Patch",
+    ].join("\n");
+
+    const out = await applyPatchTool({ runId: "run-1", patch }, ctx(root), store);
+    expect(out.applied).toBe(true);
+    // dedup'd: one entry, not ["calc.py", "calc.py"].
+    expect(out.changedFiles).toEqual(["calc.py"]);
+    // Both hunks landed.
+    const final = fs.readFileSync(path.join(root, "calc.py"), "utf8");
+    expect(final).toMatch(/def add\(a, b\):\n    # BUG\n    return a \+ b/);
+    expect(final).toMatch(/def mul\(a, b\):\n    # BUG\n    return a \* b/);
+    // Exactly one snapshot (collapsed), not two — Phase B writes once.
+    expect(store.snapshots.length).toBe(1);
+    expect(store.snapshots[0]?.filePath).toBe("calc.py");
+    expect(store.snapshots[0]?.beforeContent).toContain("return a - b");
+    expect(store.snapshots[0]?.afterContent).toContain("return a + b");
+    expect(store.snapshots[0]?.afterContent).toContain("return a * b");
+  });
+
+  it("V4A Add then Update on the same file lands as a single add", async () => {
+    // A fresh add followed by an update of that same fresh file in one patch
+    // should collapse to a single "add" with the final body — Phase B writes
+    // the file exactly once.
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: greeting.txt",
+      "+hello",
+      "*** Update File: greeting.txt",
+      "-hello",
+      "+hello, world",
+      "*** End Patch",
+    ].join("\n");
+
+    const out = await applyPatchTool({ runId: "run-1", patch }, ctx(root), store);
+    expect(out.applied).toBe(true);
+    expect(out.changedFiles).toEqual(["greeting.txt"]);
+    expect(fs.readFileSync(path.join(root, "greeting.txt"), "utf8")).toBe("hello, world");
+    expect(store.snapshots.length).toBe(1);
+    expect(store.snapshots[0]?.beforeContent).toBe("");
+    expect(store.snapshots[0]?.afterContent).toBe("hello, world");
+  });
+
   it("V4A Add File refuses to overwrite an existing file", async () => {
     fs.writeFileSync(path.join(root, "existing.ts"), "original\n");
     const patch = [

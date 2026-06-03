@@ -75,7 +75,13 @@ Rules:
   in parallel; design the graph so independent work can proceed concurrently.
 - Do NOT write code, propose diffs, or run commands. You only plan.
 - The final and only action that ends your turn is propose_task_breakdown with
-  the full breakdown { root, tasks[] }.`;
+  the full breakdown { root, tasks[] }.
+- IMPORTANT: the \`root\` field MUST be exactly equal to the id of one of the
+  entries in your \`tasks\` array — almost always the entry sub-task that has no
+  unresolved dependsOn. It is NOT a free-form label or a description of the
+  overall goal. Example: if tasks = [{ id: "1", ... }, { id: "2", dependsOn: ["1"], ... }],
+  then root MUST be "1". A breakdown whose root does not appear in tasks[] is
+  rejected by the validator.`;
 
 export const CODER_PROMPT = `You are the CODER role in a controlled multi-agent coding system.
 You are assigned exactly one TaskNode at a time via a handoff. Implement only

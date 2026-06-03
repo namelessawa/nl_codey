@@ -5,6 +5,88 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Changed (Sprint 4 — Phase 3/4 wired into the live agent loop)
+- **Phase 4 prompt augmentation is now actually injected into the system
+  prompt.** Previously `buildPhase4PromptAugmentation` was defined and
+  unit-tested but no production code called it; `getSystemPrompt` / the read-
+  only variant ran straight through with no GlobalPattern / StyleSpec / fine-
+  tune identity reminder context. `AgentService` now takes a
+  `getPhase4Augmentation: (workspaceId) => string` hook (`Phase4AugmentationFn`)
+  and prepends its output after the base prompt; `apps/desktop` wires it from
+  `storage.phase4.listGlobalPatterns()` + `getStyleSpec()` +
+  `getActiveModel()`, gated by the respective Phase 4 feature flags. Failures
+  fall through to an empty string so a sick Phase 4 surface never blocks a
+  normal run. New shared `Phase4SettingsStore` (lifted out of `phase4-ipc.ts`)
+  keeps the augmentation gate and the IPC handlers reading from one cache.
+- **Phase 3 tools (`semantic_search` / `read_memory` / `write_memory` /
+  `web_search` / `web_fetch`) now appear in the autonomous-loop tool surface.**
+  They were defined in `@coding-agent/tools` and tested in isolation, but
+  `agentToolSchemas` only advertised the Phase 1/2 catalogue, so the model
+  never saw them. New `PHASE3_AGENT_TOOL_SCHEMAS` + `createPhase3Dispatcher`
+  in `agent-core`, an optional `Phase3AgentPorts` bundle on
+  `ToolExecutorOptions`, and a `getPhase3Ports` hook on AgentService route
+  semantic-search hits / memory hits / web fetches through the existing
+  approval + sandbox + budget machinery. `agentToolSchemas` now takes
+  `phase3Available` (off by default) and a new `extraSchemas` slot for plugin
+  / dynamic tools. `write_memory` joins `apply_patch` / `write_file` in the
+  read-only filter so query-only mode stays query-only. `apps/desktop` wires
+  the ports from `Phase3Services` + `searchChunks` + `MemoryRetriever` +
+  `webSearch` (DuckDuckGo backend) + `webFetch`. 14 new unit tests in
+  `phase3-schemas.test.ts` cover schema visibility, read-only filtering, and
+  dispatcher routing.
+- **`convertProposal` actually creates a run instead of throwing.** The
+  Phase 4 IPC handler used to fail with "not yet wired to the Planner
+  pipeline" — clicking *Convert* did nothing. It now composes a self-
+  contained user task from `proposal.title` + `rationale` + affected files
+  and calls `services.agent.runTask(workspaceId, task)`, then stamps the
+  proposal `converted_to_task` with the real `convertedRunId` so the UI can
+  navigate from inbox to run. Reuses every existing safety gate
+  (approval / sandbox / budget / installation gate). Double-convert is
+  refused with a readable error.
+- **Plugin tools are now visible to the agent loop and routed through
+  `PluginHost`.** `PluginHost` existed but had no caller outside its own
+  tests; installed plugins were dead state. New `apps/desktop/src/main/
+  plugin-runtime.ts` builds a dynamic `{schemas, dispatch}` bundle per
+  driveLoop entry from the enabled `PluginInstallation` set, advertises
+  `plugin__<plugin>__<tool>` schemas to the model, and routes invocations
+  through `PluginHost.invoke` (which re-validates enablement + permissions
+  per call). Whitelist-sandbox plugins spawn Node with cwd locked to the
+  plugin install dir; `wsl` / `docker` sandbox modes return a clear
+  "not yet supported for plugin invocations" error rather than silently
+  failing. AgentService gains a `getDynamicTools` hook for the broader
+  pattern (future MCP servers etc. plug in the same shape).
+- **`createFinetuneJob` now drives a background training process.** It used
+  to be a single `storage.phase4.createFinetuneJob(input)` insert with no
+  consumer — jobs queued forever, `LoRATrainer` had zero call sites. New
+  `apps/desktop/src/main/finetune-runner.ts` looks for a user-supplied
+  Python script at `<userData>/finetune/train.py`, spawns it with
+  `--base-model / --dataset-id / --method / --output-dir`, captures
+  `ARTIFACT:` as the success marker, and transitions job status
+  `queued → training → evaluating` on success or `→ failed` with an
+  explicit `evalResult.gateReasons` on missing script / spawn error /
+  timeout / bad output. `resumeQueued()` runs at startup so an
+  interrupted job continues across restarts. Promotion to active model
+  still flows through the eval gate + `ModelRegistry` per the Phase 4
+  design.
+- **Opt-in multi-agent mode.** New `agent.multiAgentEnabled` setting routes
+  runs through the Phase 3 Coordinator (Planner → Coder → Reviewer) instead
+  of the single-agent loop. New `multi-agent.ts` in `agent-core` provides
+  the role-specific tool loops (filtered by `ROLE_TOOLS` from
+  `@coding-agent/orchestrator`) and the strict-JSON `parseReviewResult` for
+  the reviewer's verdict, plus orchestrator-only schemas
+  (`propose_task_breakdown` / `update_task_status` / `request_review` /
+  `approve_change` / `request_changes`). `AgentService.driveMultiAgentLoop`
+  builds the same executor + Phase 3 ports + plugin bundle the single-agent
+  path uses, so safety guarantees (approval / sandbox / verify-after-patch
+  / snapshots) are identical. Default off so the long-standing single-agent
+  behaviour is preserved.
+- **Real-LLM smoke test.** New `real-llm.integration.test.ts` drives the
+  autonomous loop against a real DeepSeek provider (extensible to others)
+  with stubbed Phase 3 ports and asserts that `read_memory` was invoked end-
+  to-end. Skips cleanly when `DEEPSEEK_API_KEY` is unset so `pnpm test`
+  passes without API credentials. To run: set `DEEPSEEK_API_KEY` and execute
+  `pnpm exec vitest run packages/agent-core/src/real-llm.integration.test.ts`.
+
 ### Changed (Sprint 3 — storage integrity + apply_patch hardening + Phase 4 cleanup)
 - **Storage gains foreign keys, unique constraints, cascade deletes, and a
   proper version-tracked migration path.** The Phase 1 tables (`agent_runs`,

@@ -62,6 +62,14 @@ export type AgentSettings = {
    * but never modify or delete a file. Default `false` (full read/write).
    */
   readOnly: boolean;
+  /**
+   * Opt-in multi-agent mode. When `true`, AgentService routes runs through
+   * the Phase 3 Coordinator (Planner → Coder → Reviewer) with role-specific
+   * tool subsets and structured role messages, instead of the single-agent
+   * tool loop. Default `false` so the long-standing single-agent behaviour is
+   * preserved; users who want orchestration explicitly opt in.
+   */
+  multiAgentEnabled: boolean;
 };
 
 export type UISettings = {
@@ -171,6 +179,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     sandboxMode: "whitelist",
     budgetUsd: 1.0,
     readOnly: false,
+    multiAgentEnabled: false,
   },
   ui: {
     theme: "system",

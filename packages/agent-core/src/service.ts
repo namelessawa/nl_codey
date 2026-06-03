@@ -14,6 +14,7 @@ import type {
   SandboxPolicy,
   TestFailureReport,
   ToolContext,
+  ToolSchema,
 } from "@coding-agent/shared";
 import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
 import type { FileChange } from "@coding-agent/sandbox";
@@ -23,11 +24,47 @@ import { listFilesTool, parseTestFailure, runCommandWithPolicy } from "@coding-a
 import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
-import { agentToolSchemas, createToolExecutor } from "./tools-registry.js";
+import { agentToolSchemas, createToolExecutor, type ExecutedTool } from "./tools-registry.js";
 import { getReadonlySystemPrompt, getSystemPrompt } from "./prompts.js";
 import { getSummarizePrompt } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
 import { analyzeRegressions, regressionNote } from "./regression.js";
+import { runMultiAgentTask } from "./multi-agent.js";
+
+/**
+ * Optional Phase 4 prompt augmentation. Called once per new run with the
+ * workspace id; returned text is appended after the base system prompt so the
+ * model sees relevant cross-project patterns + style rules + the fine-tune
+ * identity reminder. Implementations should respect their own feature flags
+ * and return an empty string when Phase 4 is disabled.
+ */
+export type Phase4AugmentationFn = (workspaceId: string) => string;
+
+/**
+ * Optional Phase 3 port factory. Returns the live semantic-search / memory /
+ * web ports for the given workspace, or `null` when Phase 3 is disabled. The
+ * factory is called once per run so settings changes (API keys, sandbox mode)
+ * take effect on the next task without requiring a restart.
+ */
+import type { Phase3AgentPorts } from "./phase3-schemas.js";
+export type Phase3PortsFn = (workspaceId: string) => Phase3AgentPorts | null;
+
+/**
+ * A dynamically-loaded tool bundle (schemas the model sees + a dispatcher).
+ * The plugin runtime is the primary consumer; other future runtimes (HTTP
+ * tools, MCP servers, etc.) can plug in the same shape.
+ */
+export type DynamicToolBundle = {
+  schemas: readonly ToolSchema[];
+  dispatch: (call: LLMToolCall, ctx: ToolContext) => Promise<ExecutedTool | null>;
+};
+
+/**
+ * Optional dynamic tool bundle factory. Called once per driveLoop entry so a
+ * plugin enabled mid-session lights up on the next task without restart.
+ * Returns null when no dynamic tools are available.
+ */
+export type DynamicToolBundleFn = () => DynamicToolBundle | null;
 
 const MAX_INITIAL_FILES = 200;
 const MAX_STEP_CONTENT = 4000;
@@ -68,6 +105,27 @@ export type AgentDeps = {
    * and let the per-run settings drive the behaviour instead.
    */
   readOnly?: boolean;
+  /**
+   * Optional Phase 4 augmentation hook. Builds the cross-project pattern hints
+   * + style spec + fine-tune identity reminder block and returns the text to
+   * append after the base system prompt. When omitted (or returning an empty
+   * string) the system prompt is unchanged, preserving Phase 1/2 behaviour.
+   */
+  getPhase4Augmentation?: Phase4AugmentationFn;
+  /**
+   * Optional Phase 3 port factory. When it returns a non-null bundle the
+   * single-agent loop advertises semantic_search / read_memory / write_memory /
+   * web_search / web_fetch in addition to the Phase 1/2 catalogue. Returning
+   * null (or omitting the hook) keeps the model at the Phase 1/2 surface.
+   */
+  getPhase3Ports?: Phase3PortsFn;
+  /**
+   * Optional dynamic tool bundle factory (plugins, MCP servers, etc.). When
+   * it returns non-null the bundle's schemas are advertised after Phase 1/2
+   * + Phase 3, and its dispatcher is tried before the built-in switch so a
+   * dynamic tool can't be shadowed by a built-in name collision.
+   */
+  getDynamicTools?: DynamicToolBundleFn;
   emit: (event: AgentEvent) => void;
 };
 
@@ -98,6 +156,9 @@ export class AgentService {
   private readonly assertToolAllowed: ((toolName: string) => void) | undefined;
   /** Hard override; when undefined, per-run settings.agent.readOnly wins. */
   private readonly readOnlyOverride: boolean | undefined;
+  private readonly getPhase4Augmentation: Phase4AugmentationFn | undefined;
+  private readonly getPhase3Ports: Phase3PortsFn | undefined;
+  private readonly getDynamicTools: DynamicToolBundleFn | undefined;
   private readonly emit: (event: AgentEvent) => void;
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
@@ -114,6 +175,9 @@ export class AgentService {
     this.getLanguage = deps.getLanguage ?? ((): LanguagePreference => "zh-CN");
     this.assertToolAllowed = deps.assertToolAllowed;
     this.readOnlyOverride = deps.readOnly;
+    this.getPhase4Augmentation = deps.getPhase4Augmentation;
+    this.getPhase3Ports = deps.getPhase3Ports;
+    this.getDynamicTools = deps.getDynamicTools;
     this.emit = deps.emit;
   }
 
@@ -263,14 +327,40 @@ export class AgentService {
 
     this.setStatus(run.id, "tool_use");
     const ctx: ToolContext = { workspaceRoot: ws.rootPath, runId: run.id, signal: controller.signal };
-    const systemPrompt = this.effectiveReadOnly()
+    const baseSystemPrompt = this.effectiveReadOnly()
       ? getReadonlySystemPrompt(this.getLanguage())
       : getSystemPrompt(this.getLanguage());
+    // Phase 4 augmentation: cross-project pattern hints + style spec +
+    // fine-tune identity reminder. The hook is responsible for honoring its
+    // own feature flags; when disabled it returns an empty string and the
+    // system prompt is unchanged.
+    let augmentation = "";
+    try {
+      augmentation = this.getPhase4Augmentation?.(workspaceId) ?? "";
+    } catch {
+      // Augmentation is advisory — never let a Phase 4 lookup failure block a run.
+      augmentation = "";
+    }
+    const systemPrompt = augmentation
+      ? `${baseSystemPrompt}\n\n${augmentation}`
+      : baseSystemPrompt;
     const initialMessages: LLMMessage[] = [
       { role: "system", content: systemPrompt },
       { role: "user", content: await this.buildInitialUserMessage(task, ctx) },
     ];
-    void this.driveLoop(run.id, ws.rootPath, initialMessages, llm, controller).catch((err) => {
+    // Route to the multi-agent driver when the user opted in; otherwise the
+    // long-standing single-agent driveLoop. Multi-agent reuses the same
+    // approval / sandbox / verify machinery via a thin adapter so safety
+    // guarantees are identical.
+    if (this.getAgentSettings().multiAgentEnabled) {
+      void this.driveMultiAgentLoop(run.id, workspaceId, ws.rootPath, task, llm, controller).catch((err) => {
+        this.addStep(run.id, "error", asMessage(err));
+        this.setStatus(run.id, "failed");
+        this.controllers.delete(run.id);
+      });
+      return this.getDetail(run.id);
+    }
+    void this.driveLoop(run.id, workspaceId, ws.rootPath, initialMessages, llm, controller).catch((err) => {
       this.addStep(run.id, "error", asMessage(err));
       this.setStatus(run.id, "failed");
       this.controllers.delete(run.id);
@@ -320,7 +410,7 @@ export class AgentService {
     this.setStatus(runId, "tool_use");
 
     const messages: LLMMessage[] = [...prior, { role: "user", content: followUp }];
-    void this.driveLoop(runId, ws.rootPath, messages, llm, controller).catch((err) => {
+    void this.driveLoop(runId, run.workspaceId, ws.rootPath, messages, llm, controller).catch((err) => {
       this.addStep(runId, "error", asMessage(err));
       this.setStatus(runId, "failed");
       this.controllers.delete(runId);
@@ -343,6 +433,7 @@ export class AgentService {
 
   private async driveLoop(
     runId: string,
+    workspaceId: string,
     workspaceRoot: string,
     messages: LLMMessage[],
     llm: ChatLLMProvider,
@@ -354,6 +445,24 @@ export class AgentService {
     // the policy on the live conversation (would surprise the model and the
     // user). Followups re-enter driveLoop and re-read settings.
     const readOnly = this.effectiveReadOnly();
+    // Resolve Phase 3 ports once per loop entry. A null return (or a thrown
+    // error during construction) cleanly falls back to the Phase 1/2 surface;
+    // failures here must NEVER block a normal run.
+    let phase3Ports: Phase3AgentPorts | null = null;
+    try {
+      phase3Ports = this.getPhase3Ports?.(workspaceId) ?? null;
+    } catch {
+      phase3Ports = null;
+    }
+    // Resolve the dynamic tool bundle (plugins / future MCP servers) once per
+    // loop entry. Same fail-safe: any failure produces null and the agent
+    // keeps running on the Phase 1/2 + Phase 3 surface.
+    let dynamicBundle: DynamicToolBundle | null = null;
+    try {
+      dynamicBundle = this.getDynamicTools?.() ?? null;
+    } catch {
+      dynamicBundle = null;
+    }
     const execute = createToolExecutor({
       ctx,
       storage: this.storage,
@@ -370,6 +479,12 @@ export class AgentService {
       // wired, so omitting this on the whitelist path is safe.
       requestSandboxWriteApproval: (call, changes) =>
         this.awaitWritebackApproval(runId, call, changes),
+      // Phase 3 port bundle (semantic_search / memory / web). Omitted when
+      // null so the executor's Phase 3 dispatcher stays disabled.
+      ...(phase3Ports ? { phase3Ports } : {}),
+      // Dynamic tool dispatcher (plugins / MCP). Tried before the built-in
+      // switch so a plugin tool can't be shadowed by a name collision.
+      ...(dynamicBundle ? { extraDispatcher: dynamicBundle.dispatch } : {}),
     });
     const budget = new BudgetController(this.budgetLimits());
 
@@ -385,7 +500,11 @@ export class AgentService {
     try {
       const outcome = await runToolLoop(messages, {
         llm,
-        tools: agentToolSchemas({ readOnly }),
+        tools: agentToolSchemas({
+          readOnly,
+          phase3Available: !!phase3Ports,
+          ...(dynamicBundle ? { extraSchemas: dynamicBundle.schemas } : {}),
+        }),
         budget,
         signal: controller.signal,
         temperature: 0.2,
@@ -440,6 +559,148 @@ export class AgentService {
       // loop compression.
       this.storage.saveRunMessages(runId, outcome.finalMessages);
       this.applyOutcome(runId, outcome);
+    } finally {
+      this.controllers.delete(runId);
+      this.approvals.delete(runId);
+      this.pending.delete(runId);
+      this.baselines.delete(runId);
+    }
+  }
+
+  /**
+   * Multi-agent loop driver. Builds the same executor + Phase 3 ports + plugin
+   * bundle the single-agent path uses, then hands them to runMultiAgentTask
+   * which wires the Coordinator (Planner → Coder → Reviewer).
+   *
+   * Approval semantics:
+   * - apply_patch / run_command inside coder turns still gate through the
+   *   normal user-approval IPC (awaitApproval / awaitCommandConfirmation).
+   * - The planner's DAG proposal is auto-approved with a recorded plan
+   *   summary step. A future UI handler can intercept the approve() port to
+   *   gate this explicitly; today we trust the planner's output because the
+   *   model still has to surface concrete diffs through the standard gate.
+   * - askHuman returns "cancel" by default — without a wired-up UI, the
+   *   safe behaviour on a node failure is to halt rather than silently skip.
+   */
+  private async driveMultiAgentLoop(
+    runId: string,
+    workspaceId: string,
+    workspaceRoot: string,
+    userTask: string,
+    llm: ChatLLMProvider,
+    controller: AbortController,
+  ): Promise<void> {
+    const ctx: ToolContext = { workspaceRoot, runId, signal: controller.signal };
+    const settings = this.getAgentSettings();
+    const readOnly = this.effectiveReadOnly();
+    let phase3Ports: Phase3AgentPorts | null = null;
+    try {
+      phase3Ports = this.getPhase3Ports?.(workspaceId) ?? null;
+    } catch {
+      phase3Ports = null;
+    }
+    let dynamicBundle: DynamicToolBundle | null = null;
+    try {
+      dynamicBundle = this.getDynamicTools?.() ?? null;
+    } catch {
+      dynamicBundle = null;
+    }
+
+    const execute = createToolExecutor({
+      ctx,
+      storage: this.storage,
+      allowShellExecution: settings.allowShellExecution,
+      readOnly,
+      sandboxPolicy: this.sandboxPolicy(),
+      ...(this.assertToolAllowed ? { assertToolAllowed: this.assertToolAllowed } : {}),
+      requestSandboxWriteApproval: (call, changes) =>
+        this.awaitWritebackApproval(runId, call, changes),
+      ...(phase3Ports ? { phase3Ports } : {}),
+      ...(dynamicBundle ? { extraDispatcher: dynamicBundle.dispatch } : {}),
+    });
+
+    const baseSchemas: ToolSchema[] = agentToolSchemas({
+      readOnly,
+      phase3Available: !!phase3Ports,
+      ...(dynamicBundle ? { extraSchemas: dynamicBundle.schemas } : {}),
+    });
+
+    const budget = new BudgetController(this.budgetLimits());
+
+    this.addStep(runId, "message", `Multi-agent run started. Task: ${userTask}`);
+
+    try {
+      const outcome = await runMultiAgentTask(
+        {
+          llm,
+          store: this.storage,
+          budget,
+          ctx,
+          signal: controller.signal,
+          executor: execute,
+          baseSchemas,
+          approve: async () => {
+            this.addStep(runId, "message", "Planner DAG auto-approved (configure approve() port to add an explicit gate).");
+            return true;
+          },
+          askHuman: async (node, reason) => {
+            this.addStep(
+              runId,
+              "error",
+              `Node ${node.id} (${node.title}) needs human attention: ${reason}. Defaulting to cancel.`,
+            );
+            return "cancel";
+          },
+          requiresApproval: (call) =>
+            call.name === "apply_patch" ||
+            (call.name === "run_command" && settings.requireConfirmationBeforeCommand),
+          waitForApproval: (call) =>
+            call.name === "run_command"
+              ? this.awaitCommandConfirmation(runId, call)
+              : this.awaitApproval(runId, call),
+          verifyAfterPatch: (_call, result) =>
+            this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
+          onChunk: (chunk) => {
+            if (chunk.type === "text_delta" && typeof chunk.text === "string") {
+              this.emit({ kind: "delta", runId, text: chunk.text });
+            }
+          },
+          onAssistant: (text, _toolCalls, usage) => {
+            if (text.trim()) this.addStep(runId, "message", text);
+            this.storage.addRunUsage(runId, {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              costUsd: usage.costUsd,
+              iterations: 1,
+            });
+            this.setStatus(runId, "tool_use");
+          },
+          onToolCall: (call) => {
+            this.storage.addRunUsage(runId, { toolCalls: 1 });
+            this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
+          },
+        },
+        runId,
+        userTask,
+      );
+
+      const finalStatus =
+        outcome.status === "done"
+          ? "done"
+          : outcome.status === "cancelled"
+            ? "cancelled"
+            : "failed";
+      this.addStep(
+        runId,
+        finalStatus === "done" ? "message" : "error",
+        `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
+      );
+      this.storage.setRunExitReason(runId, finalStatus);
+      this.setStatus(runId, finalStatus);
+    } catch (err) {
+      this.addStep(runId, "error", asMessage(err));
+      this.storage.setRunExitReason(runId, "failed");
+      this.setStatus(runId, "failed");
     } finally {
       this.controllers.delete(runId);
       this.approvals.delete(runId);
