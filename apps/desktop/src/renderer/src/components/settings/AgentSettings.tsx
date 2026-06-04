@@ -172,6 +172,13 @@ export function AgentSettings({
             label={t("agent.requireConfirm", lang)}
             hint={t("agent.requireConfirmHint", lang)}
           />
+          <ToggleRow
+            id="agent-read-only"
+            checked={value.readOnly}
+            onChange={(c) => set("readOnly", c)}
+            label={t("agent.readOnly", lang)}
+            hint={t("agent.readOnlyHint", lang)}
+          />
         </div>
 
         <div className="fld-row">

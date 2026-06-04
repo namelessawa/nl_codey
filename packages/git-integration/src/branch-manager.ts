@@ -32,6 +32,25 @@ export function agentBranchName(slug: string, ts: number = Date.now()): string {
 }
 
 /**
+ * Reject ref names that could be interpreted as a `-`-prefixed option (which
+ * would let user input flow into a git flag like `--upload-pack=...`).
+ * Git refs may not legitimately start with `-`, contain whitespace, `:`, `?`,
+ * `*`, `[`, `~`, `^`, `\`, or `..`, so the constraint matches git's own
+ * `check-ref-format` rules closely enough for these callers.
+ */
+function assertSafeRef(ref: string, label: string): void {
+  if (typeof ref !== "string" || ref.length === 0) {
+    throw new Error(`Refusing empty ${label} ref`);
+  }
+  if (ref.startsWith("-")) {
+    throw new Error(`Refusing unsafe ${label} ref starting with '-': "${ref}"`);
+  }
+  if (/[\s\0\x7f:?*\[~^\\]/.test(ref) || ref.includes("..") || ref.includes("@{")) {
+    throw new Error(`Refusing unsafe ${label} ref: "${ref}"`);
+  }
+}
+
+/**
  * Parse `git status --porcelain=v1 --branch` into a structured status object,
  * collecting staged, modified, and untracked paths plus ahead/behind counts.
  */
@@ -120,6 +139,7 @@ export async function createAgentBranch(
   }
 
   const branch = agentBranchName(req.slug);
+  if (req.base !== undefined) assertSafeRef(req.base, "base");
   const args = req.base
     ? ["checkout", "-b", branch, req.base]
     : ["checkout", "-b", branch];
@@ -146,6 +166,8 @@ export async function discardAgentBranch(
       `Refusing to delete "${branch}": only ${GIT_AGENT_BRANCH_PREFIX}* branches may be discarded.`,
     );
   }
+  assertSafeRef(branch, "branch");
+  assertSafeRef(base, "base");
 
   const checkout = await runGit(cwd, ["checkout", base]);
   if (checkout.exitCode !== 0) {

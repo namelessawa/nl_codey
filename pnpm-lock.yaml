@@ -139,6 +139,12 @@ importers:
       '@coding-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@coding-agent/orchestrator':
+        specifier: workspace:*
+        version: link:../orchestrator
+      '@coding-agent/planner':
+        specifier: workspace:*
+        version: link:../planner
       '@coding-agent/project-indexer':
         specifier: workspace:*
         version: link:../project-indexer

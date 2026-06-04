@@ -98,8 +98,13 @@ export const api = {
     unwrap(window.agentApi.deleteMemoryEntry({ id })),
   exportMemory: (workspaceId: string): Promise<{ filePath: string }> =>
     unwrap(window.agentApi.exportMemory({ workspaceId })),
-  importMemory: (workspaceId: string, filePath: string): Promise<{ imported: number }> =>
-    unwrap(window.agentApi.importMemory({ workspaceId, filePath })),
+  /**
+   * Import a project-memory JSON file. The file is chosen by the user via an
+   * OS dialog on the main side — no `filePath` argument any more. Resolves
+   * with `imported: 0, filePath: null` if the user cancels.
+   */
+  importMemory: (workspaceId: string): Promise<{ imported: number; filePath: string | null }> =>
+    unwrap(window.agentApi.importMemory({ workspaceId })),
   // --- Phase 3: semantic index ---
   rebuildSemanticIndex: (workspaceId: string): Promise<SemanticIndexStatus> =>
     unwrap(window.agentApi.rebuildSemanticIndex({ workspaceId })),
