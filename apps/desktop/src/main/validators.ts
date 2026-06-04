@@ -107,7 +107,9 @@ const KNOWN_PLUGIN_PERMISSION_TOKENS: readonly string[] = [
 ];
 function isKnownPluginPermission(value: string): value is PluginPermission {
   if (KNOWN_PLUGIN_PERMISSION_TOKENS.includes(value)) return true;
-  return value.startsWith("network:");
+  // Require a non-empty host suffix; bare "network:" is meaningless and
+  // would never authorize an actual request.
+  return value.startsWith("network:") && value.length > "network:".length;
 }
 
 /* ---------- IPC payload validators ---------- */

@@ -147,7 +147,7 @@ export function FinetuneManager(): JSX.Element {
               <option value="">— 选择 —</option>
               {datasets.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name} · {d.pairs.length} 对
+                  {d.name} · {d.pairCount ?? d.pairs.length} 对
                 </option>
               ))}
             </select>

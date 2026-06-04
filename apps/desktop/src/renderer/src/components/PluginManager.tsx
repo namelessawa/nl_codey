@@ -268,6 +268,34 @@ export function PluginManager(): JSX.Element {
                 <option key={k} value={k}>{k}</option>
               ))}
             </select>
+            {draft.sandbox === "whitelist" ? (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 12,
+                  color: "var(--text-warning, #b8860b)",
+                }}
+              >
+                ⚠ <strong>whitelist</strong> = no isolation. The plugin script
+                runs as a full Node process; declared permissions only constrain
+                host-side SDK helpers (file access, network host whitelist,
+                memory reads). Only install plugins you trust, or pick
+                <code> docker</code> / <code>wsl</code> sandboxes when supported.
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 12,
+                  color: "var(--text-secondary)",
+                }}
+              >
+                Note: <code>{draft.sandbox}</code> sandbox is not yet
+                implemented for plugin invocation — the runtime will refuse
+                calls until that lands. Use <code>whitelist</code> with caution
+                in the meantime.
+              </div>
+            )}
           </div>
           <div className="phase4-field">
             <label htmlFor="pm-install-path">installPath *</label>

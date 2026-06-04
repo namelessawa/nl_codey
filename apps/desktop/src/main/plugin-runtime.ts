@@ -176,13 +176,15 @@ function makeSandboxHandle(mode: PluginInstallation["manifest"]["sandbox"]): San
 }
 
 /**
- * Execute the plugin's rendered command. Today every plugin tool resolves to
- * a `node "<installPath>/tools/<name>.js" --k v ...` invocation (see
- * {@link renderCommand} in `@coding-agent/plugin-sdk`); to keep cross-platform
- * compatibility we split the command into argv and spawn `process.execPath`
- * (the Node binary running Electron) directly. No shell expansion, no
- * whitelist matching — the structural permission gate already authorised the
- * call.
+ * Execute the plugin's rendered command. Every plugin tool resolves to a
+ * `node "<installPath>/tools/<name>.js" --k v ...` invocation (see
+ * {@link renderCommand} in `@coding-agent/plugin-sdk`); we split the command
+ * into argv and spawn `process.execPath` directly with `ELECTRON_RUN_AS_NODE=1`
+ * so the same binary works in development (where execPath is Node) AND in a
+ * packaged Electron build (where execPath is the Electron exe — without the
+ * env var it would re-launch the whole app instead of running the script).
+ * No shell expansion, no whitelist matching — the structural permission gate
+ * already authorised the call.
  */
 function execNode(
   cmd: string,
@@ -217,7 +219,14 @@ function execNode(
       // base preserves what a Node script needs to find its
       // interpreter / temp dir / user home; the caller-supplied `env`
       // (rendered by plugin-sdk from approved permissions) wins on top.
-      env: { ...scrubPluginEnv(process.env), ...(env ?? {}) },
+      // ELECTRON_RUN_AS_NODE is appended LAST and is host-controlled — a
+      // plugin must never be able to unset it, or a packaged build would
+      // re-launch the whole Electron app instead of running the script.
+      env: {
+        ...scrubPluginEnv(process.env),
+        ...(env ?? {}),
+        ELECTRON_RUN_AS_NODE: "1",
+      },
       windowsHide: true,
     });
 

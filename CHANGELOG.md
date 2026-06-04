@@ -52,6 +52,115 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
   engine (Docker Desktop / Linux CI) still run the full suite. Verified
   locally: 13 pass + 7 skip on a host with no daemon; `pnpm typecheck`
   green.
+### Fixed (bug audit follow-up — multi-agent + plugin install + Phase 4 plumbing)
+- **P1.1 (security): multi-agent reviewer no longer bypasses command
+  approval.** `runPlanner` and `runReviewer` in
+  `packages/agent-core/src/multi-agent.ts` hard-wired
+  `requiresApproval: () => false` / `waitForApproval: async () => true`,
+  while `runCoder` already honored `deps.requiresApproval` /
+  `deps.waitForApproval` plumbed through by `service.ts:815`. Because
+  `ROLE_TOOLS.reviewer` (in `packages/orchestrator/src/roles.ts:48-54`)
+  includes `run_command`, every reviewer-driven `run_command` slipped
+  past the host's command-confirmation gate that the single-agent and
+  coder paths still honored. Both wrappers now forward the host gates
+  with a permissive `() => false` / `async () => true` fallback for
+  tests that don't wire them.
+- **P1.3 (security): plugin install honors the renderer's per-permission
+  checkboxes instead of dropping them.** `PluginManager.tsx` collects
+  per-permission `approvedPermissions`, `validators.ts` accepts them,
+  but `phase4-ipc.ts` previously only forwarded
+  `(manifest, installPath)` to `pluginLoader.install`, silently
+  discarding the user's selection in favor of a coarse
+  "Approve all / Cancel" OS dialog. `PluginLoader.install` now accepts
+  an optional `preApprovedPermissions` argument; when provided it is
+  intersected with the manifest's requested set (defense-in-depth
+  against a compromised renderer) and used directly, skipping the
+  prompter. The OS dialog remains the fallback when no pre-approval
+  is supplied. Nine new vitest cases lock the behavior in.
+- **P1.2 (UX/honesty): plugin install dialog now warns when "whitelist"
+  sandbox is selected.** `PluginManager.tsx`'s sandbox selector now
+  surfaces an inline warning that the `whitelist` mode runs the plugin
+  script as a full Node process with declared permissions only
+  constraining host-side SDK helpers, and notes that the `docker` /
+  `wsl` sandboxes are not yet implemented for plugin invocation
+  (matching the runtime's actual fail-closed behavior in
+  `plugin-runtime.ts`).
+- **P2.1: planner / coder / reviewer now honor `runToolLoop` terminal
+  outcomes.** All three role wrappers in `multi-agent.ts` previously
+  `await runToolLoop(...)` without inspecting `outcome.state`. A
+  cancelled or budget-exhausted planner fell into the misleading
+  "Planner did not produce a task breakdown" throw; a cancelled coder
+  returned `{ diff: lastDiff, testOutput: lastTestOutput }` (usually
+  empty) and the reviewer then "changes_requested"'d an empty diff;
+  a cancelled reviewer fell into `parseReviewResult("")`'s JSON-failure
+  fallback. The review loop would then burn another iteration on a run
+  that should already be terminating. Each wrapper now throws a clear
+  `Planner/Coder/Reviewer cancelled by user` /
+  `... budget exceeded ...` / `... failed ...` error, which the
+  Coordinator's existing escalation path converts to immediate
+  cancellation via the `askHuman` port.
+- **P2.2: packaged Electron no longer re-launches the app instead of
+  running plugin scripts.** `plugin-runtime.ts:execNode` spawns
+  `process.execPath` (the Node binary in dev, the Electron exe in a
+  packaged build). Without `ELECTRON_RUN_AS_NODE=1` the packaged
+  Electron exe re-launches the whole app instead of executing the
+  script. Env merge now appends `ELECTRON_RUN_AS_NODE: "1"` LAST so a
+  plugin can never override it.
+- **P2.3: preference dataset curation now persists its filtered set.**
+  `phase4-ipc.ts:buildPreferenceDataset` ran `curatePairs(...)` but
+  only returned a `rejected` count; the dataset itself still held
+  every raw pair, so subsequent training silently consumed
+  pre-curation data even though the UI reported the filter as
+  applied. New `Phase4Storage.replacePreferenceDatasetPairs(datasetId,
+  pairs)` rewrites the table atomically; the IPC handler now calls
+  it after curation.
+- **P2.4: Finetune dataset dropdown now displays real pair counts.**
+  `Phase4Storage.listPreferenceDatasets` previously returned
+  `pairs: []` for every row, so `FinetuneManager.tsx`'s
+  `{d.pairs.length} 对` rendered "0 对" universally. Added optional
+  `PreferenceDataset.pairCount` (shared type), populated from a
+  `LEFT JOIN + COUNT(*)` in the list endpoint; renderer now reads
+  `pairCount ?? pairs.length` so the single-dataset endpoint still
+  works unchanged.
+- **P2.5: clearRuns now cascades into Phase 3 tables.**
+  `Storage.deleteRunsForWorkspace` only deleted `agent_steps`,
+  `agent_run_messages`, `file_snapshots`, `agent_runs`. The Phase 3
+  tables `task_nodes`, `role_messages`, `git_actions` lack FK cascade
+  and were not touched, so wipes left orphan rows surfacing in the
+  task tree / role timeline / git log panels after the user thought
+  they had cleared the workspace. The transaction now explicitly
+  removes role messages (joined through `task_nodes.parent_run_id`),
+  task nodes, and git actions for each removed run id.
+- **P3.1 (security): plugin manifest permission validation no longer
+  accepts `<known_token>_<garbage>` strings.**
+  `manifest-schema.ts:isKnownPermission` previously used
+  `startsWith(prefix)` for every entry in
+  `KNOWN_PERMISSION_PREFIXES`, so `"run_command_extra"`,
+  `"read_workspace_anything"`, `"write_workspace_evil"`, and
+  `"read_memory_dump"` all passed validation. The host-side `authorize`
+  is exact-match, so the loose strings would never authorize anything
+  at runtime, but they polluted the install prompt and persisted as
+  if legitimate. Now exact-matches the four fixed permissions and
+  prefix-matches only `network:` (with a required non-empty host
+  suffix; bare `network:` is meaningless and now rejected). Same
+  tightening applied to `validators.ts:isKnownPluginPermission` for
+  IPC payloads. Five new vitest cases cover the regression points.
+- **P3.2: `proactiveScanIntervalMin` is now wired to a real scheduler.**
+  The setting existed in `phase4.ts:399` and the Phase 4 settings UI
+  but nothing consumed it — only the manual `scanDebtNow` IPC ran
+  the debt scan. `phase4-ipc.ts` now starts a `setTimeout`-chained
+  scheduler that re-reads the interval each tick (so settings changes
+  apply on the next iteration), iterates the 10 most-recently-opened
+  workspaces, skips silently when `proactiveEnabled` is off, and
+  isolates per-workspace failures from one another. The timer is
+  `unref()`'d and an `app.on("before-quit", stop)` hook cancels it
+  cleanly on shutdown.
+- **Verification.** `pnpm typecheck` passes across all 21 workspace
+  projects; the test suite passes 73 files / 565 tests (8 skipped per
+  the documented exclusions: `storage.test.ts` ABI mismatch,
+  `*.debug.test.ts` real-LLM gates, `real-llm.integration.test.ts`
+  preflight, `e2e-docker.test.ts` partials).
+
 ### Added (Phase 3 / Phase 4 surface reachable from main UI)
 - **`AgentSettings` panel now exposes `multiAgentEnabled` and a standalone
   `sandboxEnabled` toggle.** `service.ts:355` has been reading

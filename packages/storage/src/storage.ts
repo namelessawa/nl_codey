@@ -317,9 +317,16 @@ export class Storage {
   }
 
   /**
-   * Delete every run for a workspace plus its cascading steps and file
-   * snapshots. Returns the number of runs removed. Runs are also returned so
-   * callers can purge in-memory state (controllers, approvals, baselines).
+   * Delete every run for a workspace plus its cascading steps, file snapshots,
+   * and Phase 3 children (task_nodes, role_messages, git_actions). Returns the
+   * number of runs removed. Runs are also returned so callers can purge
+   * in-memory state (controllers, approvals, baselines).
+   *
+   * task_nodes / role_messages / git_actions do NOT have FK constraints to
+   * agent_runs (Phase 3 tables were added before the FK migration pass), so
+   * deletes must be explicit here — otherwise clearRuns leaves orphans that
+   * still surface in the task tree / role timeline / git log panels after the
+   * user thought they had wiped the workspace.
    */
   deleteRunsForWorkspace(workspaceId: string): { deleted: number; runIds: string[] } {
     const rows = this.db
@@ -331,11 +338,21 @@ export class Storage {
       const stepStmt = this.db.prepare("DELETE FROM agent_steps WHERE run_id = ?");
       const msgStmt = this.db.prepare("DELETE FROM agent_run_messages WHERE run_id = ?");
       const snapStmt = this.db.prepare("DELETE FROM file_snapshots WHERE run_id = ?");
+      const gitStmt = this.db.prepare("DELETE FROM git_actions WHERE run_id = ?");
+      // Role messages reference task_nodes — delete them first so listing
+      // by run never sees a row whose join target was just removed.
+      const roleStmt = this.db.prepare(
+        "DELETE FROM role_messages WHERE task_node_id IN (SELECT id FROM task_nodes WHERE parent_run_id = ?)",
+      );
+      const taskStmt = this.db.prepare("DELETE FROM task_nodes WHERE parent_run_id = ?");
       const runStmt = this.db.prepare("DELETE FROM agent_runs WHERE id = ?");
       for (const id of ids) {
         stepStmt.run(id);
         msgStmt.run(id);
         snapStmt.run(id);
+        gitStmt.run(id);
+        roleStmt.run(id);
+        taskStmt.run(id);
         runStmt.run(id);
       }
     });
