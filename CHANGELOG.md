@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Security (CodeQL clearance on PR #16)
+- **Cleared all 16 open code-scanning alerts** on `feat/phase4-multiagent-bugfixes`
+  so the CodeQL ruleset gate can pass:
+  - `js/second-order-command-line-injection` in
+    `packages/git-integration/src/git-exec.ts`: argv passed to `git` is now
+    rejected if it contains options that instruct git itself to run a
+    subordinate command (`--upload-pack`, `--receive-pack`, `--exec`,
+    `--exec-path`, `--config-env`, `ext::` URLs, and `-c <key>=` overrides
+    of `core.{sshCommand,pager,editor,fsmonitor,askPass}`, `http.proxy`,
+    `url.*.insteadOf`). `branch-manager` additionally validates ref names
+    (no `-` prefix, no shell-meta chars, no `..` / `@{`).
+  - `js/polynomial-redos` × 15 across `parse-test-failure.ts` (TSC/Vitest/
+    Jest/Pytest/Go/Cargo line parsers), `diff-summarizer.ts`, `anthropic.ts`,
+    `openai-compatible.ts`, `semantic-index/embedder.ts`, `llm/prompts.ts`,
+    and `web-tools/web-fetch.ts`: replaced lazy-`.+?` + greedy-`\s+`,
+    unbounded `[\s\S]*?`-to-literal-terminator, and `\/+$` patterns with
+    non-backtracking character classes, literal single spaces, and
+    hand-rolled scans. All 107 affected-package tests still pass.
+
 ### Changed (Sprint 4 — Phase 3/4 wired into the live agent loop)
 - **Phase 4 prompt augmentation is now actually injected into the system
   prompt.** Previously `buildPhase4PromptAugmentation` was defined and
