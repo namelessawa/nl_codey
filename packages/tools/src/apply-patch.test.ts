@@ -1,8 +1,9 @@
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createPatch } from "diff";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileSnapshot } from "@coding-agent/shared";
 import { applyPatchTool } from "./apply-patch.js";
 import type { SnapshotStore } from "./deps.js";
@@ -273,6 +274,100 @@ describe("applyPatchTool", () => {
     expect(fs.readFileSync(path.join(root, "ok.ts"), "utf8")).toBe("original-ok\n");
     // second.ts must still be the original file we placed (Add File rolled back).
     expect(fs.readFileSync(path.join(root, "second.ts"), "utf8")).toBe("not-a-dir\n");
+  });
+
+  it("restores the failing file when fs.writeFile fails mid-batch (partial-write rollback)", async () => {
+    // Regression for the partial-write rollback gap: fs.writeFile is NOT atomic —
+    // ENOSPC, antivirus-after-truncate, or transient EIO can leave the target
+    // file partial on disk. Previously rollback only iterated `applied[]`,
+    // which excluded the failing file, so the partial bytes survived the
+    // ToolError. The fix restores the failing file from its before-content too.
+    fs.writeFileSync(path.join(root, "first.ts"), "first-original\n");
+    fs.writeFileSync(path.join(root, "second.ts"), "second-original\n");
+
+    let writeCount = 0;
+    const realWriteFile = fsp.writeFile;
+    const spy = vi
+      .spyOn(fsp, "writeFile")
+      .mockImplementation(async (target, data, options) => {
+        writeCount++;
+        // Pass through every call except #2 (the second file's intended write
+        // AND every rollback restore that comes after).
+        if (writeCount !== 2) {
+          return realWriteFile(target, data, options);
+        }
+        // Simulate a mid-write failure: truncate the target (the realistic
+        // shape of a kernel-level disk-full hit) and then throw.
+        await realWriteFile(target, "", options);
+        const err = new Error("simulated ENOSPC mid-write") as NodeJS.ErrnoException;
+        err.code = "ENOSPC";
+        throw err;
+      });
+
+    try {
+      const patch = [
+        "*** Begin Patch",
+        "*** Update File: first.ts",
+        "-first-original",
+        "+first-updated",
+        "*** Update File: second.ts",
+        "-second-original",
+        "+second-updated",
+        "*** End Patch",
+      ].join("\n");
+
+      await expect(
+        applyPatchTool({ runId: "run-1", patch }, ctx(root), store),
+      ).rejects.toBeInstanceOf(ToolError);
+
+      // Both files restored: first.ts via the existing applied-list rollback,
+      // second.ts via the new current-file rollback path.
+      expect(fs.readFileSync(path.join(root, "first.ts"), "utf8")).toBe("first-original\n");
+      expect(fs.readFileSync(path.join(root, "second.ts"), "utf8")).toBe("second-original\n");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("removes the failing file when a brand-new Add File write fails mid-write", async () => {
+    // Same partial-write defense for the "Add File" case: the file did not
+    // exist before the patch, so rolling back means removing any bytes the
+    // partial write left on disk (not restoring an empty before-content into
+    // a file that should not exist).
+    let writeCount = 0;
+    const realWriteFile = fsp.writeFile;
+    const spy = vi
+      .spyOn(fsp, "writeFile")
+      .mockImplementation(async (target, data, options) => {
+        writeCount++;
+        if (writeCount !== 1) {
+          return realWriteFile(target, data, options);
+        }
+        // Truncate + throw to simulate the realistic "some bytes hit disk
+        // then the OS gave up" failure.
+        await realWriteFile(target, "", options);
+        const err = new Error("simulated ENOSPC on add") as NodeJS.ErrnoException;
+        err.code = "ENOSPC";
+        throw err;
+      });
+
+    try {
+      const patch = [
+        "*** Begin Patch",
+        "*** Add File: brand-new.ts",
+        "+export const x = 1;",
+        "*** End Patch",
+      ].join("\n");
+
+      await expect(
+        applyPatchTool({ runId: "run-1", patch }, ctx(root), store),
+      ).rejects.toBeInstanceOf(ToolError);
+
+      // Partial bytes were removed — the file should not exist on disk.
+      expect(fs.existsSync(path.join(root, "brand-new.ts"))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("does NOT corrupt files when a V4A context block is not found", async () => {

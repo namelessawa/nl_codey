@@ -63,18 +63,25 @@ export async function applyPatchTool(
         store.setSnapshotAfter(snap.id, change.after);
       }
     } catch (writeErr) {
-      // Roll back every file we managed to mutate in this call so the
-      // workspace returns to the pre-patch state instead of being left half-
-      // written. Failures inside the rollback itself are surfaced after the
-      // primary error.
+      // Roll back every file we mutated, INCLUDING the current one. fs.writeFile
+      // is not atomic — a failure mid-write (ENOSPC, antivirus lock after
+      // truncate, transient EIO) can leave the file partial on disk. Restoring
+      // `change.before` for the failing file too is what keeps the documented
+      // "all or nothing" guarantee true in those cases. For brand-new "add"
+      // ops the partial bytes are removed since the file did not exist before.
+      // Failures inside the rollback itself are surfaced after the primary
+      // error so the caller can decide what to do.
       const rollbackErrors: string[] = [];
-      for (const prior of [...applied].reverse()) {
+      const toRollback: PlannedChange[] = [change, ...[...applied].reverse()];
+      for (const prior of toRollback) {
         try {
-          if (prior.op === "add") {
-            // We created the file; restore by deleting it.
+          if (prior.op === "add" && !prior.existed) {
+            // We created (or partially created) the file; remove any bytes
+            // that landed on disk.
             await fs.rm(prior.absPath, { force: true });
           } else {
-            // We modified or deleted an existing file; restore the bytes.
+            // We modified, deleted, or re-added a previously-existing file;
+            // restore the pre-patch bytes verbatim.
             await fs.mkdir(dirOf(prior.absPath), { recursive: true });
             await fs.writeFile(prior.absPath, prior.before, "utf8");
           }
@@ -87,7 +94,7 @@ export async function applyPatchTool(
       const primary = writeErr instanceof Error ? writeErr.message : String(writeErr);
       const note =
         rollbackErrors.length === 0
-          ? `Patch write failed on ${change.relPath} (${primary}); rolled back ${applied.length} prior file change(s).`
+          ? `Patch write failed on ${change.relPath} (${primary}); rolled back ${applied.length} prior file change(s) and restored the failing file.`
           : `Patch write failed on ${change.relPath} (${primary}); rollback also failed for: ${rollbackErrors.join("; ")}. Manual recovery may be needed.`;
       throw new ToolError(TOOL_CODES.patchApplyFailed, note);
     }
