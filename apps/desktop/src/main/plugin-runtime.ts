@@ -39,6 +39,14 @@ const PLUGIN_OUTPUT_CAP = 100 * 1024;
 export type PluginBundle = {
   schemas: ToolSchema[];
   dispatch: (call: LLMToolCall, ctx: ToolContext) => Promise<ExecutedTool | null>;
+  /**
+   * Qualified plugin-tool names whose declared permissions allow workspace
+   * mutation (`run_command` or `write_workspace`). agent-core consumes
+   * this to extend the read-only filter and the degraded-mode gate to
+   * cover plugins, mirroring the protection already enforced on the
+   * built-in `run_command` / `apply_patch` / `write_file` tools.
+   */
+  mutatingNames: string[];
 };
 
 /**
@@ -61,6 +69,10 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
   type Entry = { installation: PluginInstallation; tool: PluginToolManifest };
   const byQualifiedName = new Map<string, Entry>();
   const schemas: ToolSchema[] = [];
+  // Names of plugin tools whose declared permissions allow mutation —
+  // emitted to agent-core so read-only mode strips them from the
+  // advertised schema and degraded mode refuses them at dispatch.
+  const mutatingNames: string[] = [];
 
   for (const installation of installations) {
     for (const tool of installation.manifest.tools) {
@@ -75,6 +87,7 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
           additionalProperties: false,
         },
       });
+      if (declaresMutatingPermission(tool)) mutatingNames.push(qualifiedName);
     }
   }
 
@@ -87,6 +100,7 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
 
   return {
     schemas,
+    mutatingNames,
     dispatch: async (call, _ctx): Promise<ExecutedTool | null> => {
       const entry = byQualifiedName.get(call.name);
       if (!entry) return null;
@@ -196,7 +210,14 @@ function execNode(
     let stderr = "";
     const child = spawn(process.execPath, [absolute, ...argv], {
       cwd: path.dirname(absolute),
-      env: { ...process.env, ...(env ?? {}) },
+      // Plugins run as full Node processes — declared permissions are
+      // advisory once the script is executing. Scrub the parent
+      // environment so a plugin can't read LLM API keys, Git/NPM tokens,
+      // cloud credentials, etc., from `process.env`. The whitelisted
+      // base preserves what a Node script needs to find its
+      // interpreter / temp dir / user home; the caller-supplied `env`
+      // (rendered by plugin-sdk from approved permissions) wins on top.
+      env: { ...scrubPluginEnv(process.env), ...(env ?? {}) },
       windowsHide: true,
     });
 
@@ -264,6 +285,76 @@ function parseArgv(cmd: string): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A plugin tool counts as mutating when it asks for either of the two
+ * permissions that can change workspace state — `run_command` (shell
+ * execution) or `write_workspace` (file writes). Network or read-only
+ * permissions don't count.
+ */
+function declaresMutatingPermission(tool: PluginToolManifest): boolean {
+  for (const perm of tool.permissions) {
+    if (perm === "run_command" || perm === "write_workspace") return true;
+  }
+  return false;
+}
+
+/**
+ * Variables that must NEVER leak into a plugin's process environment.
+ * Plugin scripts run as full Node processes with all the power that
+ * implies; the declared-permissions model only constrains the host-side
+ * SDK helpers. We drop:
+ *
+ * - LLM provider credentials (every provider's typical env key).
+ * - Source-control / package-registry tokens (Git, GitHub, npm).
+ * - Cloud credentials (AWS, GCP, Azure).
+ * - Database / queue URLs that contain credentials in the string.
+ * - Anything whose name looks like a key / token / secret / password.
+ *
+ * Plus a structural rule: drop every key starting with `npm_config_` —
+ * pnpm/yarn/npm CLIs project the full registry credential set into that
+ * namespace.
+ */
+const PLUGIN_ENV_DENY_NAMES = new Set([
+  "LLM_API_KEY",
+  "LLM_BASE_URL",
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "OPENROUTER_API_KEY",
+  "MISTRAL_API_KEY",
+  "GROQ_API_KEY",
+  "HUGGINGFACE_API_KEY",
+  "GITHUB_TOKEN",
+  "GH_TOKEN",
+  "GITLAB_TOKEN",
+  "NPM_TOKEN",
+  "NPMRC",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "AZURE_CLIENT_SECRET",
+  "GCP_SERVICE_ACCOUNT_KEY",
+  "DATABASE_URL",
+  "REDIS_URL",
+  "MONGODB_URI",
+]);
+const PLUGIN_ENV_DENY_REGEX = /(?:^|_)(api[_-]?key|token|secret|password|passwd|credential)s?(?:$|_)/i;
+
+function scrubPluginEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined) continue;
+    if (PLUGIN_ENV_DENY_NAMES.has(key)) continue;
+    if (key.startsWith("npm_config_")) continue;
+    if (PLUGIN_ENV_DENY_REGEX.test(key)) continue;
+    out[key] = value;
+  }
+  return out;
 }
 
 function truncate(text: string): string {

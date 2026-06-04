@@ -22,6 +22,8 @@ interface TopbarProps {
   onOpenSettings: () => void;
   /** Re-open the install reminder modal (also used by the red badge). */
   onOpenInstallReminder: () => void;
+  /** Open the Workbench modal (Phase 3 memory/tasks/roles + Phase 4 KG/style/learning). */
+  onOpenWorkbench: () => void;
 }
 
 /**
@@ -44,6 +46,7 @@ export const Topbar = forwardRef(function Topbar(
     onOpenModelSwitcher,
     onOpenSettings,
     onOpenInstallReminder,
+    onOpenWorkbench,
   }: TopbarProps,
   modelChipRef: ForwardedRef<HTMLButtonElement>,
 ): JSX.Element {
@@ -145,6 +148,16 @@ export const Topbar = forwardRef(function Topbar(
         type="button"
       >
         <Icon name="panel-right" size={16} stroke={2} />
+      </button>
+
+      <button
+        className="icon-btn"
+        title={tr("topbar.workbenchTitle")}
+        aria-label={tr("topbar.workbench")}
+        onClick={onOpenWorkbench}
+        type="button"
+      >
+        <Icon name="history" size={16} stroke={2} />
       </button>
 
       <button

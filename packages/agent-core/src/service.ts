@@ -10,8 +10,11 @@ import type {
   LanguagePreference,
   LLMMessage,
   LLMToolCall,
+  RoleMessageRow,
   RunCommandOutput,
   SandboxPolicy,
+  TaskNode,
+  TaskNodeStatus,
   TestFailureReport,
   ToolContext,
   ToolSchema,
@@ -30,6 +33,7 @@ import { getSummarizePrompt } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
 import { analyzeRegressions, regressionNote } from "./regression.js";
 import { runMultiAgentTask } from "./multi-agent.js";
+import { parseRow as parseRoleMessageRow } from "@coding-agent/orchestrator";
 
 /**
  * Optional Phase 4 prompt augmentation. Called once per new run with the
@@ -53,10 +57,29 @@ export type Phase3PortsFn = (workspaceId: string) => Phase3AgentPorts | null;
  * A dynamically-loaded tool bundle (schemas the model sees + a dispatcher).
  * The plugin runtime is the primary consumer; other future runtimes (HTTP
  * tools, MCP servers, etc.) can plug in the same shape.
+ *
+ * {@link mutatingNames} lists the bundle-level tools whose declared
+ * permissions allow workspace mutation (e.g. plugin tools that ask for
+ * `write_workspace` or `run_command`). The agent loop uses this set to
+ * extend two security gates that previously only knew about the built-in
+ * mutating-tool names:
+ *
+ * - read-only mode strips these names from the advertised schemas AND
+ *   refuses them at dispatch time, so a plugin can't edit files or run
+ *   shell while the agent is in query-only mode.
+ * - degraded mode (Docker missing + user skipped install) also refuses
+ *   these names at dispatch time, mirroring the gate that already covers
+ *   built-in `run_command` / `apply_patch` / `write_file`.
+ *
+ * When the bundle source can't classify mutation (an empty array or a
+ * missing field) the agent treats every dynamic tool as non-mutating —
+ * the historical behaviour. Bundle authors who care about read-only /
+ * degraded gating MUST populate this.
  */
 export type DynamicToolBundle = {
   schemas: readonly ToolSchema[];
   dispatch: (call: LLMToolCall, ctx: ToolContext) => Promise<ExecutedTool | null>;
+  mutatingNames?: readonly string[];
 };
 
 /**
@@ -68,6 +91,77 @@ export type DynamicToolBundleFn = () => DynamicToolBundle | null;
 
 const MAX_INITIAL_FILES = 200;
 const MAX_STEP_CONTENT = 4000;
+
+/**
+ * Strip mutating dynamic-tool schemas from the bundle when read-only mode
+ * is active. Returns the bundle unchanged when read-only is off, the
+ * mutating set is empty, or the bundle itself is null.
+ */
+function filterDynamicBundleForReadOnly(
+  bundle: DynamicToolBundle | null,
+  readOnly: boolean,
+): DynamicToolBundle | null {
+  if (!bundle || !readOnly) return bundle;
+  const mutating = bundle.mutatingNames ?? [];
+  if (mutating.length === 0) return bundle;
+  const mutSet = new Set(mutating);
+  const safeSchemas = bundle.schemas.filter((s) => !mutSet.has(s.name));
+  return {
+    schemas: safeSchemas,
+    dispatch: async (call, ctx) => {
+      // Defense in depth: even if the model emits a mutating plugin call we
+      // didn't advertise, refuse it before the bundle's dispatcher runs.
+      if (mutSet.has(call.name)) {
+        return {
+          name: call.name,
+          resultText: JSON.stringify({
+            error:
+              `Plugin tool "${call.name}" is disabled while the agent is in ` +
+              `read-only (query) mode (declares run_command / write_workspace ` +
+              `permission). Propose changes in prose instead.`,
+          }),
+          isError: true,
+        };
+      }
+      return bundle.dispatch(call, ctx);
+    },
+    mutatingNames: bundle.mutatingNames,
+  };
+}
+
+/**
+ * Wrap an `assertToolAllowed` callback so it ALSO refuses mutating
+ * dynamic-tool names while the installation gate is in degraded mode. We
+ * probe the gate by calling it with a known built-in unsafe name
+ * (`run_command`) and inheriting whatever it threw — that way the gate's
+ * own message phrasing wins and we don't duplicate the degraded-mode
+ * detection logic on this side of the boundary.
+ *
+ * Returns the original callback when there are no mutating dynamic names
+ * to gate (the common case for runs without plugins).
+ */
+function wrapAssertForDynamicPlugins(
+  base: ((toolName: string) => void) | undefined,
+  mutatingNames: readonly string[] | undefined,
+): ((toolName: string) => void) | undefined {
+  if (!base) return undefined;
+  if (!mutatingNames || mutatingNames.length === 0) return base;
+  const mutSet = new Set(mutatingNames);
+  return (toolName: string): void => {
+    base(toolName);
+    if (!mutSet.has(toolName)) return;
+    try {
+      base("run_command");
+    } catch {
+      throw new Error(
+        `Plugin tool "${toolName}" is disabled while Docker is missing and ` +
+          `the installation gate is in degraded mode (this tool declares ` +
+          `run_command or write_workspace permission). Install Docker or ` +
+          `clear the skip flag from the red Docker badge in the top bar.`,
+      );
+    }
+  };
+}
 
 export type AgentDeps = {
   storage: Storage;
@@ -463,6 +557,16 @@ export class AgentService {
     } catch {
       dynamicBundle = null;
     }
+    // Read-only mode: strip mutating dynamic tools from BOTH the advertised
+    // schema and the dispatch path so a plugin can't sneak in a write.
+    const safeBundle = filterDynamicBundleForReadOnly(dynamicBundle, readOnly);
+    // Degraded mode: extend the installation gate to also refuse mutating
+    // plugin tools (the gate's built-in name list only covers internal
+    // run_command / apply_patch / write_file).
+    const gateAssert = wrapAssertForDynamicPlugins(
+      this.assertToolAllowed,
+      dynamicBundle?.mutatingNames,
+    );
     const execute = createToolExecutor({
       ctx,
       storage: this.storage,
@@ -471,9 +575,7 @@ export class AgentService {
       sandboxPolicy: this.sandboxPolicy(),
       // Plumb the installation gate to the tool dispatcher so LLM-initiated
       // unsafe tool calls are also refused in degraded mode.
-      ...(this.assertToolAllowed
-        ? { assertToolAllowed: this.assertToolAllowed }
-        : {}),
+      ...(gateAssert ? { assertToolAllowed: gateAssert } : {}),
       // Sandbox writeback approval: only meaningful when the sandbox is
       // active. The executor falls back to "discard" when no callback is
       // wired, so omitting this on the whitelist path is safe.
@@ -484,7 +586,7 @@ export class AgentService {
       ...(phase3Ports ? { phase3Ports } : {}),
       // Dynamic tool dispatcher (plugins / MCP). Tried before the built-in
       // switch so a plugin tool can't be shadowed by a name collision.
-      ...(dynamicBundle ? { extraDispatcher: dynamicBundle.dispatch } : {}),
+      ...(safeBundle ? { extraDispatcher: safeBundle.dispatch } : {}),
     });
     const budget = new BudgetController(this.budgetLimits());
 
@@ -505,7 +607,7 @@ export class AgentService {
         tools: agentToolSchemas({
           readOnly,
           phase3Available: !!phase3Ports,
-          ...(dynamicBundle ? { extraSchemas: dynamicBundle.schemas } : {}),
+          ...(safeBundle ? { extraSchemas: safeBundle.schemas } : {}),
         }),
         budget,
         signal: controller.signal,
@@ -620,6 +722,15 @@ export class AgentService {
     } catch {
       dynamicBundle = null;
     }
+    // Same plugin-aware read-only + degraded gates the single-agent path
+    // installs. Multi-agent runs go through the same executor, so an
+    // unfiltered dynamic bundle would let a plugin tool slip past both
+    // gates here too.
+    const safeBundle = filterDynamicBundleForReadOnly(dynamicBundle, readOnly);
+    const gateAssert = wrapAssertForDynamicPlugins(
+      this.assertToolAllowed,
+      dynamicBundle?.mutatingNames,
+    );
 
     const execute = createToolExecutor({
       ctx,
@@ -627,28 +738,63 @@ export class AgentService {
       allowShellExecution: settings.allowShellExecution,
       readOnly,
       sandboxPolicy: this.sandboxPolicy(),
-      ...(this.assertToolAllowed ? { assertToolAllowed: this.assertToolAllowed } : {}),
+      ...(gateAssert ? { assertToolAllowed: gateAssert } : {}),
       requestSandboxWriteApproval: (call, changes) =>
         this.awaitWritebackApproval(runId, call, changes),
       ...(phase3Ports ? { phase3Ports } : {}),
-      ...(dynamicBundle ? { extraDispatcher: dynamicBundle.dispatch } : {}),
+      ...(safeBundle ? { extraDispatcher: safeBundle.dispatch } : {}),
     });
 
     const baseSchemas: ToolSchema[] = agentToolSchemas({
       readOnly,
       phase3Available: !!phase3Ports,
-      ...(dynamicBundle ? { extraSchemas: dynamicBundle.schemas } : {}),
+      ...(safeBundle ? { extraSchemas: safeBundle.schemas } : {}),
     });
 
     const budget = new BudgetController(this.budgetLimits());
 
     this.addStep(runId, "message", `Multi-agent run started. Task: ${userTask}`);
 
+    // Wrap the storage so every multi-agent write also broadcasts a
+    // Phase-3 live event. The IPC contract (`task_updated` /
+    // `role_message`) was declared but had no production emit points —
+    // Phase 3 panels relied entirely on manual reload. This wrapping is
+    // the minimum needed to let TaskTreeView / RoleTimeline refresh
+    // without the user clicking around.
+    const storageRef = this.storage;
+    const emit = this.emit;
+    const liveStore = {
+      createTaskNode: (node: TaskNode): TaskNode => {
+        const created = storageRef.createTaskNode(node);
+        emit({ kind: "task_updated", runId, node: created });
+        return created;
+      },
+      setTaskNodeStatus: (id: string, status: TaskNodeStatus): void => {
+        storageRef.setTaskNodeStatus(id, status);
+        const updated = storageRef.getTaskNode(id);
+        if (updated) emit({ kind: "task_updated", runId, node: updated });
+      },
+      addRoleMessage: (row: RoleMessageRow): void => {
+        storageRef.addRoleMessage(row);
+        try {
+          emit({
+            kind: "role_message",
+            runId,
+            message: parseRoleMessageRow(row),
+          });
+        } catch {
+          // A malformed payload is the bus's problem — never let an
+          // emit failure unwind the storage write that already
+          // succeeded.
+        }
+      },
+    };
+
     try {
       const outcome = await runMultiAgentTask(
         {
           llm,
-          store: this.storage,
+          store: liveStore,
           budget,
           ctx,
           signal: controller.signal,

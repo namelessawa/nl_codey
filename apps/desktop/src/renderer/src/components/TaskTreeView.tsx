@@ -38,6 +38,17 @@ export function TaskTreeView({ runId, onApprove }: TaskTreeViewProps): JSX.Eleme
     void load();
   }, [load]);
 
+  // Live updates: refetch whenever the multi-agent driver persists a node
+  // for this run. Without this the panel would only update on manual
+  // re-open.
+  useEffect(() => {
+    return api.onAgentEvent((event) => {
+      if (event.kind === "task_updated" && event.runId === runId) {
+        void load();
+      }
+    });
+  }, [runId, load]);
+
   const columns = useMemo(() => groupByDepth(nodes), [nodes]);
 
   const saveNode = useCallback(

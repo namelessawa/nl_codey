@@ -717,6 +717,24 @@ export class Storage {
     return rows.map(toRoleMessageRow);
   }
 
+  /**
+   * All role messages for every task node belonging to a run, time-ordered.
+   * This is the only way the UI's role-timeline can show a Planner →
+   * Coder → Reviewer trace without first walking the task tree itself:
+   * messages live per-node, but the UI groups them per-run.
+   */
+  listRoleMessagesForRun(runId: string): RoleMessageRow[] {
+    const rows = this.db
+      .prepare(
+        `SELECT rm.* FROM role_messages rm
+         JOIN task_nodes tn ON tn.id = rm.task_node_id
+         WHERE tn.parent_run_id = ?
+         ORDER BY rm.created_at ASC`,
+      )
+      .all(runId) as RoleMessageDbRow[];
+    return rows.map(toRoleMessageRow);
+  }
+
   // --- Phase 3: git actions ---
 
   addGitAction(runId: string, action: GitActionKind, ref?: string, payload?: string): GitAction {

@@ -54,8 +54,24 @@ export class PluginLoader {
     }
     const manifest = validation.manifest;
     const requested = uniquePermissions(manifest);
+    // Reject zero-permission manifests outright. A plugin that declares
+    // no permissions still spawns a full Node process — the permission
+    // list is the only signal we have about what the script intends to
+    // do. Letting that through skipped the permission-confirmation
+    // dialog entirely on the host side, so a malicious manifest with
+    // an empty permissions array installed silently.
+    if (requested.length === 0) {
+      return {
+        ok: false,
+        reason:
+          "Plugin manifest declares no permissions. A plugin that needs nothing " +
+          "from the host is either a mistake or hiding its intent — add at " +
+          "least one permission (run_command / read_workspace / write_workspace / " +
+          "read_memory / network:<host>) to make the install reviewable.",
+      };
+    }
     const approved = await this.prompter.ask(manifest, requested);
-    if (approved.length === 0 && requested.length > 0) {
+    if (approved.length === 0) {
       return { ok: false, reason: "User declined all permissions; plugin not installed" };
     }
     const installation = this.repository.installPlugin(manifest, installPath, approved);

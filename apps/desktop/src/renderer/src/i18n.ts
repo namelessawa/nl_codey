@@ -51,8 +51,21 @@ const STRINGS = {
     "zh-CN": "开启后 agent 不能修改任何文件——只能读取、搜索、运行验证命令并以文字给出建议。",
     "en-US": "When on, the agent cannot modify any file — it can only read, search, run verification commands, and propose changes in prose.",
   },
+  "agent.multiAgent": {
+    "zh-CN": "启用多代理协作",
+    "en-US": "Enable multi-agent orchestration",
+  },
+  "agent.multiAgentHint": {
+    "zh-CN": "改用 Phase 3 协调器（Planner → Coder → Reviewer）驱动,沿用同一套审批 / 沙箱 / 验证机制",
+    "en-US": "Route runs through the Phase 3 Planner → Coder → Reviewer pipeline; same approval / sandbox / verify gates as single-agent",
+  },
   "agent.maxAutoSteps": { "zh-CN": "最大连续自动执行步数", "en-US": "Max auto steps" },
   "agent.sandbox": { "zh-CN": "启用沙箱模式", "en-US": "Sandbox mode" },
+  "agent.sandboxEnabled": { "zh-CN": "启用沙箱", "en-US": "Sandbox enabled" },
+  "agent.sandboxEnabledHint": {
+    "zh-CN": "关闭后忽略下方模式选择,run_command 仅按白名单直接在宿主机执行",
+    "en-US": "Off uses the host-side whitelist regardless of the mode picked below",
+  },
 
   "ui.theme": { "zh-CN": "主题", "en-US": "Theme" },
   "ui.language": { "zh-CN": "语言", "en-US": "Language" },
@@ -298,6 +311,11 @@ const STRINGS = {
   "topbar.expandLeft": { "zh-CN": "展开左侧栏", "en-US": "Expand left sidebar" },
   "topbar.collapseRight": { "zh-CN": "收起右侧栏", "en-US": "Collapse right panel" },
   "topbar.expandRight": { "zh-CN": "展开右侧栏", "en-US": "Expand right panel" },
+  "topbar.workbench": { "zh-CN": "工作台", "en-US": "Workbench" },
+  "topbar.workbenchTitle": {
+    "zh-CN": "打开工作台 · 长期记忆 / 任务 / 角色 / 风格 / 学习",
+    "en-US": "Open the workbench · memory / tasks / roles / style / learning",
+  },
 
   // ─────────────  EmptyView / cover  ─────────────
   "empty.runbookCover": { "zh-CN": "运行手册 · 封面", "en-US": "runbook · cover" },
