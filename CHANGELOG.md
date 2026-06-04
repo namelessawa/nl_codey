@@ -5,6 +5,55 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Fixed (follow-up after PR #16 merge to `main`)
+- **`build-windows` CI typecheck unblocked.** Two debug trace harnesses
+  (`packages/agent-core/src/complex-multiagent.debug.test.ts:382`,
+  `packages/agent-core/src/full-trace.debug.test.ts:263`) called
+  `run.costUsd.toFixed(4)` on a value typed as `number | null | undefined`,
+  failing `noUncheckedIndexedAccess` + strict null checks under
+  `tsc --noEmit`. Now `(run.costUsd ?? 0).toFixed(4)` so trace printers
+  cope with rows that never accumulated cost.
+- **NUL byte in `full-trace.debug.test.ts` removed.** A literal `0x00` byte
+  had been written into the `wsl -l -q` UTF-16LE strip regex
+  (`r.stdout.replace(/<NUL>/g, "")`), which made `file` classify the source
+  as binary `data` and made `git diff` report a binary delta. Replaced with
+  the proper `\0` regex escape; the file now reads as plain UTF-8 again.
+- **`AgentService` race with `clearRuns` no longer crashes the loop.** When
+  the user cleared a run while its background tool-loop was still tearing
+  down, the storage writes that followed (`addStep`, `updateRunStatus`,
+  `addRunUsage`, `setRunExitReason`, `saveRunMessages`) crashed the main
+  process with `SQLITE_CONSTRAINT_FOREIGNKEY` or `Run not found: <id>`.
+  New `safeRunWrite` helper plus `isStaleRunStorageError` classifier
+  silently no-op those two error shapes (and only those two); every other
+  storage failure still propagates. Errors thrown out of `runToolLoop`
+  itself now convert to a structured outcome via `loopErrorToOutcome` so
+  `exit_reason` is always stamped — aborted controllers map to `cancelled`
+  rather than `failed` to keep failure metrics honest.
+- **Multi-agent runs are now resumable via `continueTask`.** Previously a
+  multi-agent run finished with `setRunExitReason` only; no conversation
+  was persisted, so `loadRunMessages` returned empty and the follow-up
+  endpoint replied "this run predates multi-turn — start a new task".
+  New `buildMultiAgentSummary` produces a bounded (`≤ 20` bullets,
+  `≤ 140`-char descriptions) status header + node-by-node recap, and
+  `buildMultiAgentRunMessages` packages it as a `[system, user, assistant]`
+  conversation so a follow-up resumes on the single-agent loop with the
+  original task as anchor. Failures still persist the user task + the
+  failure reason so the next turn has something to react to.
+- **`apply_patch` partial-write rollback now restores the failing file.**
+  `fs.writeFile` is not atomic — ENOSPC, AV-after-truncate, or a transient
+  EIO can leave the in-flight target file half-written on disk. The
+  rollback loop previously only iterated `applied[]`, which excluded the
+  current (failing) change, so the partial bytes survived the
+  `ToolError`. Rollback now restores `change.before` for the failing file
+  as well; brand-new "Add File" ops that fail mid-write have any partial
+  bytes removed. Two regression tests in `apply-patch.test.ts` simulate
+  ENOSPC for the Update and Add cases.
+
+Tests covering the above: 15 new in `service-race.test.ts`, 2 new in
+`apply-patch.test.ts`. Full `pnpm typecheck` green; `vitest run
+packages/agent-core packages/tools` reports 158 passed + 1 skipped
+(real-LLM preflight, no API key).
+
 ### Security (CodeQL clearance on PR #16)
 - **Cleared all 16 open code-scanning alerts** on `feat/phase4-multiagent-bugfixes`
   so the CodeQL ruleset gate can pass:
