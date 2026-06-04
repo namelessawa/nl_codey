@@ -379,7 +379,7 @@ function printRunTrace(storage: Storage, runId: string, label: string): void {
   if (!run) return;
   console.log(`\n=== TRACE [${label}] run=${runId.slice(0, 8)} status=${run.status} exit=${run.exitReason ?? "-"} ===`);
   console.log(`    task: ${run.userTask.slice(0, 140).replace(/\n/g, " ")}`);
-  console.log(`    tokens in=${run.inputTokens} out=${run.outputTokens} cost=$${run.costUsd.toFixed(4)}`);
+  console.log(`    tokens in=${run.inputTokens} out=${run.outputTokens} cost=$${(run.costUsd ?? 0).toFixed(4)}`);
   console.log(`    toolCalls=${run.toolCallCount} iterations=${run.iterationCount}`);
   const steps = storage.listSteps(runId);
   console.log(`    steps (${steps.length}):`);

@@ -498,7 +498,9 @@ export class AgentService {
     }
 
     try {
-      const outcome = await runToolLoop(messages, {
+      let outcome: ToolLoopOutcome;
+      try {
+        outcome = await runToolLoop(messages, {
         llm,
         tools: agentToolSchemas({
           readOnly,
@@ -515,12 +517,14 @@ export class AgentService {
         },
         onAssistant: (text, _toolCalls, usage) => {
           if (text.trim()) this.addStep(runId, "message", text);
-          this.storage.addRunUsage(runId, {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            costUsd: usage.costUsd,
-            iterations: 1,
-          });
+          this.safeRunWrite(() =>
+            this.storage.addRunUsage(runId, {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              costUsd: usage.costUsd,
+              iterations: 1,
+            }),
+          );
           // Back to acting after each model turn (unless approval flips it).
           this.setStatus(runId, "tool_use");
         },
@@ -540,7 +544,7 @@ export class AgentService {
             ? this.awaitCommandConfirmation(runId, call)
             : this.awaitApproval(runId, call),
         onToolCall: (call) => {
-          this.storage.addRunUsage(runId, { toolCalls: 1 });
+          this.safeRunWrite(() => this.storage.addRunUsage(runId, { toolCalls: 1 }));
           this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
         },
         executeTool: async (call) => {
@@ -554,10 +558,21 @@ export class AgentService {
           return res.resultText;
         },
       });
+      } catch (loopErr) {
+        // runToolLoop threw before reaching a terminal state (LLM stream
+        // exception, unexpected callback failure, etc.). Without this branch
+        // the run was marked `failed` by the outer .catch but `exit_reason`
+        // stayed NULL — the user lost the ability to see WHY the run died.
+        // Convert into a synthetic outcome so applyOutcome stamps exit_reason
+        // consistently. signal-aborted errors map to cancelled so they don't
+        // pollute the failure log.
+        outcome = loopErrorToOutcome(loopErr, controller.signal.aborted, messages);
+      }
       // Persist the full post-loop conversation so a follow-up (continueTask)
       // resumes from the exact state the model just left, including any mid-
-      // loop compression.
-      this.storage.saveRunMessages(runId, outcome.finalMessages);
+      // loop compression. Race-safe: if the run was cleared concurrently the
+      // write silently no-ops instead of crashing the loop tear-down.
+      this.safeRunWrite(() => this.storage.saveRunMessages(runId, outcome.finalMessages));
       this.applyOutcome(runId, outcome);
     } finally {
       this.controllers.delete(runId);
@@ -667,16 +682,18 @@ export class AgentService {
           },
           onAssistant: (text, _toolCalls, usage) => {
             if (text.trim()) this.addStep(runId, "message", text);
-            this.storage.addRunUsage(runId, {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              costUsd: usage.costUsd,
-              iterations: 1,
-            });
+            this.safeRunWrite(() =>
+              this.storage.addRunUsage(runId, {
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                costUsd: usage.costUsd,
+                iterations: 1,
+              }),
+            );
             this.setStatus(runId, "tool_use");
           },
           onToolCall: (call) => {
-            this.storage.addRunUsage(runId, { toolCalls: 1 });
+            this.safeRunWrite(() => this.storage.addRunUsage(runId, { toolCalls: 1 }));
             this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
           },
         },
@@ -690,16 +707,37 @@ export class AgentService {
           : outcome.status === "cancelled"
             ? "cancelled"
             : "failed";
+      const summary = buildMultiAgentSummary(userTask, outcome.status, outcome.nodes);
       this.addStep(
         runId,
         finalStatus === "done" ? "message" : "error",
         `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
       );
-      this.storage.setRunExitReason(runId, finalStatus);
+      // Persist a synthetic conversation so a follow-up via continueTask can
+      // resume on the single-agent loop with the original task + node-by-node
+      // recap as context. Without this, multi-agent runs were silently
+      // un-continuable (loadRunMessages returned empty → "predates multi-turn").
+      this.safeRunWrite(() =>
+        this.storage.saveRunMessages(
+          runId,
+          buildMultiAgentRunMessages(this.getLanguage(), userTask, summary),
+        ),
+      );
+      this.safeRunWrite(() => this.storage.setRunExitReason(runId, finalStatus));
       this.setStatus(runId, finalStatus);
     } catch (err) {
+      const errSummary = `Multi-agent run failed: ${asMessage(err)}`;
       this.addStep(runId, "error", asMessage(err));
-      this.storage.setRunExitReason(runId, "failed");
+      // Even on error, preserve at least the user task so a follow-up has
+      // somewhere to anchor. The synthetic assistant turn includes the
+      // failure reason so the model can react appropriately.
+      this.safeRunWrite(() =>
+        this.storage.saveRunMessages(
+          runId,
+          buildMultiAgentRunMessages(this.getLanguage(), userTask, errSummary),
+        ),
+      );
+      this.safeRunWrite(() => this.storage.setRunExitReason(runId, "failed"));
       this.setStatus(runId, "failed");
     } finally {
       this.controllers.delete(runId);
@@ -912,23 +950,26 @@ export class AgentService {
   }
 
   private applyOutcome(runId: string, outcome: ToolLoopOutcome): void {
+    // Every storage write is race-safe: if the user cleared this run while
+    // the loop was tearing down, the writes silently no-op and the in-memory
+    // tear-down (controllers/approvals/baselines) still runs in the finally.
     switch (outcome.state) {
       case "done":
-        this.storage.setRunExitReason(runId, "done");
+        this.safeRunWrite(() => this.storage.setRunExitReason(runId, "done"));
         this.setStatus(runId, "done");
         break;
       case "failed":
         this.addStep(runId, "error", outcome.reason);
-        this.storage.setRunExitReason(runId, "failed");
+        this.safeRunWrite(() => this.storage.setRunExitReason(runId, "failed"));
         this.setStatus(runId, "failed");
         break;
       case "cancelled":
-        this.storage.setRunExitReason(runId, "cancelled");
+        this.safeRunWrite(() => this.storage.setRunExitReason(runId, "cancelled"));
         this.setStatus(runId, "cancelled");
         break;
       case "budget_exceeded":
         this.addStep(runId, "message", this.budgetExceededMessage(outcome.reason));
-        this.storage.setRunExitReason(runId, outcome.reason);
+        this.safeRunWrite(() => this.storage.setRunExitReason(runId, outcome.reason));
         this.setStatus(runId, "budget_exceeded");
         break;
     }
@@ -967,18 +1008,129 @@ export class AgentService {
   }
 
   private addStep(runId: string, type: AgentStepType, content: string): void {
-    const step = this.storage.addStep(runId, type, content);
-    this.emit({ kind: "step_added", step });
+    try {
+      const step = this.storage.addStep(runId, type, content);
+      this.emit({ kind: "step_added", step });
+    } catch (err) {
+      // Race with clearRuns: the run row was deleted while we still held an
+      // active loop. The SQLite FK constraint fires on INSERT — swallow so
+      // the doomed loop tears down quietly instead of unhandled-rejecting in
+      // the main process. Re-throw anything else (real storage failure).
+      if (isStaleRunStorageError(err)) return;
+      throw err;
+    }
   }
 
   private setStatus(runId: string, status: AgentRunState): void {
-    const run = this.storage.updateRunStatus(runId, status);
-    this.emit({ kind: "run_updated", run });
+    try {
+      const run = this.storage.updateRunStatus(runId, status);
+      this.emit({ kind: "run_updated", run });
+    } catch (err) {
+      if (isStaleRunStorageError(err)) return;
+      throw err;
+    }
+  }
+
+  /**
+   * Race-safe wrapper around an arbitrary storage write keyed on a runId.
+   * Same swallow-FK-violation behaviour as {@link addStep}: when clearRuns
+   * concurrently deleted the run, the write silently no-ops instead of
+   * crashing the background loop. Real storage failures still propagate.
+   */
+  private safeRunWrite(fn: () => void): void {
+    try {
+      fn();
+    } catch (err) {
+      if (isStaleRunStorageError(err)) return;
+      throw err;
+    }
   }
 }
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * True when `err` indicates the agent_runs row that a write was keyed on has
+ * been deleted concurrently (the `clearRuns` race). Two shapes are recognised:
+ *
+ *  - better-sqlite3 throws `SqliteError` with `.code = SQLITE_CONSTRAINT_FOREIGNKEY`
+ *    on FK-violating INSERTs (addStep, addSnapshot, saveRunMessages, …).
+ *  - storage's `updateRunStatus` / `addRunUsage` throws a plain `Error` with
+ *    message `Run not found: <id>` after the UPDATE affects zero rows.
+ *
+ * Exported so the matching unit tests can assert the classifier directly
+ * without needing a real SQLite handle.
+ */
+export function isStaleRunStorageError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: string }).code;
+  if (code === "SQLITE_CONSTRAINT_FOREIGNKEY") return true;
+  if (err.message.startsWith("Run not found:")) return true;
+  return false;
+}
+
+/**
+ * Convert an error thrown out of `runToolLoop` into a structured outcome so
+ * `applyOutcome` can stamp `exit_reason` consistently. When the controller's
+ * signal is already aborted (user clicked Stop, clearRuns fired), the run
+ * maps to `cancelled` rather than `failed` to keep failure metrics honest.
+ *
+ * Exported so the unit test can assert the branch logic without spinning up
+ * the full driveLoop dependency graph.
+ */
+export function loopErrorToOutcome(
+  err: unknown,
+  aborted: boolean,
+  finalMessages: LLMMessage[],
+): ToolLoopOutcome {
+  if (aborted) return { state: "cancelled", finalMessages };
+  return { state: "failed", reason: asMessage(err), finalMessages };
+}
+
+/**
+ * Compose a short human-readable summary of a multi-agent outcome from the
+ * underlying TaskNode list. Used both as a step log entry and (more
+ * importantly) as the synthetic assistant turn we persist into the run
+ * conversation so `continueTask` has something to anchor a follow-up on.
+ *
+ * The summary is bounded: each node title/description is truncated and the
+ * list is capped at 20 entries so a runaway DAG can't blow up the next turn's
+ * context window.
+ */
+export function buildMultiAgentSummary(
+  userTask: string,
+  status: string,
+  nodes: readonly { id: string; title: string; status: string; description: string }[],
+): string {
+  const head = `Multi-agent run completed with status=${status} (${nodes.length} nodes).`;
+  if (nodes.length === 0) return `${head}\n(No sub-tasks were produced.)`;
+  const bulletCap = 20;
+  const bullets = nodes.slice(0, bulletCap).map((n) => {
+    const desc = n.description.length > 140 ? `${n.description.slice(0, 137)}…` : n.description;
+    return `- [${n.status}] ${n.title}: ${desc}`;
+  });
+  if (nodes.length > bulletCap) bullets.push(`- … and ${nodes.length - bulletCap} more`);
+  return [head, "", `Original task: ${userTask}`, "", "Node-by-node recap:", ...bullets].join("\n");
+}
+
+/**
+ * Build the synthetic LLMMessage[] persisted at the end of a multi-agent run.
+ * Keeps the conversation structure familiar to the single-agent loop that
+ * continueTask uses: system prompt + original user task + an assistant turn
+ * summarising what already happened.
+ */
+export function buildMultiAgentRunMessages(
+  lang: LanguagePreference,
+  userTask: string,
+  assistantSummary: string,
+): LLMMessage[] {
+  return [
+    { role: "system", content: getSystemPrompt(lang) },
+    { role: "user", content: userTask },
+    { role: "assistant", content: assistantSummary },
+  ];
 }
 
 /** True when an apply_patch tool result reports a successful write. */
