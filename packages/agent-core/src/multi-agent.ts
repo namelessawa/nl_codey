@@ -453,7 +453,24 @@ export function parseReviewResult(text: string): ReviewResult {
 }
 
 function stripCodeFence(text: string): string {
-  // Strip ```json ... ``` or ``` ... ``` if the model wrapped its JSON.
-  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/i.exec(text);
-  return fenced && fenced[1] ? fenced[1] : text;
+  // Hand-rolled fence detection. The previous regex
+  //   /^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/i
+  // is polynomial in input length (CodeQL js/polynomial-redos) because
+  // `\s*\n` and `[\s\S]*?` together backtrack the whole body when the
+  // closing fence is missing or malformed.
+  if (!text.startsWith("```")) return text;
+  // Optional header (e.g. `json`) up to the first newline.
+  const headerEnd = text.indexOf("\n");
+  if (headerEnd === -1) return text;
+  const header = text.slice(3, headerEnd).trim().toLowerCase();
+  if (header && header !== "json") return text;
+  // Closing fence: a `\n```` followed by only trailing whitespace.
+  const closeIdx = text.lastIndexOf("\n```");
+  if (closeIdx <= headerEnd) return text;
+  const trailing = text.slice(closeIdx + 4);
+  for (let i = 0; i < trailing.length; i++) {
+    const ch = trailing.charCodeAt(i);
+    if (ch !== 32 && ch !== 9 && ch !== 10 && ch !== 13) return text;
+  }
+  return text.slice(headerEnd + 1, closeIdx);
 }

@@ -36,8 +36,9 @@ export function extractReadableText(html: string): string {
   // js/polynomial-redos), so scan with indexOf instead.
   out = stripHtmlComments(out);
 
-  // Remove all remaining tags.
-  out = out.replace(/<[^>]+>/g, " ");
+  // Remove all remaining tags. The `/<[^>]+>/g` regex is polynomial on
+  // inputs with many `<` and no `>` (same CodeQL rule), so scan manually.
+  out = stripHtmlTags(out);
 
   // Decode common entities (named + the listed numeric ones).
   for (const [entity, value] of Object.entries(HTML_ENTITIES)) {
@@ -47,6 +48,28 @@ export function extractReadableText(html: string): string {
   // Collapse runs of whitespace/newlines into single spaces, then trim.
   out = out.replace(/\s+/g, " ").trim();
 
+  return out;
+}
+
+/** Replace every `<...>` tag with a single space, preserving inter-tag text. */
+function stripHtmlTags(html: string): string {
+  let out = "";
+  let i = 0;
+  while (i < html.length) {
+    const start = html.indexOf("<", i);
+    if (start === -1) {
+      out += html.slice(i);
+      return out;
+    }
+    out += html.slice(i, start);
+    const end = html.indexOf(">", start + 1);
+    if (end === -1) {
+      out += html.slice(start);
+      return out;
+    }
+    out += " ";
+    i = end + 1;
+  }
   return out;
 }
 

@@ -80,21 +80,81 @@ function parseTsc(output: string): TestFailureItem[] {
   return failures;
 }
 
-// `\S+` is bounded by whitespace and `>`; literal spaces replace `\s+`/`\s*`
-// to remove the lazy/variable-whitespace backtracking CodeQL flagged.
-const VITEST_FAIL = /^[ \t]*(?:×|✗|FAIL) +(\S+) +> +(.+)$/i;
-// Path captured with `[^:\s]+` so the engine has a single deterministic
-// stopping point at the colon (no `(.+?):` lazy backtracking).
-const LOCATION = /❯ +([^:\s]+):(\d+):(\d+)/;
+// Hand-rolled `❯ file:line:col` scanner — sidesteps the polynomial backtracking
+// that CodeQL flagged for `/❯\s+(.+?):(\d+):(\d+)/` and its `[ \t]+` variants.
+function parseVitestLocation(line: string): { file: string; line: number; column: number } | null {
+  const idx = line.indexOf("❯");
+  if (idx === -1) return null;
+  let pos = idx + 1;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  const fileStart = pos;
+  while (
+    pos < line.length &&
+    line.charCodeAt(pos) !== 32 &&
+    line.charCodeAt(pos) !== 9 &&
+    line[pos] !== ":"
+  ) {
+    pos++;
+  }
+  if (pos === fileStart || line[pos] !== ":") return null;
+  const file = line.slice(fileStart, pos);
+  pos += 1;
+  const lineStart = pos;
+  while (pos < line.length && line.charCodeAt(pos) >= 48 && line.charCodeAt(pos) <= 57) pos++;
+  if (pos === lineStart || line[pos] !== ":") return null;
+  const lineNum = Number(line.slice(lineStart, pos));
+  pos += 1;
+  const colStart = pos;
+  while (pos < line.length && line.charCodeAt(pos) >= 48 && line.charCodeAt(pos) <= 57) pos++;
+  if (pos === colStart) return null;
+  const colNum = Number(line.slice(colStart, pos));
+  return { file, line: lineNum, column: colNum };
+}
+
+/**
+ * Hand-rolled `<sym> file > test name` scanner — the regex form
+ * `/^[ \t]*(?:×|✗|FAIL) +(\S+) +> +(.+)$/i` still backtracks over the leading
+ * whitespace run (CodeQL js/polynomial-redos) on whitespace-only suffixes.
+ */
+function parseVitestFailLine(line: string): { file: string; testName: string } | null {
+  let pos = 0;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  let markerLen = 0;
+  if (line.startsWith("×", pos)) markerLen = "×".length;
+  else if (line.startsWith("✗", pos)) markerLen = "✗".length;
+  else if (line.startsWith("FAIL", pos) || line.startsWith("fail", pos)) markerLen = 4;
+  else return null;
+  pos += markerLen;
+  if (pos >= line.length || (line.charCodeAt(pos) !== 32 && line.charCodeAt(pos) !== 9)) return null;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  const fileStart = pos;
+  while (
+    pos < line.length &&
+    line.charCodeAt(pos) !== 32 &&
+    line.charCodeAt(pos) !== 9 &&
+    line[pos] !== ">"
+  ) {
+    pos++;
+  }
+  if (pos === fileStart) return null;
+  const file = line.slice(fileStart, pos);
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  if (line[pos] !== ">") return null;
+  pos += 1;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  const testName = line.slice(pos);
+  if (!testName) return null;
+  return { file, testName };
+}
 
 function parseVitest(output: string): TestFailureItem[] {
   const lines = output.split("\n");
   const failures: TestFailureItem[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const head = VITEST_FAIL.exec(lines[i] ?? "");
+    const head = parseVitestFailLine(lines[i] ?? "");
     if (!head) continue;
-    const file = head[1] ?? "";
-    const testName = (head[2] ?? "").trim();
+    const file = head.file;
+    const testName = head.testName.trim();
     let message = "";
     let line: number | undefined;
     let column: number | undefined;
@@ -103,10 +163,10 @@ function parseVitest(output: string): TestFailureItem[] {
       if (!message && /(?:Assertion)?Error[:\s]|Expected|expected /.test(text)) {
         message = text.trim();
       }
-      const loc = LOCATION.exec(text);
-      if (loc && loc[1] === file) {
-        line = toInt(loc[2]);
-        column = toInt(loc[3]);
+      const loc = parseVitestLocation(text);
+      if (loc && loc.file === file) {
+        line = loc.line;
+        column = loc.column;
       }
     }
     failures.push({
@@ -120,9 +180,18 @@ function parseVitest(output: string): TestFailureItem[] {
   return failures;
 }
 
-// Literal spaces and `[ \t]*` are linear-time, unlike `\s*` followed by
-// another `\s+` which CodeQL flags as polynomial on whitespace-only input.
-const JEST_TEST = /^[ \t]*● +(.+)$/;
+/** Hand-rolled `<indent>● <test name>` matcher (CodeQL js/polynomial-redos). */
+function parseJestTestLine(line: string): string | null {
+  let pos = 0;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  if (line[pos] !== "●") return null;
+  pos += 1;
+  if (pos >= line.length || (line.charCodeAt(pos) !== 32 && line.charCodeAt(pos) !== 9)) return null;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  const rest = line.slice(pos);
+  return rest.length > 0 ? rest : null;
+}
+
 // File path token uses `[^():\s]+` so the trailing `:NN:NN)?` has a single
 // deterministic anchor (no `.+?` lazy + greedy mix).
 const JEST_AT = /\bat (?:[^()]*\()?([^():\s]+):(\d+):(\d+)\)?$/;
@@ -131,16 +200,16 @@ function parseJest(output: string): TestFailureItem[] {
   const lines = output.split("\n");
   const failures: TestFailureItem[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const head = JEST_TEST.exec(lines[i] ?? "");
+    const head = parseJestTestLine(lines[i] ?? "");
     if (!head) continue;
-    const testName = (head[1] ?? "").replace(/›/g, ">").trim();
+    const testName = head.replace(/›/g, ">").trim();
     let message = "";
     let file = "";
     let line: number | undefined;
     let column: number | undefined;
     for (let j = i + 1; j < Math.min(i + 20, lines.length); j++) {
       const text = lines[j] ?? "";
-      if (JEST_TEST.test(text)) break;
+      if (parseJestTestLine(text) !== null) break;
       if (!message && text.trim()) message = text.trim();
       const at = JEST_AT.exec(text.trim());
       if (at && !file) {
@@ -189,9 +258,33 @@ function parsePytest(output: string): TestFailureItem[] {
 }
 
 const GO_FAIL = /^--- FAIL: +(\S+)/;
-// Replace `\s*`/`\s*` with `[ \t]*` so leading and trailing horizontal
-// whitespace match linearly (CodeQL js/polynomial-redos).
-const GO_LOC = /^[ \t]*(\S+\.go):(\d+):[ \t]*(.*)$/;
+
+/** Hand-rolled `<indent>file.go:line: message` parser. */
+function parseGoLocLine(line: string): { file: string; line: number; message: string } | null {
+  let pos = 0;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  const fileStart = pos;
+  while (
+    pos < line.length &&
+    line.charCodeAt(pos) !== 32 &&
+    line.charCodeAt(pos) !== 9 &&
+    line[pos] !== ":"
+  ) {
+    pos++;
+  }
+  if (pos === fileStart) return null;
+  const file = line.slice(fileStart, pos);
+  if (!file.endsWith(".go")) return null;
+  if (line[pos] !== ":") return null;
+  pos += 1;
+  const lineStart = pos;
+  while (pos < line.length && line.charCodeAt(pos) >= 48 && line.charCodeAt(pos) <= 57) pos++;
+  if (pos === lineStart || line[pos] !== ":") return null;
+  const lineNum = Number(line.slice(lineStart, pos));
+  pos += 1;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  return { file, line: lineNum, message: line.slice(pos) };
+}
 
 function parseGoTest(output: string): TestFailureItem[] {
   const lines = output.split("\n");
@@ -205,11 +298,11 @@ function parseGoTest(output: string): TestFailureItem[] {
     let line: number | undefined;
     let message = "";
     for (let j = Math.max(0, i - 6); j < i; j++) {
-      const loc = GO_LOC.exec(lines[j] ?? "");
+      const loc = parseGoLocLine(lines[j] ?? "");
       if (loc) {
-        file = loc[1] ?? "";
-        line = toInt(loc[2]);
-        message = (loc[3] ?? "").trim();
+        file = loc.file;
+        line = loc.line;
+        message = loc.message.trim();
       }
     }
     failures.push({
@@ -223,9 +316,43 @@ function parseGoTest(output: string): TestFailureItem[] {
 }
 
 const CARGO_FAIL = /^[ \t]*test +(\S+) +\.\.\. +FAILED/;
-// `[^,\n]*` is equivalent to the original `.*?,` (stops at first `,`) but
-// non-backtracking; path and digits use single-class tokens.
-const CARGO_PANIC = /panicked at [^,\n]*, ([^:\s]+):(\d+):(\d+)/;
+
+/**
+ * Hand-rolled `panicked at <msg>, <file>:<line>:<col>` scanner. The regex
+ * form retried `panicked at ` at every input position because there was no
+ * `^` anchor (CodeQL js/polynomial-redos); indexOf does it in a single pass.
+ */
+function parseCargoPanicLine(line: string): { file: string; line: number; column: number } | null {
+  const startIdx = line.indexOf("panicked at ");
+  if (startIdx === -1) return null;
+  let pos = startIdx + "panicked at ".length;
+  const commaIdx = line.indexOf(",", pos);
+  if (commaIdx === -1) return null;
+  pos = commaIdx + 1;
+  while (pos < line.length && (line.charCodeAt(pos) === 32 || line.charCodeAt(pos) === 9)) pos++;
+  const fileStart = pos;
+  while (
+    pos < line.length &&
+    line.charCodeAt(pos) !== 32 &&
+    line.charCodeAt(pos) !== 9 &&
+    line[pos] !== ":"
+  ) {
+    pos++;
+  }
+  if (pos === fileStart || line[pos] !== ":") return null;
+  const file = line.slice(fileStart, pos);
+  pos += 1;
+  const lineStart = pos;
+  while (pos < line.length && line.charCodeAt(pos) >= 48 && line.charCodeAt(pos) <= 57) pos++;
+  if (pos === lineStart || line[pos] !== ":") return null;
+  const lineNum = Number(line.slice(lineStart, pos));
+  pos += 1;
+  const colStart = pos;
+  while (pos < line.length && line.charCodeAt(pos) >= 48 && line.charCodeAt(pos) <= 57) pos++;
+  if (pos === colStart) return null;
+  const colNum = Number(line.slice(colStart, pos));
+  return { file, line: lineNum, column: colNum };
+}
 
 function parseCargoTest(output: string): TestFailureItem[] {
   const lines = output.split("\n");
@@ -238,13 +365,13 @@ function parseCargoTest(output: string): TestFailureItem[] {
   // Match each panic location to a failing test in order.
   let idx = 0;
   for (let i = 0; i < lines.length; i++) {
-    const panic = CARGO_PANIC.exec(lines[i] ?? "");
+    const panic = parseCargoPanicLine(lines[i] ?? "");
     if (!panic) continue;
     const messageLine = (lines[i] ?? "").split("panicked at")[1] ?? "";
     failures.push({
-      file: panic[1] ?? "",
-      line: toInt(panic[2]),
-      column: toInt(panic[3]),
+      file: panic.file,
+      line: panic.line,
+      column: panic.column,
       ...(names[idx] ? { testName: names[idx] } : {}),
       message: `panicked at${messageLine}`.trim(),
     });
