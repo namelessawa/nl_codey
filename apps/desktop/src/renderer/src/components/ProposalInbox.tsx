@@ -63,7 +63,14 @@ export function ProposalInbox({ workspaceId }: { workspaceId: string | null }): 
             <p className="files">影响文件: {p.affectedFiles.join(", ") || "—"}</p>
             {p.status === "new" && (
               <div className="proposal-actions">
-                <button type="button" onClick={() => void action(p.id, "convert")}>转为任务</button>
+                <button
+                  type="button"
+                  disabled
+                  title="即将推出 · 转换为正式任务还未接入 Planner pipeline"
+                  onClick={() => void action(p.id, "convert")}
+                >
+                  转为任务 (即将推出)
+                </button>
                 <button type="button" onClick={() => void action(p.id, "snooze")}>延后 7 天</button>
                 <button type="button" onClick={() => void action(p.id, "dismiss")}>忽略</button>
               </div>

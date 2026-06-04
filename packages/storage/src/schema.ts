@@ -1,22 +1,52 @@
 /**
- * Table definitions. All statements are idempotent so init can run repeatedly.
+ * Current logical schema version. Bump this any time the table definitions or
+ * migrations below change in a way that needs a structural rewrite (not just
+ * an additive column — those live in {@link COLUMN_MIGRATIONS}). The
+ * {@link Storage} constructor reads the on-disk version from `schema_meta`
+ * and runs {@link STRUCTURAL_MIGRATIONS} forward until it catches up.
+ *
+ * - v1: original Phase 1/2/3/4 schema with no FK constraints.
+ * - v2: added `workspaces` UNIQUE on `root_path`, foreign keys (with
+ *   ON DELETE CASCADE) on `agent_runs.workspace_id`,
+ *   `agent_steps.run_id`, `agent_run_messages.run_id`,
+ *   `file_snapshots.run_id`, and a `UNIQUE (run_id, seq)` index on
+ *   `agent_run_messages` so duplicate seqs from a buggy concurrent save
+ *   are rejected at the DB layer rather than papered over.
+ */
+export const SCHEMA_VERSION = 2;
+
+/**
+ * Table definitions for FRESH installs. All statements are idempotent so init
+ * can run repeatedly. Upgrades from a prior `SCHEMA_VERSION` go through
+ * {@link STRUCTURAL_MIGRATIONS} (which copies+rebuilds the affected tables
+ * with the new constraints).
  *
  * Index creation lives in {@link INDEX_SQL}, not here, because some indexes
  * reference columns that only exist on upgraded databases after
  * {@link COLUMN_MIGRATIONS} runs (e.g. `file_snapshots.iteration`). Creating
  * those indexes before the migration would fail with "no such column" on a
- * pre-Phase-2 DB, so the constructor runs tables → migrations → indexes.
+ * pre-Phase-2 DB, so the constructor runs tables → column-migrations →
+ * structural-migrations → indexes.
  */
 export const SCHEMA_SQL = `
+-- Tracks the structural schema version. Created at v1 for legacy installs
+-- (the row is inserted by the Storage constructor when missing); fresh
+-- installs jump straight to SCHEMA_VERSION via the same upsert.
+CREATE TABLE IF NOT EXISTS schema_meta (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  version INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY,
-  root_path TEXT NOT NULL,
+  root_path TEXT NOT NULL UNIQUE,
   opened_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS agent_runs (
   id TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_task TEXT NOT NULL,
   status TEXT NOT NULL,
   created_at INTEGER NOT NULL,
@@ -32,7 +62,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 
 CREATE TABLE IF NOT EXISTS agent_steps (
   id TEXT PRIMARY KEY,
-  run_id TEXT NOT NULL,
+  run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
   content TEXT NOT NULL,
   created_at INTEGER NOT NULL
@@ -43,15 +73,16 @@ CREATE TABLE IF NOT EXISTS agent_steps (
 -- assistant turns, not just the user-facing step log.
 CREATE TABLE IF NOT EXISTS agent_run_messages (
   id TEXT PRIMARY KEY,
-  run_id TEXT NOT NULL,
+  run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL,
   message_json TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  UNIQUE (run_id, seq)
 );
 
 CREATE TABLE IF NOT EXISTS file_snapshots (
   id TEXT PRIMARY KEY,
-  run_id TEXT NOT NULL,
+  run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
   file_path TEXT NOT NULL,
   before_content TEXT NOT NULL,
   after_content TEXT,
@@ -395,4 +426,133 @@ export const COLUMN_MIGRATIONS: readonly string[] = [
   // Phase 3: link sub-runs to parent run + task node.
   "ALTER TABLE agent_runs ADD COLUMN parent_run_id TEXT",
   "ALTER TABLE agent_runs ADD COLUMN task_node_id TEXT",
+];
+
+/**
+ * One forward migration per `SCHEMA_VERSION` bump. Each entry runs inside a
+ * transaction with foreign-key enforcement temporarily lifted (so we can
+ * rebuild constrained tables without tripping the new FK rules against the
+ * partially-rewritten state). Index recreation belongs to {@link INDEX_SQL},
+ * which runs after these.
+ *
+ * Migrations must be idempotent enough to survive a partial failure: they
+ * check for the presence of work-in-progress temp tables and only operate on
+ * tables that still need rebuilding. The Storage constructor records the new
+ * version only after every migration in the chain completes; a crash mid-
+ * migration re-runs the same migration on next startup.
+ */
+export type StructuralMigration = {
+  toVersion: number;
+  description: string;
+  /** Statements run sequentially inside a TRANSACTION wrapper. */
+  steps: readonly string[];
+};
+
+export const STRUCTURAL_MIGRATIONS: readonly StructuralMigration[] = [
+  {
+    toVersion: 2,
+    description:
+      "Add foreign keys (workspace_id, run_id) + unique (run_id, seq) on agent_run_messages",
+    steps: [
+      // workspaces.root_path UNIQUE
+      `CREATE TABLE IF NOT EXISTS workspaces_v2 (
+         id TEXT PRIMARY KEY,
+         root_path TEXT NOT NULL UNIQUE,
+         opened_at INTEGER NOT NULL
+       )`,
+      // Deduplicate any conflicting workspace rows that pre-date the UNIQUE
+      // constraint, keeping the most-recently-opened entry per path.
+      `INSERT OR IGNORE INTO workspaces_v2 (id, root_path, opened_at)
+         SELECT id, root_path, opened_at
+           FROM workspaces
+           ORDER BY opened_at DESC`,
+      `DROP TABLE workspaces`,
+      `ALTER TABLE workspaces_v2 RENAME TO workspaces`,
+
+      // agent_runs.workspace_id FK CASCADE — drop orphans first so the FK
+      // rule doesn't reject the rebuild.
+      `DELETE FROM agent_runs
+         WHERE workspace_id NOT IN (SELECT id FROM workspaces)`,
+      `CREATE TABLE agent_runs_v2 (
+         id TEXT PRIMARY KEY,
+         workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+         user_task TEXT NOT NULL,
+         status TEXT NOT NULL,
+         created_at INTEGER NOT NULL,
+         updated_at INTEGER NOT NULL,
+         input_tokens INTEGER NOT NULL DEFAULT 0,
+         output_tokens INTEGER NOT NULL DEFAULT 0,
+         cost_usd REAL NOT NULL DEFAULT 0,
+         tool_call_count INTEGER NOT NULL DEFAULT 0,
+         iteration_count INTEGER NOT NULL DEFAULT 0,
+         model_name TEXT,
+         exit_reason TEXT,
+         parent_run_id TEXT,
+         task_node_id TEXT
+       )`,
+      `INSERT INTO agent_runs_v2
+         SELECT id, workspace_id, user_task, status, created_at, updated_at,
+                input_tokens, output_tokens, cost_usd, tool_call_count,
+                iteration_count, model_name, exit_reason, parent_run_id,
+                task_node_id
+           FROM agent_runs`,
+      `DROP TABLE agent_runs`,
+      `ALTER TABLE agent_runs_v2 RENAME TO agent_runs`,
+
+      // agent_steps.run_id FK CASCADE
+      `DELETE FROM agent_steps
+         WHERE run_id NOT IN (SELECT id FROM agent_runs)`,
+      `CREATE TABLE agent_steps_v2 (
+         id TEXT PRIMARY KEY,
+         run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+         type TEXT NOT NULL,
+         content TEXT NOT NULL,
+         created_at INTEGER NOT NULL
+       )`,
+      `INSERT INTO agent_steps_v2 SELECT * FROM agent_steps`,
+      `DROP TABLE agent_steps`,
+      `ALTER TABLE agent_steps_v2 RENAME TO agent_steps`,
+
+      // agent_run_messages.run_id FK CASCADE + UNIQUE(run_id, seq)
+      `DELETE FROM agent_run_messages
+         WHERE run_id NOT IN (SELECT id FROM agent_runs)`,
+      // Drop duplicate (run_id, seq) pairs that would now violate UNIQUE,
+      // keeping the oldest by created_at as the source of truth.
+      `DELETE FROM agent_run_messages
+         WHERE id NOT IN (
+           SELECT id FROM (
+             SELECT id, MIN(created_at) OVER (PARTITION BY run_id, seq) AS first_at, created_at
+               FROM agent_run_messages
+           ) WHERE created_at = first_at
+         )`,
+      `CREATE TABLE agent_run_messages_v2 (
+         id TEXT PRIMARY KEY,
+         run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+         seq INTEGER NOT NULL,
+         message_json TEXT NOT NULL,
+         created_at INTEGER NOT NULL,
+         UNIQUE (run_id, seq)
+       )`,
+      `INSERT INTO agent_run_messages_v2 SELECT * FROM agent_run_messages`,
+      `DROP TABLE agent_run_messages`,
+      `ALTER TABLE agent_run_messages_v2 RENAME TO agent_run_messages`,
+
+      // file_snapshots.run_id FK CASCADE
+      `DELETE FROM file_snapshots
+         WHERE run_id NOT IN (SELECT id FROM agent_runs)`,
+      `CREATE TABLE file_snapshots_v2 (
+         id TEXT PRIMARY KEY,
+         run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+         file_path TEXT NOT NULL,
+         before_content TEXT NOT NULL,
+         after_content TEXT,
+         created_at INTEGER NOT NULL,
+         iteration INTEGER NOT NULL DEFAULT 0,
+         snapshot_type TEXT NOT NULL DEFAULT 'before_run'
+       )`,
+      `INSERT INTO file_snapshots_v2 SELECT * FROM file_snapshots`,
+      `DROP TABLE file_snapshots`,
+      `ALTER TABLE file_snapshots_v2 RENAME TO file_snapshots`,
+    ],
+  },
 ];

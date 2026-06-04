@@ -11,21 +11,60 @@ import type {
   LLMMessage,
   LLMToolCall,
   RunCommandOutput,
+  SandboxPolicy,
   TestFailureReport,
   ToolContext,
+  ToolSchema,
 } from "@coding-agent/shared";
 import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
+import type { FileChange } from "@coding-agent/sandbox";
 import type { Storage } from "@coding-agent/storage";
 import { detectProject } from "@coding-agent/project-indexer";
-import { listFilesTool, parseTestFailure, runCommandTool } from "@coding-agent/tools";
+import { listFilesTool, parseTestFailure, runCommandWithPolicy } from "@coding-agent/tools";
 import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
-import { agentToolSchemas, createToolExecutor } from "./tools-registry.js";
+import { agentToolSchemas, createToolExecutor, type ExecutedTool } from "./tools-registry.js";
 import { getReadonlySystemPrompt, getSystemPrompt } from "./prompts.js";
 import { getSummarizePrompt } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
 import { analyzeRegressions, regressionNote } from "./regression.js";
+import { runMultiAgentTask } from "./multi-agent.js";
+
+/**
+ * Optional Phase 4 prompt augmentation. Called once per new run with the
+ * workspace id; returned text is appended after the base system prompt so the
+ * model sees relevant cross-project patterns + style rules + the fine-tune
+ * identity reminder. Implementations should respect their own feature flags
+ * and return an empty string when Phase 4 is disabled.
+ */
+export type Phase4AugmentationFn = (workspaceId: string) => string;
+
+/**
+ * Optional Phase 3 port factory. Returns the live semantic-search / memory /
+ * web ports for the given workspace, or `null` when Phase 3 is disabled. The
+ * factory is called once per run so settings changes (API keys, sandbox mode)
+ * take effect on the next task without requiring a restart.
+ */
+import type { Phase3AgentPorts } from "./phase3-schemas.js";
+export type Phase3PortsFn = (workspaceId: string) => Phase3AgentPorts | null;
+
+/**
+ * A dynamically-loaded tool bundle (schemas the model sees + a dispatcher).
+ * The plugin runtime is the primary consumer; other future runtimes (HTTP
+ * tools, MCP servers, etc.) can plug in the same shape.
+ */
+export type DynamicToolBundle = {
+  schemas: readonly ToolSchema[];
+  dispatch: (call: LLMToolCall, ctx: ToolContext) => Promise<ExecutedTool | null>;
+};
+
+/**
+ * Optional dynamic tool bundle factory. Called once per driveLoop entry so a
+ * plugin enabled mid-session lights up on the next task without restart.
+ * Returns null when no dynamic tools are available.
+ */
+export type DynamicToolBundleFn = () => DynamicToolBundle | null;
 
 const MAX_INITIAL_FILES = 200;
 const MAX_STEP_CONTENT = 4000;
@@ -60,18 +99,52 @@ export type AgentDeps = {
    */
   assertToolAllowed?: (toolName: string) => void;
   /**
-   * Read-only ("instruction") mode. When true, the agent runs as a query-only
-   * assistant: file-mutating tools (apply_patch / write_file) are stripped from
-   * the model's tool schema and hard-refused at dispatch, the read-only system
-   * prompt is used, and the pre-edit regression baseline is skipped (there are
-   * no edits to guard). Defaults to false. Set by the desktop app so users can
-   * query — but never modify — their project.
+   * Optional fixed read-only override. When set, every run forces query-only
+   * mode regardless of {@link AgentSettings.readOnly}. Useful for headless
+   * tests and CI harnesses; production wiring should leave this undefined
+   * and let the per-run settings drive the behaviour instead.
    */
   readOnly?: boolean;
+  /**
+   * Optional Phase 4 augmentation hook. Builds the cross-project pattern hints
+   * + style spec + fine-tune identity reminder block and returns the text to
+   * append after the base system prompt. When omitted (or returning an empty
+   * string) the system prompt is unchanged, preserving Phase 1/2 behaviour.
+   */
+  getPhase4Augmentation?: Phase4AugmentationFn;
+  /**
+   * Optional Phase 3 port factory. When it returns a non-null bundle the
+   * single-agent loop advertises semantic_search / read_memory / write_memory /
+   * web_search / web_fetch in addition to the Phase 1/2 catalogue. Returning
+   * null (or omitting the hook) keeps the model at the Phase 1/2 surface.
+   */
+  getPhase3Ports?: Phase3PortsFn;
+  /**
+   * Optional dynamic tool bundle factory (plugins, MCP servers, etc.). When
+   * it returns non-null the bundle's schemas are advertised after Phase 1/2
+   * + Phase 3, and its dispatcher is tried before the built-in switch so a
+   * dynamic tool can't be shadowed by a built-in name collision.
+   */
+  getDynamicTools?: DynamicToolBundleFn;
   emit: (event: AgentEvent) => void;
 };
 
-type Pending = { patch: string; command: string | null };
+/**
+ * A {@link Pending} entry parks the loop while it waits on the user.
+ *
+ * - `patch`: the LLM emitted an `apply_patch` tool call — `patch` is the V4A
+ *   or unified diff the model wants to apply.
+ * - `command_writeback`: an LLM-initiated `run_command` running in
+ *   docker/wsl mode produced file changes; `patch` is the unified diff we
+ *   synthesised so the GUI's existing diff renderer can preview the changes.
+ *
+ * Both shapes share the same {@link Approval} lifecycle (resolved by the
+ * applyPatch / rejectPatch IPC); the kind discriminates only for logging.
+ */
+type Pending =
+  | { kind: "patch"; patch: string; command: string | null }
+  | { kind: "command_writeback"; patch: string; command: string }
+  | { kind: "command_confirm"; patch: string; command: string };
 type Approval = { resolve: (approved: boolean) => void };
 
 /** GUI-agnostic agent orchestrator. One instance per main process. */
@@ -81,7 +154,11 @@ export class AgentService {
   private readonly getAgentSettings: () => AgentSettings;
   private readonly getLanguage: () => LanguagePreference;
   private readonly assertToolAllowed: ((toolName: string) => void) | undefined;
-  private readonly readOnly: boolean;
+  /** Hard override; when undefined, per-run settings.agent.readOnly wins. */
+  private readonly readOnlyOverride: boolean | undefined;
+  private readonly getPhase4Augmentation: Phase4AugmentationFn | undefined;
+  private readonly getPhase3Ports: Phase3PortsFn | undefined;
+  private readonly getDynamicTools: DynamicToolBundleFn | undefined;
   private readonly emit: (event: AgentEvent) => void;
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
@@ -97,8 +174,17 @@ export class AgentService {
     // see the original behaviour.
     this.getLanguage = deps.getLanguage ?? ((): LanguagePreference => "zh-CN");
     this.assertToolAllowed = deps.assertToolAllowed;
-    this.readOnly = deps.readOnly ?? false;
+    this.readOnlyOverride = deps.readOnly;
+    this.getPhase4Augmentation = deps.getPhase4Augmentation;
+    this.getPhase3Ports = deps.getPhase3Ports;
+    this.getDynamicTools = deps.getDynamicTools;
     this.emit = deps.emit;
+  }
+
+  /** Effective read-only flag: hard override beats settings; default false. */
+  private effectiveReadOnly(): boolean {
+    if (this.readOnlyOverride !== undefined) return this.readOnlyOverride;
+    return this.getAgentSettings().readOnly === true;
   }
 
   listRuns(workspaceId: string): AgentRun[] {
@@ -185,7 +271,33 @@ export class AgentService {
     if (!this.getAgentSettings().allowShellExecution) {
       throw new Error("Shell 执行已在设置中禁用，请在设置中开启后重试。");
     }
-    return runCommandTool.run({ command }, { workspaceRoot: ws.rootPath, runId: "adhoc" });
+    // Direct user-typed run: the user explicitly invoked this command, so
+    // any side effects belong to the project lifecycle. Apply writeback
+    // automatically (still snapshotted so rollback works), no approval gate.
+    return runCommandWithPolicy(
+      { command },
+      { workspaceRoot: ws.rootPath, runId: "adhoc" },
+      {
+        policy: this.sandboxPolicy(),
+        writeback: { kind: "auto" },
+        snapshotStore: this.storage,
+      },
+    );
+  }
+
+  /**
+   * Build the active sandbox policy from current settings. When the user has
+   * disabled sandboxing (or left the legacy "whitelist" mode), commands run
+   * through the host whitelist (Phase 2 behavior). Re-read per call so a user
+   * toggling the mode in the GUI takes effect on the next command without a
+   * restart.
+   */
+  private sandboxPolicy(): SandboxPolicy {
+    const s = this.getAgentSettings();
+    if (!s.sandboxEnabled || s.sandboxMode === "whitelist") {
+      return { mode: "whitelist", allowNetwork: false };
+    }
+    return { mode: s.sandboxMode, allowNetwork: false };
   }
 
   /**
@@ -215,14 +327,40 @@ export class AgentService {
 
     this.setStatus(run.id, "tool_use");
     const ctx: ToolContext = { workspaceRoot: ws.rootPath, runId: run.id, signal: controller.signal };
-    const systemPrompt = this.readOnly
+    const baseSystemPrompt = this.effectiveReadOnly()
       ? getReadonlySystemPrompt(this.getLanguage())
       : getSystemPrompt(this.getLanguage());
+    // Phase 4 augmentation: cross-project pattern hints + style spec +
+    // fine-tune identity reminder. The hook is responsible for honoring its
+    // own feature flags; when disabled it returns an empty string and the
+    // system prompt is unchanged.
+    let augmentation = "";
+    try {
+      augmentation = this.getPhase4Augmentation?.(workspaceId) ?? "";
+    } catch {
+      // Augmentation is advisory — never let a Phase 4 lookup failure block a run.
+      augmentation = "";
+    }
+    const systemPrompt = augmentation
+      ? `${baseSystemPrompt}\n\n${augmentation}`
+      : baseSystemPrompt;
     const initialMessages: LLMMessage[] = [
       { role: "system", content: systemPrompt },
       { role: "user", content: await this.buildInitialUserMessage(task, ctx) },
     ];
-    void this.driveLoop(run.id, ws.rootPath, initialMessages, llm, controller).catch((err) => {
+    // Route to the multi-agent driver when the user opted in; otherwise the
+    // long-standing single-agent driveLoop. Multi-agent reuses the same
+    // approval / sandbox / verify machinery via a thin adapter so safety
+    // guarantees are identical.
+    if (this.getAgentSettings().multiAgentEnabled) {
+      void this.driveMultiAgentLoop(run.id, workspaceId, ws.rootPath, task, llm, controller).catch((err) => {
+        this.addStep(run.id, "error", asMessage(err));
+        this.setStatus(run.id, "failed");
+        this.controllers.delete(run.id);
+      });
+      return this.getDetail(run.id);
+    }
+    void this.driveLoop(run.id, workspaceId, ws.rootPath, initialMessages, llm, controller).catch((err) => {
       this.addStep(run.id, "error", asMessage(err));
       this.setStatus(run.id, "failed");
       this.controllers.delete(run.id);
@@ -272,7 +410,7 @@ export class AgentService {
     this.setStatus(runId, "tool_use");
 
     const messages: LLMMessage[] = [...prior, { role: "user", content: followUp }];
-    void this.driveLoop(runId, ws.rootPath, messages, llm, controller).catch((err) => {
+    void this.driveLoop(runId, run.workspaceId, ws.rootPath, messages, llm, controller).catch((err) => {
       this.addStep(runId, "error", asMessage(err));
       this.setStatus(runId, "failed");
       this.controllers.delete(runId);
@@ -295,6 +433,7 @@ export class AgentService {
 
   private async driveLoop(
     runId: string,
+    workspaceId: string,
     workspaceRoot: string,
     messages: LLMMessage[],
     llm: ChatLLMProvider,
@@ -302,16 +441,50 @@ export class AgentService {
   ): Promise<void> {
     const ctx: ToolContext = { workspaceRoot, runId, signal: controller.signal };
     const settings = this.getAgentSettings();
+    // Snapshot read-only at loop entry so a settings change mid-run can't flip
+    // the policy on the live conversation (would surprise the model and the
+    // user). Followups re-enter driveLoop and re-read settings.
+    const readOnly = this.effectiveReadOnly();
+    // Resolve Phase 3 ports once per loop entry. A null return (or a thrown
+    // error during construction) cleanly falls back to the Phase 1/2 surface;
+    // failures here must NEVER block a normal run.
+    let phase3Ports: Phase3AgentPorts | null = null;
+    try {
+      phase3Ports = this.getPhase3Ports?.(workspaceId) ?? null;
+    } catch {
+      phase3Ports = null;
+    }
+    // Resolve the dynamic tool bundle (plugins / future MCP servers) once per
+    // loop entry. Same fail-safe: any failure produces null and the agent
+    // keeps running on the Phase 1/2 + Phase 3 surface.
+    let dynamicBundle: DynamicToolBundle | null = null;
+    try {
+      dynamicBundle = this.getDynamicTools?.() ?? null;
+    } catch {
+      dynamicBundle = null;
+    }
     const execute = createToolExecutor({
       ctx,
       storage: this.storage,
       allowShellExecution: settings.allowShellExecution,
-      readOnly: this.readOnly,
+      readOnly,
+      sandboxPolicy: this.sandboxPolicy(),
       // Plumb the installation gate to the tool dispatcher so LLM-initiated
       // unsafe tool calls are also refused in degraded mode.
       ...(this.assertToolAllowed
         ? { assertToolAllowed: this.assertToolAllowed }
         : {}),
+      // Sandbox writeback approval: only meaningful when the sandbox is
+      // active. The executor falls back to "discard" when no callback is
+      // wired, so omitting this on the whitelist path is safe.
+      requestSandboxWriteApproval: (call, changes) =>
+        this.awaitWritebackApproval(runId, call, changes),
+      // Phase 3 port bundle (semantic_search / memory / web). Omitted when
+      // null so the executor's Phase 3 dispatcher stays disabled.
+      ...(phase3Ports ? { phase3Ports } : {}),
+      // Dynamic tool dispatcher (plugins / MCP). Tried before the built-in
+      // switch so a plugin tool can't be shadowed by a name collision.
+      ...(dynamicBundle ? { extraDispatcher: dynamicBundle.dispatch } : {}),
     });
     const budget = new BudgetController(this.budgetLimits());
 
@@ -320,14 +493,18 @@ export class AgentService {
     // workspace, which is correct — we want to detect regressions relative to
     // what passes now, not the original pristine state. Skipped in read-only
     // mode: no edits can happen, so there is nothing to guard against.
-    if (!this.readOnly) {
+    if (!readOnly) {
       await this.captureBaseline(runId, ctx, settings.allowShellExecution);
     }
 
     try {
       const outcome = await runToolLoop(messages, {
         llm,
-        tools: agentToolSchemas({ readOnly: this.readOnly }),
+        tools: agentToolSchemas({
+          readOnly,
+          phase3Available: !!phase3Ports,
+          ...(dynamicBundle ? { extraSchemas: dynamicBundle.schemas } : {}),
+        }),
         budget,
         signal: controller.signal,
         temperature: 0.2,
@@ -355,8 +532,13 @@ export class AgentService {
         },
         verifyAfterPatch: (_call, result) =>
           this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
-        requiresApproval: (call) => call.name === "apply_patch",
-        waitForApproval: (call) => this.awaitApproval(runId, call),
+        requiresApproval: (call) =>
+          call.name === "apply_patch" ||
+          (call.name === "run_command" && settings.requireConfirmationBeforeCommand),
+        waitForApproval: (call) =>
+          call.name === "run_command"
+            ? this.awaitCommandConfirmation(runId, call)
+            : this.awaitApproval(runId, call),
         onToolCall: (call) => {
           this.storage.addRunUsage(runId, { toolCalls: 1 });
           this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
@@ -377,6 +559,148 @@ export class AgentService {
       // loop compression.
       this.storage.saveRunMessages(runId, outcome.finalMessages);
       this.applyOutcome(runId, outcome);
+    } finally {
+      this.controllers.delete(runId);
+      this.approvals.delete(runId);
+      this.pending.delete(runId);
+      this.baselines.delete(runId);
+    }
+  }
+
+  /**
+   * Multi-agent loop driver. Builds the same executor + Phase 3 ports + plugin
+   * bundle the single-agent path uses, then hands them to runMultiAgentTask
+   * which wires the Coordinator (Planner → Coder → Reviewer).
+   *
+   * Approval semantics:
+   * - apply_patch / run_command inside coder turns still gate through the
+   *   normal user-approval IPC (awaitApproval / awaitCommandConfirmation).
+   * - The planner's DAG proposal is auto-approved with a recorded plan
+   *   summary step. A future UI handler can intercept the approve() port to
+   *   gate this explicitly; today we trust the planner's output because the
+   *   model still has to surface concrete diffs through the standard gate.
+   * - askHuman returns "cancel" by default — without a wired-up UI, the
+   *   safe behaviour on a node failure is to halt rather than silently skip.
+   */
+  private async driveMultiAgentLoop(
+    runId: string,
+    workspaceId: string,
+    workspaceRoot: string,
+    userTask: string,
+    llm: ChatLLMProvider,
+    controller: AbortController,
+  ): Promise<void> {
+    const ctx: ToolContext = { workspaceRoot, runId, signal: controller.signal };
+    const settings = this.getAgentSettings();
+    const readOnly = this.effectiveReadOnly();
+    let phase3Ports: Phase3AgentPorts | null = null;
+    try {
+      phase3Ports = this.getPhase3Ports?.(workspaceId) ?? null;
+    } catch {
+      phase3Ports = null;
+    }
+    let dynamicBundle: DynamicToolBundle | null = null;
+    try {
+      dynamicBundle = this.getDynamicTools?.() ?? null;
+    } catch {
+      dynamicBundle = null;
+    }
+
+    const execute = createToolExecutor({
+      ctx,
+      storage: this.storage,
+      allowShellExecution: settings.allowShellExecution,
+      readOnly,
+      sandboxPolicy: this.sandboxPolicy(),
+      ...(this.assertToolAllowed ? { assertToolAllowed: this.assertToolAllowed } : {}),
+      requestSandboxWriteApproval: (call, changes) =>
+        this.awaitWritebackApproval(runId, call, changes),
+      ...(phase3Ports ? { phase3Ports } : {}),
+      ...(dynamicBundle ? { extraDispatcher: dynamicBundle.dispatch } : {}),
+    });
+
+    const baseSchemas: ToolSchema[] = agentToolSchemas({
+      readOnly,
+      phase3Available: !!phase3Ports,
+      ...(dynamicBundle ? { extraSchemas: dynamicBundle.schemas } : {}),
+    });
+
+    const budget = new BudgetController(this.budgetLimits());
+
+    this.addStep(runId, "message", `Multi-agent run started. Task: ${userTask}`);
+
+    try {
+      const outcome = await runMultiAgentTask(
+        {
+          llm,
+          store: this.storage,
+          budget,
+          ctx,
+          signal: controller.signal,
+          executor: execute,
+          baseSchemas,
+          approve: async () => {
+            this.addStep(runId, "message", "Planner DAG auto-approved (configure approve() port to add an explicit gate).");
+            return true;
+          },
+          askHuman: async (node, reason) => {
+            this.addStep(
+              runId,
+              "error",
+              `Node ${node.id} (${node.title}) needs human attention: ${reason}. Defaulting to cancel.`,
+            );
+            return "cancel";
+          },
+          requiresApproval: (call) =>
+            call.name === "apply_patch" ||
+            (call.name === "run_command" && settings.requireConfirmationBeforeCommand),
+          waitForApproval: (call) =>
+            call.name === "run_command"
+              ? this.awaitCommandConfirmation(runId, call)
+              : this.awaitApproval(runId, call),
+          verifyAfterPatch: (_call, result) =>
+            this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
+          onChunk: (chunk) => {
+            if (chunk.type === "text_delta" && typeof chunk.text === "string") {
+              this.emit({ kind: "delta", runId, text: chunk.text });
+            }
+          },
+          onAssistant: (text, _toolCalls, usage) => {
+            if (text.trim()) this.addStep(runId, "message", text);
+            this.storage.addRunUsage(runId, {
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              costUsd: usage.costUsd,
+              iterations: 1,
+            });
+            this.setStatus(runId, "tool_use");
+          },
+          onToolCall: (call) => {
+            this.storage.addRunUsage(runId, { toolCalls: 1 });
+            this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
+          },
+        },
+        runId,
+        userTask,
+      );
+
+      const finalStatus =
+        outcome.status === "done"
+          ? "done"
+          : outcome.status === "cancelled"
+            ? "cancelled"
+            : "failed";
+      this.addStep(
+        runId,
+        finalStatus === "done" ? "message" : "error",
+        `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
+      );
+      this.storage.setRunExitReason(runId, finalStatus);
+      this.setStatus(runId, finalStatus);
+    } catch (err) {
+      this.addStep(runId, "error", asMessage(err));
+      this.storage.setRunExitReason(runId, "failed");
+      this.setStatus(runId, "failed");
     } finally {
       this.controllers.delete(runId);
       this.approvals.delete(runId);
@@ -406,7 +730,16 @@ export class AgentService {
       return;
     }
     try {
-      const out = await runCommandTool.run({ command }, ctx);
+      // Baseline runs the project's verify command (pytest/npm test/etc.) for
+      // its pass/fail status. Cache files (`.pytest_cache`, `__pycache__`)
+      // are already in the hard-ignore set so they never appear in diff;
+      // anything else the test writes (coverage reports, etc.) is part of the
+      // project's own lifecycle, so we auto-apply without prompting.
+      const out = await runCommandWithPolicy({ command }, ctx, {
+        policy: this.sandboxPolicy(),
+        writeback: { kind: "auto" },
+        snapshotStore: this.storage,
+      });
       const report = parseTestFailure({
         command: out.command,
         stdout: out.stdout,
@@ -455,7 +788,13 @@ export class AgentService {
     this.addStep(runId, "tool_call", `verify $ ${command}`);
     let out;
     try {
-      out = await runCommandTool.run({ command }, ctx);
+      // Verify-after-patch runs the same project-native command as baseline;
+      // same writeback policy applies (see captureBaseline).
+      out = await runCommandWithPolicy({ command }, ctx, {
+        policy: this.sandboxPolicy(),
+        writeback: { kind: "auto" },
+        snapshotStore: this.storage,
+      });
     } catch (err) {
       this.addStep(runId, "error", `自动验证无法运行：${asMessage(err)}`);
       return `自动验证命令无法运行（${asMessage(err)}）。请检查后继续。`;
@@ -512,7 +851,60 @@ export class AgentService {
     const patch = patchArg(call);
     this.addStep(runId, "diff", patch);
     this.emit({ kind: "patch_ready", runId, patch });
-    this.pending.set(runId, { patch, command: null });
+    this.pending.set(runId, { kind: "patch", patch, command: null });
+    this.setStatus(runId, "waiting_for_user_approval");
+    return new Promise<boolean>((resolve) => {
+      this.approvals.set(runId, { resolve });
+    });
+  }
+
+  /**
+   * Park the loop on a docker/wsl run_command that produced file writes. The
+   * user sees a synthesised unified diff in the existing approval UI; the
+   * executor's `onApprove` callback waits on this promise and applies (or
+   * discards) the staged changes based on the user's choice.
+   */
+  private awaitWritebackApproval(
+    runId: string,
+    call: LLMToolCall,
+    changes: FileChange[],
+  ): Promise<boolean> {
+    const command = commandArg(call);
+    const patch = synthesizeUnifiedDiff(changes);
+    this.addStep(
+      runId,
+      "message",
+      `命令 \`${command}\` 在沙盒内修改了 ${changes.length} 个文件，等待你审批后再同步到工作区。`,
+    );
+    this.addStep(runId, "diff", patch);
+    this.emit({ kind: "patch_ready", runId, patch });
+    this.pending.set(runId, { kind: "command_writeback", patch, command });
+    this.setStatus(runId, "waiting_for_user_approval");
+    return new Promise<boolean>((resolve) => {
+      this.approvals.set(runId, { resolve });
+    });
+  }
+
+  /**
+   * Pre-execution approval for `run_command` calls when
+   * {@link AgentSettings.requireConfirmationBeforeCommand} is on. The user
+   * confirms that the command may run; the existing apply/reject IPC handlers
+   * resolve the same approval promise (true → execute, false → skip).
+   * The pending "patch" payload is a `$ <command>` line so the existing diff
+   * renderer in the GUI can show it as a single context line; richer UI can
+   * later branch on `Pending.kind`.
+   */
+  private awaitCommandConfirmation(runId: string, call: LLMToolCall): Promise<boolean> {
+    const command = commandArg(call);
+    const preview = `$ ${command}`;
+    this.addStep(
+      runId,
+      "message",
+      `等待你确认是否执行命令 \`${command}\`（已在设置中开启"运行前确认"）。`,
+    );
+    this.addStep(runId, "diff", preview);
+    this.emit({ kind: "patch_ready", runId, patch: preview });
+    this.pending.set(runId, { kind: "command_confirm", patch: preview, command });
     this.setStatus(runId, "waiting_for_user_approval");
     return new Promise<boolean>((resolve) => {
       this.approvals.set(runId, { resolve });
@@ -559,8 +951,19 @@ export class AgentService {
     ].join("\n");
   }
 
+  /**
+   * Build the per-run budget from the live agent settings. `maxAutoSteps` is
+   * surfaced in the GUI as "auto-iteration ceiling", `budgetUsd` as "dollar
+   * cap"; both run through {@link clampBudgetLimits} so a misconfigured
+   * settings.json can never exceed the absolute hard caps.
+   */
   private budgetLimits(): BudgetLimits {
-    return clampBudgetLimits(DEFAULT_BUDGET_LIMITS);
+    const s = this.getAgentSettings();
+    return clampBudgetLimits({
+      ...DEFAULT_BUDGET_LIMITS,
+      maxIterations: s.maxAutoSteps,
+      maxCostUsd: s.budgetUsd,
+    });
   }
 
   private addStep(runId: string, type: AgentStepType, content: string): void {
@@ -595,6 +998,67 @@ function patchArg(call: LLMToolCall): string {
     if (typeof patch === "string") return patch;
   }
   return "";
+}
+
+function commandArg(call: LLMToolCall): string {
+  const args = call.args;
+  if (typeof args === "object" && args !== null && "command" in args) {
+    const cmd = (args as { command: unknown }).command;
+    if (typeof cmd === "string") return cmd;
+  }
+  return "";
+}
+
+/**
+ * Build a unified diff string from a sandbox change set so the existing
+ * approval UI (which already renders unified diffs for `apply_patch`) can
+ * preview a `run_command` writeback without a separate code path. Added /
+ * deleted files use `/dev/null` markers the way git does. Plain text — no
+ * locale-dependent formatting — so the front-end can rely on a stable shape.
+ */
+function synthesizeUnifiedDiff(changes: FileChange[]): string {
+  const blocks: string[] = [];
+  for (const change of changes) {
+    if (change.kind === "added") {
+      const lines = change.content.split("\n");
+      // If the content ends with "\n", split() yields a trailing empty
+      // element which would print as an empty "+" line — strip it.
+      const trailingNewline = change.content.endsWith("\n");
+      const bodyLines = trailingNewline ? lines.slice(0, -1) : lines;
+      blocks.push(
+        `--- /dev/null\n+++ b/${change.path}\n@@ -0,0 +1,${bodyLines.length} @@\n` +
+          bodyLines.map((l) => `+${l}`).join("\n") +
+          (bodyLines.length > 0 ? "\n" : ""),
+      );
+    } else if (change.kind === "deleted") {
+      const lines = change.before.split("\n");
+      const trailingNewline = change.before.endsWith("\n");
+      const bodyLines = trailingNewline ? lines.slice(0, -1) : lines;
+      blocks.push(
+        `--- a/${change.path}\n+++ /dev/null\n@@ -1,${bodyLines.length} +0,0 @@\n` +
+          bodyLines.map((l) => `-${l}`).join("\n") +
+          (bodyLines.length > 0 ? "\n" : ""),
+      );
+    } else {
+      // modified — emit a coarse "replace everything" hunk. Real per-line
+      // hunking would require the `diff` package; the GUI renders this fine
+      // as a unified diff, so we keep the synthesis dependency-light.
+      const beforeLines = change.before.split("\n");
+      const afterLines = change.after.split("\n");
+      const trimTrailing = (lines: string[], src: string): string[] =>
+        src.endsWith("\n") ? lines.slice(0, -1) : lines;
+      const b = trimTrailing(beforeLines, change.before);
+      const a = trimTrailing(afterLines, change.after);
+      blocks.push(
+        `--- a/${change.path}\n+++ b/${change.path}\n@@ -1,${b.length} +1,${a.length} @@\n` +
+          b.map((l) => `-${l}`).join("\n") +
+          (b.length > 0 ? "\n" : "") +
+          a.map((l) => `+${l}`).join("\n") +
+          (a.length > 0 ? "\n" : ""),
+      );
+    }
+  }
+  return blocks.join("\n");
 }
 
 function summarizeArgs(call: LLMToolCall): string {

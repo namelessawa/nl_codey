@@ -4,14 +4,7 @@ import {
   IPC,
   validateSettings,
   type AppSettings,
-  type ContinueAgentTaskArgs,
-  type ReadFileArgs,
-  type RunAgentTaskArgs,
-  type RunCommandArgs,
-  type RunIdArgs,
   type SettingsPayload,
-  type TestLLMConnectionArgs,
-  type WorkspaceIdArgs,
 } from "@coding-agent/shared";
 import { scanFiles } from "@coding-agent/project-indexer";
 import { testLLMConnection } from "@coding-agent/llm";
@@ -20,6 +13,15 @@ import type { Services } from "./services.js";
 import { handle } from "./ipc-handle.js";
 import { registerPhase3Ipc } from "./phase3-ipc.js";
 import { registerPhase4Ipc } from "./phase4-ipc.js";
+import {
+  validateContinueAgentTask,
+  validateReadFile,
+  validateRunAgentTask,
+  validateRunCommand,
+  validateRunId,
+  validateTestLLMConnection,
+  validateWorkspaceId,
+} from "./validators.js";
 
 export function registerIpc(services: Services): void {
   const { storage, agent, settings, installationGate } = services;
@@ -46,8 +48,8 @@ export function registerIpc(services: Services): void {
 
   handle(IPC.listWorkspaces, () => storage.listWorkspaces());
 
-  handle(IPC.openRecentWorkspace, (args) => {
-    const { workspaceId } = args as WorkspaceIdArgs;
+  handle(IPC.openRecentWorkspace, (raw) => {
+    const { workspaceId } = validateWorkspaceId(raw);
     const ws = storage.getWorkspace(workspaceId);
     if (!ws) throw new Error("Workspace not found");
     if (!fs.existsSync(ws.rootPath)) {
@@ -57,37 +59,46 @@ export function registerIpc(services: Services): void {
     return storage.upsertWorkspace(ws.rootPath);
   });
 
-  handle(IPC.listWorkspaceFiles, async (workspaceId) => {
-    const root = requireWorkspaceRoot(workspaceId as string);
+  // `listWorkspaceFiles` uniquely takes a bare string (not an object) — kept
+  // for renderer back-compat. Tolerate both shapes for defence in depth.
+  handle(IPC.listWorkspaceFiles, async (raw) => {
+    const workspaceId =
+      typeof raw === "string"
+        ? raw
+        : validateWorkspaceId(raw).workspaceId;
+    const root = requireWorkspaceRoot(workspaceId);
     return scanFiles(root);
   });
 
-  handle(IPC.readFile, async (args) => {
-    const { workspaceId, path } = args as ReadFileArgs;
+  handle(IPC.readFile, async (raw) => {
+    const { workspaceId, path } = validateReadFile(raw);
     const root = requireWorkspaceRoot(workspaceId);
     return readFileTool.run({ path }, { workspaceRoot: root, runId: "read" });
   });
 
-  handle(IPC.runAgentTask, async (args) => {
-    const { workspaceId, task } = args as RunAgentTaskArgs;
+  handle(IPC.runAgentTask, async (raw) => {
+    const { workspaceId, task } = validateRunAgentTask(raw);
     return agent.runTask(workspaceId, task);
   });
 
-  handle(IPC.continueAgentTask, async (args) => {
-    const { runId, followUp } = args as ContinueAgentTaskArgs;
+  handle(IPC.continueAgentTask, async (raw) => {
+    const { runId, followUp } = validateContinueAgentTask(raw);
     return agent.continueTask(runId, followUp);
   });
 
-  handle(IPC.applyAgentPatch, async (args) => agent.applyPatch((args as RunIdArgs).runId));
-  handle(IPC.rejectAgentPatch, (args) => agent.rejectPatch((args as RunIdArgs).runId));
-  handle(IPC.rollbackRun, (args) => agent.rollback((args as RunIdArgs).runId));
-  handle(IPC.stopAgentRun, (args) => agent.stop((args as RunIdArgs).runId));
-  handle(IPC.getAgentRun, (args) => agent.getDetail((args as RunIdArgs).runId));
-  handle(IPC.listAgentRuns, (workspaceId) => agent.listRuns(workspaceId as string));
-  handle(IPC.clearAgentRuns, (args) => agent.clearRuns((args as WorkspaceIdArgs).workspaceId));
+  handle(IPC.applyAgentPatch, async (raw) => agent.applyPatch(validateRunId(raw).runId));
+  handle(IPC.rejectAgentPatch, (raw) => agent.rejectPatch(validateRunId(raw).runId));
+  handle(IPC.rollbackRun, (raw) => agent.rollback(validateRunId(raw).runId));
+  handle(IPC.stopAgentRun, (raw) => agent.stop(validateRunId(raw).runId));
+  handle(IPC.getAgentRun, (raw) => agent.getDetail(validateRunId(raw).runId));
+  // `listAgentRuns` takes a bare string like `listWorkspaceFiles`.
+  handle(IPC.listAgentRuns, (raw) =>
+    agent.listRuns(typeof raw === "string" ? raw : validateWorkspaceId(raw).workspaceId),
+  );
+  handle(IPC.clearAgentRuns, (raw) => agent.clearRuns(validateWorkspaceId(raw).workspaceId));
 
-  handle(IPC.runCommand, async (args) => {
-    const { workspaceId, command } = args as RunCommandArgs;
+  handle(IPC.runCommand, async (raw) => {
+    const { workspaceId, command } = validateRunCommand(raw);
     // Installation gate: refuse if Docker is missing and the user skipped.
     // Throws a readable error which the renderer surfaces in the run detail.
     installationGate.assertToolAllowed("run_command");
@@ -111,8 +122,8 @@ export function registerIpc(services: Services): void {
     return settingsPayload();
   });
 
-  handle(IPC.testLLMConnection, async (args) => {
-    const { config } = args as TestLLMConnectionArgs;
+  handle(IPC.testLLMConnection, async (raw) => {
+    const { config } = validateTestLLMConnection(raw);
     return testLLMConnection(config);
   });
 

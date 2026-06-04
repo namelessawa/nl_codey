@@ -1,4 +1,26 @@
-export { AgentService, type AgentDeps } from "./service.js";
+export {
+  AgentService,
+  type AgentDeps,
+  type Phase4AugmentationFn,
+  type Phase3PortsFn,
+  type DynamicToolBundle,
+  type DynamicToolBundleFn,
+} from "./service.js";
+export {
+  PHASE3_AGENT_TOOL_NAMES,
+  PHASE3_AGENT_TOOL_SCHEMAS,
+  PHASE3_MUTATING_TOOLS,
+  createPhase3Dispatcher,
+  type Phase3AgentPorts,
+  type Phase3AgentToolName,
+} from "./phase3-schemas.js";
+export {
+  ORCHESTRATOR_TOOL_SCHEMAS,
+  runMultiAgentTask,
+  parseReviewResult,
+  type MultiAgentDeps,
+  type MultiAgentStore,
+} from "./multi-agent.js";
 export { BudgetController } from "./budget.js";
 export { runToolLoop, consumeStream, type ToolLoopOutcome, type ToolLoopDeps } from "./loop.js";
 export {

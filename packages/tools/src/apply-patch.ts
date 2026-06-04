@@ -26,6 +26,12 @@ type PlannedChange = {
  *
  * Supports two formats: V4A (context-based, preferred — detected by the
  * `*** Begin Patch` envelope) and unified diff (Phase 1 compatibility).
+ *
+ * If a write or delete partway through Phase B fails (disk full, permission,
+ * antivirus locked the file), the helper rolls back every file it already
+ * touched in this call to its pre-patch contents using the snapshots taken
+ * moments earlier. The originating error is then re-thrown. This keeps the
+ * workspace consistent — either all of the patch lands, or none of it does.
  */
 export async function applyPatchTool(
   input: ApplyPatchInput,
@@ -40,18 +46,52 @@ export async function applyPatchTool(
     throw new ToolError(TOOL_CODES.patchInvalid, "Patch contains no file changes");
   }
 
-  // Phase B — snapshot + write/delete. Safe to mutate now that all changes resolved.
+  // Phase B — snapshot + write/delete. Safe to mutate now that all changes
+  // resolved cleanly. Track every file we touched so a mid-loop failure can
+  // unwind back to the pre-patch state.
   const changedFiles: string[] = [];
+  const applied: PlannedChange[] = [];
   for (const change of planned) {
     const snap = store.addSnapshot(input.runId, change.relPath, change.before);
-    if (change.op === "delete") {
-      if (change.existed) await fs.rm(change.absPath, { force: true });
-      store.setSnapshotAfter(snap.id, "");
-    } else {
-      await fs.mkdir(dirOf(change.absPath), { recursive: true });
-      await fs.writeFile(change.absPath, change.after, "utf8");
-      store.setSnapshotAfter(snap.id, change.after);
+    try {
+      if (change.op === "delete") {
+        if (change.existed) await fs.rm(change.absPath, { force: true });
+        store.setSnapshotAfter(snap.id, "");
+      } else {
+        await fs.mkdir(dirOf(change.absPath), { recursive: true });
+        await fs.writeFile(change.absPath, change.after, "utf8");
+        store.setSnapshotAfter(snap.id, change.after);
+      }
+    } catch (writeErr) {
+      // Roll back every file we managed to mutate in this call so the
+      // workspace returns to the pre-patch state instead of being left half-
+      // written. Failures inside the rollback itself are surfaced after the
+      // primary error.
+      const rollbackErrors: string[] = [];
+      for (const prior of [...applied].reverse()) {
+        try {
+          if (prior.op === "add") {
+            // We created the file; restore by deleting it.
+            await fs.rm(prior.absPath, { force: true });
+          } else {
+            // We modified or deleted an existing file; restore the bytes.
+            await fs.mkdir(dirOf(prior.absPath), { recursive: true });
+            await fs.writeFile(prior.absPath, prior.before, "utf8");
+          }
+        } catch (rollbackErr) {
+          rollbackErrors.push(
+            `${prior.relPath}: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+          );
+        }
+      }
+      const primary = writeErr instanceof Error ? writeErr.message : String(writeErr);
+      const note =
+        rollbackErrors.length === 0
+          ? `Patch write failed on ${change.relPath} (${primary}); rolled back ${applied.length} prior file change(s).`
+          : `Patch write failed on ${change.relPath} (${primary}); rollback also failed for: ${rollbackErrors.join("; ")}. Manual recovery may be needed.`;
+      throw new ToolError(TOOL_CODES.patchApplyFailed, note);
     }
+    applied.push(change);
     changedFiles.push(change.relPath);
   }
 
@@ -88,29 +128,87 @@ async function planUnified(patch: string, ctx: ToolContext): Promise<PlannedChan
 /** Phase A for V4A patches: resolve each file op against current content. */
 async function planV4A(patch: string, ctx: ToolContext): Promise<PlannedChange[]> {
   const ops = parseV4A(patch);
-  const planned: PlannedChange[] = [];
+
+  // Track per-path evolving state as ops apply in order. Critical for patches
+  // with multiple Update / Add / Delete blocks on the same file: a second op's
+  // hunk must see the first op's result, NOT the unmodified on-disk content.
+  // Without this, Phase A planned the second op against stale bytes and
+  // Phase B's two writes would silently overwrite each other (last-write-wins,
+  // earlier hunk dropped). The collapse at the end also dedups `changedFiles`.
+  type FileState = {
+    absPath: string;
+    initialBefore: string;
+    initialExisted: boolean;
+    current: string;
+    exists: boolean;
+  };
+  const states = new Map<string, FileState>();
+
   for (const op of ops) {
     const absPath = assertInsideWorkspace(ctx.workspaceRoot, op.path);
-    const existed = existsSync(absPath);
-    const before = existed ? await fs.readFile(absPath, "utf8") : "";
+    let state = states.get(op.path);
+    if (!state) {
+      const existed = existsSync(absPath);
+      const before = existed ? await fs.readFile(absPath, "utf8") : "";
+      state = {
+        absPath,
+        initialBefore: before,
+        initialExisted: existed,
+        current: before,
+        exists: existed,
+      };
+      states.set(op.path, state);
+    }
 
     if (op.op === "delete") {
-      if (!existed) {
+      if (!state.exists) {
         throw new ToolError(TOOL_CODES.patchApplyFailed, `Cannot delete missing file: ${op.path}`);
       }
-      planned.push({ op: "delete", relPath: op.path, absPath, before, after: "", existed });
+      state.current = "";
+      state.exists = false;
     } else if (op.op === "add") {
-      planned.push({ op: "add", relPath: op.path, absPath, before, after: op.content, existed });
+      // V4A "Add File" must NOT silently overwrite a file that exists in the
+      // current (in-memory) state — either it was on disk pre-patch or an
+      // earlier op already created it. Refusing keeps the model honest:
+      // intentional rewrites must use "Update File".
+      if (state.exists) {
+        throw new ToolError(
+          TOOL_CODES.patchApplyFailed,
+          `Cannot add ${op.path}: file already exists. Use "Update File" to modify, or delete it first.`,
+        );
+      }
+      state.current = op.content;
+      state.exists = true;
     } else {
-      if (!existed) {
+      if (!state.exists) {
         throw new ToolError(
           TOOL_CODES.patchApplyFailed,
           `Cannot update missing file: ${op.path} (use Add File instead)`,
         );
       }
-      const after = applyV4AHunks(before, op.hunks, op.path);
-      planned.push({ op: "update", relPath: op.path, absPath, before, after, existed });
+      state.current = applyV4AHunks(state.current, op.hunks, op.path);
     }
+  }
+
+  // Collapse each path's final state into one PlannedChange. Net-zero paths
+  // (e.g. add-then-delete of a file that didn't exist) are skipped — Phase B
+  // has nothing to do for them. Paths reborn (delete-then-add when the file
+  // initially existed) collapse to a single "update" with the rewritten body.
+  const planned: PlannedChange[] = [];
+  for (const [relPath, s] of states) {
+    if (!s.initialExisted && !s.exists) continue;
+    let op: ChangeOp;
+    if (!s.initialExisted && s.exists) op = "add";
+    else if (s.initialExisted && !s.exists) op = "delete";
+    else op = "update";
+    planned.push({
+      op,
+      relPath,
+      absPath: s.absPath,
+      before: s.initialBefore,
+      after: op === "delete" ? "" : s.current,
+      existed: s.initialExisted,
+    });
   }
   return planned;
 }

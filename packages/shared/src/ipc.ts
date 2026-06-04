@@ -210,7 +210,14 @@ export interface AgentApi {
   updateMemoryEntry(args: UpdateMemoryArgs): Promise<IpcResult<MemoryEntry>>;
   deleteMemoryEntry(args: DeleteMemoryArgs): Promise<IpcResult<{ deleted: boolean }>>;
   exportMemory(args: WorkspaceIdArgs): Promise<IpcResult<{ filePath: string }>>;
-  importMemory(args: ImportMemoryArgs): Promise<IpcResult<{ imported: number }>>;
+  /**
+   * Import a project-memory export. The file path is picked by the user via
+   * an OS dialog on the main side — the renderer no longer supplies a path
+   * (defence against a compromised renderer asking main to read arbitrary
+   * host files with main's privileges). Returns `{imported: 0, filePath:
+   * null}` when the user cancels the dialog.
+   */
+  importMemory(args: ImportMemoryArgs): Promise<IpcResult<{ imported: number; filePath: string | null }>>;
   // --- Phase 3: semantic index ---
   rebuildSemanticIndex(args: WorkspaceIdArgs): Promise<IpcResult<SemanticIndexStatus>>;
   getSemanticIndexStatus(args: WorkspaceIdArgs): Promise<IpcResult<SemanticIndexStatus>>;
@@ -293,7 +300,11 @@ export type ListMemoryArgs = { workspaceId: string; filter?: MemoryFilter };
 export type CreateMemoryArgs = { workspaceId: string; entry: MemoryEntryInput };
 export type UpdateMemoryArgs = { id: string; patch: MemoryEntryPatch };
 export type DeleteMemoryArgs = { id: string };
-export type ImportMemoryArgs = { workspaceId: string; filePath: string };
+/**
+ * Import-memory IPC payload. The legacy `filePath` field is gone — the file
+ * is now chosen via the OS dialog on the main side (see {@link AgentApi.importMemory}).
+ */
+export type ImportMemoryArgs = { workspaceId: string };
 export type SemanticSearchArgs = {
   workspaceId: string;
   query: string;

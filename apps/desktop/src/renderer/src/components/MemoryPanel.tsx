@@ -97,15 +97,23 @@ export function MemoryPanel({ workspaceId }: MemoryPanelProps): JSX.Element {
   }, [workspaceId]);
 
   const importMemory = useCallback(async () => {
-    if (!importPath.trim()) return;
     setError(null);
     try {
-      await api.importMemory(workspaceId, importPath.trim());
-      await load();
+      // The main process opens an OS dialog and reads the file with main's
+      // privileges. We don't supply a path any more — see api.importMemory.
+      const { imported, filePath } = await api.importMemory(workspaceId);
+      if (filePath) {
+        setImportPath(filePath);
+        await load();
+        setError(null);
+      }
+      // imported === 0 + filePath === null → user cancelled the dialog;
+      // intentionally show nothing.
+      void imported;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [workspaceId, importPath, load]);
+  }, [workspaceId, load]);
 
   return (
     <div className="mem-panel">
@@ -125,15 +133,12 @@ export function MemoryPanel({ workspaceId }: MemoryPanelProps): JSX.Element {
 
       <div className="mem-io">
         <button onClick={() => void exportMemory()}>Export</button>
-        <input
-          className="mem-input"
-          placeholder="Import from file path…"
-          value={importPath}
-          onChange={(e) => setImportPath(e.target.value)}
-        />
-        <button onClick={() => void importMemory()} disabled={!importPath.trim()}>
-          Import
-        </button>
+        <button onClick={() => void importMemory()}>Import…</button>
+        {importPath && (
+          <span className="mem-import-path" title={importPath}>
+            {importPath.split(/[\\/]/).pop()}
+          </span>
+        )}
       </div>
 
       <div className="mem-add">

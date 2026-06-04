@@ -5,7 +5,288 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Security (CodeQL clearance on PR #16)
+- **Cleared all 16 open code-scanning alerts** on `feat/phase4-multiagent-bugfixes`
+  so the CodeQL ruleset gate can pass:
+  - `js/second-order-command-line-injection` in
+    `packages/git-integration/src/git-exec.ts`: argv passed to `git` is now
+    rejected if it contains options that instruct git itself to run a
+    subordinate command (`--upload-pack`, `--receive-pack`, `--exec`,
+    `--exec-path`, `--config-env`, `ext::` URLs, and `-c <key>=` overrides
+    of `core.{sshCommand,pager,editor,fsmonitor,askPass}`, `http.proxy`,
+    `url.*.insteadOf`). `branch-manager` additionally validates ref names
+    (no `-` prefix, no shell-meta chars, no `..` / `@{`).
+  - `js/polynomial-redos` × 15 across `parse-test-failure.ts` (TSC/Vitest/
+    Jest/Pytest/Go/Cargo line parsers), `diff-summarizer.ts`, `anthropic.ts`,
+    `openai-compatible.ts`, `semantic-index/embedder.ts`, `llm/prompts.ts`,
+    and `web-tools/web-fetch.ts`: replaced lazy-`.+?` + greedy-`\s+`,
+    unbounded `[\s\S]*?`-to-literal-terminator, and `\/+$` patterns with
+    non-backtracking character classes, literal single spaces, and
+    hand-rolled scans. All 107 affected-package tests still pass.
+
+### Changed (Sprint 4 — Phase 3/4 wired into the live agent loop)
+- **Phase 4 prompt augmentation is now actually injected into the system
+  prompt.** Previously `buildPhase4PromptAugmentation` was defined and
+  unit-tested but no production code called it; `getSystemPrompt` / the read-
+  only variant ran straight through with no GlobalPattern / StyleSpec / fine-
+  tune identity reminder context. `AgentService` now takes a
+  `getPhase4Augmentation: (workspaceId) => string` hook (`Phase4AugmentationFn`)
+  and prepends its output after the base prompt; `apps/desktop` wires it from
+  `storage.phase4.listGlobalPatterns()` + `getStyleSpec()` +
+  `getActiveModel()`, gated by the respective Phase 4 feature flags. Failures
+  fall through to an empty string so a sick Phase 4 surface never blocks a
+  normal run. New shared `Phase4SettingsStore` (lifted out of `phase4-ipc.ts`)
+  keeps the augmentation gate and the IPC handlers reading from one cache.
+- **Phase 3 tools (`semantic_search` / `read_memory` / `write_memory` /
+  `web_search` / `web_fetch`) now appear in the autonomous-loop tool surface.**
+  They were defined in `@coding-agent/tools` and tested in isolation, but
+  `agentToolSchemas` only advertised the Phase 1/2 catalogue, so the model
+  never saw them. New `PHASE3_AGENT_TOOL_SCHEMAS` + `createPhase3Dispatcher`
+  in `agent-core`, an optional `Phase3AgentPorts` bundle on
+  `ToolExecutorOptions`, and a `getPhase3Ports` hook on AgentService route
+  semantic-search hits / memory hits / web fetches through the existing
+  approval + sandbox + budget machinery. `agentToolSchemas` now takes
+  `phase3Available` (off by default) and a new `extraSchemas` slot for plugin
+  / dynamic tools. `write_memory` joins `apply_patch` / `write_file` in the
+  read-only filter so query-only mode stays query-only. `apps/desktop` wires
+  the ports from `Phase3Services` + `searchChunks` + `MemoryRetriever` +
+  `webSearch` (DuckDuckGo backend) + `webFetch`. 14 new unit tests in
+  `phase3-schemas.test.ts` cover schema visibility, read-only filtering, and
+  dispatcher routing.
+- **`convertProposal` actually creates a run instead of throwing.** The
+  Phase 4 IPC handler used to fail with "not yet wired to the Planner
+  pipeline" — clicking *Convert* did nothing. It now composes a self-
+  contained user task from `proposal.title` + `rationale` + affected files
+  and calls `services.agent.runTask(workspaceId, task)`, then stamps the
+  proposal `converted_to_task` with the real `convertedRunId` so the UI can
+  navigate from inbox to run. Reuses every existing safety gate
+  (approval / sandbox / budget / installation gate). Double-convert is
+  refused with a readable error.
+- **Plugin tools are now visible to the agent loop and routed through
+  `PluginHost`.** `PluginHost` existed but had no caller outside its own
+  tests; installed plugins were dead state. New `apps/desktop/src/main/
+  plugin-runtime.ts` builds a dynamic `{schemas, dispatch}` bundle per
+  driveLoop entry from the enabled `PluginInstallation` set, advertises
+  `plugin__<plugin>__<tool>` schemas to the model, and routes invocations
+  through `PluginHost.invoke` (which re-validates enablement + permissions
+  per call). Whitelist-sandbox plugins spawn Node with cwd locked to the
+  plugin install dir; `wsl` / `docker` sandbox modes return a clear
+  "not yet supported for plugin invocations" error rather than silently
+  failing. AgentService gains a `getDynamicTools` hook for the broader
+  pattern (future MCP servers etc. plug in the same shape).
+- **`createFinetuneJob` now drives a background training process.** It used
+  to be a single `storage.phase4.createFinetuneJob(input)` insert with no
+  consumer — jobs queued forever, `LoRATrainer` had zero call sites. New
+  `apps/desktop/src/main/finetune-runner.ts` looks for a user-supplied
+  Python script at `<userData>/finetune/train.py`, spawns it with
+  `--base-model / --dataset-id / --method / --output-dir`, captures
+  `ARTIFACT:` as the success marker, and transitions job status
+  `queued → training → evaluating` on success or `→ failed` with an
+  explicit `evalResult.gateReasons` on missing script / spawn error /
+  timeout / bad output. `resumeQueued()` runs at startup so an
+  interrupted job continues across restarts. Promotion to active model
+  still flows through the eval gate + `ModelRegistry` per the Phase 4
+  design.
+- **Opt-in multi-agent mode.** New `agent.multiAgentEnabled` setting routes
+  runs through the Phase 3 Coordinator (Planner → Coder → Reviewer) instead
+  of the single-agent loop. New `multi-agent.ts` in `agent-core` provides
+  the role-specific tool loops (filtered by `ROLE_TOOLS` from
+  `@coding-agent/orchestrator`) and the strict-JSON `parseReviewResult` for
+  the reviewer's verdict, plus orchestrator-only schemas
+  (`propose_task_breakdown` / `update_task_status` / `request_review` /
+  `approve_change` / `request_changes`). `AgentService.driveMultiAgentLoop`
+  builds the same executor + Phase 3 ports + plugin bundle the single-agent
+  path uses, so safety guarantees (approval / sandbox / verify-after-patch
+  / snapshots) are identical. Default off so the long-standing single-agent
+  behaviour is preserved.
+- **Real-LLM smoke test.** New `real-llm.integration.test.ts` drives the
+  autonomous loop against a real DeepSeek provider (extensible to others)
+  with stubbed Phase 3 ports and asserts that `read_memory` was invoked end-
+  to-end. Skips cleanly when `DEEPSEEK_API_KEY` is unset so `pnpm test`
+  passes without API credentials. To run: set `DEEPSEEK_API_KEY` and execute
+  `pnpm exec vitest run packages/agent-core/src/real-llm.integration.test.ts`.
+
+### Changed (Sprint 3 — storage integrity + apply_patch hardening + Phase 4 cleanup)
+- **Storage gains foreign keys, unique constraints, cascade deletes, and a
+  proper version-tracked migration path.** The Phase 1 tables (`agent_runs`,
+  `agent_steps`, `agent_run_messages`, `file_snapshots`) used to declare
+  `workspace_id` / `run_id` as bare `TEXT NOT NULL` with no `REFERENCES`
+  even though `PRAGMA foreign_keys = ON` was set, so consistency relied on
+  application code calling `DELETE` in the right order. New schema adds
+  `workspaces.root_path UNIQUE`, foreign keys with `ON DELETE CASCADE` on
+  every `workspace_id` / `run_id` column, and a `UNIQUE (run_id, seq)` index
+  on `agent_run_messages` so a buggy double-save fails loudly instead of
+  silently creating duplicate conversation rows. A new `schema_meta` table
+  tracks the structural version; `STRUCTURAL_MIGRATIONS` rebuild the
+  affected tables in a transaction (copy → drop → rename) when upgrading a
+  legacy v1 database, dropping orphan rows first so the new FK rules apply
+  cleanly. Fresh installs jump straight to the latest version. The native
+  test (`storage.test.ts`) still hits the pre-existing better-sqlite3 ABI
+  issue documented in CLAUDE.md.
+- **`apply_patch` now refuses to overwrite an existing file from V4A
+  "Add File"** instead of silently clobbering it. The model must use
+  `*** Update File:` for any intentional rewrite — accidental Adds are
+  almost always the model misreading the workspace, and refusing surfaces
+  the mistake immediately instead of corrupting the file. Error message
+  points the model at the correct operation.
+- **`apply_patch` rolls back partial writes on a mid-batch failure.** The
+  doc-string already promised "transactional", but Phase B (the write
+  loop) just iterated without unwind logic — a write failing on file N
+  left files 1..N-1 mutated and the workspace in an inconsistent half-
+  patched state. The loop now tracks every file it touches in this call
+  and, on a write error, reverses each change (deletes any file it added,
+  restores the bytes of any file it modified or deleted) before re-throwing
+  the originating error. Rollback errors are appended to the thrown message
+  so the user knows when manual recovery is needed. 2 new tests in
+  `apply-patch.test.ts` lock the contract.
+- **`convertProposal` (Phase 4) marked experimental and refuses to run.**
+  The handler used to record a synthetic `pending-<id>` run id that was
+  never wired to the Planner pipeline — clicking "Convert" looked like it
+  did something but produced no actual run. It now throws a clear
+  "not yet wired to the Planner pipeline" error; the proposal row is left
+  intact. The "Convert" button in `ProposalInbox` is disabled with a
+  tooltip explaining the status. Snooze and dismiss still work and the
+  proposal scan is unchanged.
+
+### Security (Sprint 2 — IPC validation + privileged-entry lockdown)
+- **P1: every IPC handler now runtime-validates its payload before touching
+  the storage / filesystem / agent.** Previously each handler did
+  `args as XYZArgs` and trusted that the renderer sent the right shape. A
+  compromised renderer (XSS in a future plugin, malicious fetched HTML
+  rendered with `dangerouslySetInnerHTML`, etc.) could send garbage and rely
+  on `undefined.runId` exceptions surfacing later. New hand-rolled validators
+  (`apps/desktop/src/main/validators.ts`) reject bad shapes at the IPC
+  boundary with a readable error fed through the existing
+  `{ok:false,error}` envelope. Covered: `runAgentTask`, `continueAgentTask`,
+  `runCommand`, `readFile`, `applyAgentPatch`/`rejectAgentPatch`/
+  `rollbackRun`/`stopAgentRun`/`getAgentRun`, `clearAgentRuns`,
+  `openRecentWorkspace`, `testLLMConnection`, every memory CRUD,
+  semantic-search, task-tree, role-message, git, sandbox-mode, and the
+  plugin-install path. 21 new `validators.test.ts` cases lock the contract
+  (rejects non-objects, empty strings, unknown enums, missing required
+  fields; accepts the network-scoped permission template literal).
+- **P1: `importMemory` no longer reads renderer-supplied file paths.**
+  Previously the renderer passed `{workspaceId, filePath}` and the main
+  process happily `fs.readFileSync(filePath)` with main's privileges — a
+  compromised renderer could read any host file. Now the IPC contract is
+  `{workspaceId}` only; the main process opens an Electron
+  `dialog.showOpenDialog` so the **user** picks the JSON file every time. The
+  IPC return type carries the chosen `filePath` back to the renderer for
+  display. `MemoryPanel.tsx` updated: the "paste path" text input is gone,
+  the Import button now opens the dialog directly. Shared `AgentApi` and
+  `ImportMemoryArgs` types updated in lockstep.
+- **P1: `installPlugin` now routes through `PluginLoader`.** The handler
+  used to skip both the SDK manifest validator and the user-permission
+  prompt — `storage.phase4.installPlugin(a.manifest, a.installPath,
+  a.approvedPermissions)` ran with whatever shape the renderer sent. A
+  compromised renderer could install a plugin claiming any permission set
+  with no user interaction. New wiring instantiates a `PluginLoader` with a
+  `PluginRepository` adapter over `Phase4Storage` and a `PermissionPrompter`
+  backed by `dialog.showMessageBox` (all-or-nothing approval for now;
+  per-permission UI is a follow-up). The handler validates the manifest
+  shape via the new validator, then calls `pluginLoader.install()` which
+  internally runs `validateManifest` (rejects bad semver, non-snake_case
+  tool names, unknown permissions) and `prompter.ask` (user must click
+  "Approve all" in an OS dialog) before anything reaches the database.
+  `setPluginEnabled` / `uninstallPlugin` gained inline shape checks too.
+
+### Security (Sprint 1 — unified security model)
+- **P0: docker/wsl `run_command` bypassed the approval/snapshot/rollback gate
+  and wrote straight through the bind-mounted host workspace.** Previously,
+  `runCommandWithPolicy` only enforced the host whitelist on the
+  `whitelist` branch; the `docker` and `wsl` branches handed the request to
+  `routeCommand` → `DockerRunner` / `WslRunner`, both of which bind-mounted
+  the **real** workspace (`-v <workspace>:/work` for docker, `--cd <workspace>`
+  for wsl) and ran `sh -lc <command>` with no diff capture, no approval, no
+  snapshot. The model could `rm -rf .` or `echo 'pwned' > index.ts` and the
+  writes hit the user's source tree directly. Now every sandboxed command goes
+  through a per-command copy-on-write staging directory under `os.tmpdir()`
+  (new `WorkspaceSandbox` class in `packages/sandbox`): the workspace is
+  copied into staging (hard-ignoring `node_modules` / `.git` / `dist` / etc.,
+  capped at 8000 files / 200 MB), the runner is repointed at the staging dir
+  instead of the host workspace, and after the command finishes a diff
+  (`WorkspaceSandbox.diff`) reports which files were added/modified/deleted.
+  Those changes are then handled per the caller's declared `writeback` mode:
+  `auto` syncs + snapshots immediately (used by user-typed Run Command panel
+  + baseline/verify), `approve` parks for explicit user approval via the
+  existing patch-approval UI (used by every LLM-initiated `run_command` in
+  docker/wsl mode), `discard` drops them (the safe default). Binary writes are
+  surfaced as `binaryConflicts` and never auto-synced — opaque blobs must be
+  reviewed by a human. New `requestSandboxWriteApproval` callback on the tool
+  executor + new `awaitWritebackApproval` on `AgentService` synthesise a
+  unified diff from the change set so the renderer's existing diff renderer
+  shows the preview. Verified end-to-end against a real Docker container:
+  `echo pwned > sandbox-only.txt` produces a change in staging but **does
+  not** touch the host workspace until the user clicks Apply. 8 new
+  `workspace-sandbox.test.ts` cases lock the CoW + diff contract; 3 new
+  `e2e-docker.test.ts` cases lock the three writeback policies.
+- **P0: read-only ("instruction") agent mode was hard-coded OFF by a
+  DEBUG/TEST OVERRIDE in `apps/desktop/src/main/services.ts` (`readOnly:
+  false`).** Removed the override and made the policy driven by a new
+  `AgentSettings.readOnly` boolean (default `false`, exposed as a toggle in
+  Settings → Agent). `AgentService` reads it per-run via a new
+  `effectiveReadOnly()` helper; a hard override can still be set via
+  `AgentDeps.readOnly` for headless harnesses, but the production wiring
+  now respects the user's choice. Default remains `false` to preserve the
+  current effective behaviour — users who want the safer instruction-only
+  mode opt in via the toggle.
+
+### Changed (Sprint 1 — unified configuration sources)
+- **Budget limits now come from `AppSettings.agent`.** `service.ts`
+  previously called `clampBudgetLimits(DEFAULT_BUDGET_LIMITS)` with no
+  reference to the GUI's "Max auto steps" or "Budget cap (USD)" sliders —
+  the user could move them all they wanted, the loop ignored them. Fixed:
+  `budgetLimits()` now reads `s.maxAutoSteps` → `maxIterations` and
+  `s.budgetUsd` → `maxCostUsd` from the live settings, with
+  `clampBudgetLimits` still enforcing the absolute hard caps (100 / $5 / 200 /
+  30 min) so a misconfigured `settings.json` can never blow past them.
+- **`requireConfirmationBeforeCommand` now actually pauses for confirmation.**
+  The setting was wired into the UI for months but never consulted by the
+  loop's `requiresApproval` predicate — only `apply_patch` was ever gated. Now
+  `requiresApproval(call)` also returns true for `run_command` when the
+  setting is on; the new `awaitCommandConfirmation` helper parks the loop on
+  a `command_confirm` `Pending` entry whose payload is the `$ <command>`
+  preview, so the existing Apply/Reject buttons act as run/skip for the
+  pending command.
+- **Single source of truth for sandbox mode.** `Phase3Services` previously
+  kept its own per-workspace in-memory `Map<workspaceId, SandboxMode>` that
+  the `getSandboxMode` / `setSandboxMode` IPC handlers read/wrote; meanwhile
+  `AgentService.sandboxPolicy()` was reading from `settings.agent.sandboxMode`.
+  The GUI selector and the dispatching loop saw different worlds. Both IPC
+  handlers now read/write `AppSettings.agent.sandboxMode` directly (workspaceId
+  parameter retained for API compatibility but ignored — sandbox mode is a
+  global runtime choice, not a per-project one). The legacy `sandboxModes`
+  field is gone from `Phase3Services`.
+
 ### Fixed
+- **`run_command` ignored `sandboxMode` and always routed to the whitelist
+  runner.** Even with `sandboxMode: "docker"` configured, every command
+  dispatched by the agent (and by the baseline / verify-after-patch passes) was
+  exact-matched against the host whitelist — so `pip install`, `ls -la`,
+  `python --version`, and anything else outside the 13-entry allowlist returned
+  `"Command not in whitelist"` instead of running in a container. The Phase-3
+  `routeCommand` / `DockerRunner` / `WslRunner` plumbing was already wired but
+  no caller actually used it. Fix: new
+  `packages/tools/src/run-command-routed.ts` exposes `runCommandWithPolicy`,
+  which dispatches through `routeCommand` when the policy is `docker` / `wsl`
+  and falls back to the legacy whitelist runner otherwise. Wired into
+  `agent-core/tools-registry.ts` (new `sandboxPolicy` option) and the three
+  service.ts callers (loop dispatch, baseline, verify) via a new
+  `sandboxPolicy()` helper that reads from current settings each call. Also
+  auto-picks a Docker image based on detected project kind
+  (`python:3.12-slim`, `node:22-slim`, etc.) when the policy doesn't pin one,
+  with extended detection that recognises freshly-generated `*.py` /
+  `requirements.txt` even before `pyproject.toml` exists. Verified end-to-end:
+  agent generated a Python project in `test/`, ran 6 unittest cases in
+  `python:3.12-slim`, all passed. Followed up with a headless harness at
+  `packages/tools/src/e2e-docker.test.ts` that exercises every tool against
+  the real workspace (17 cases — list_files / read_file / read_file_range /
+  search_text / find_symbol / apply_patch V4A / write_file / git_status /
+  git_diff / parse_test_failure / defaultDockerImage / four docker
+  `run_command` paths covering happy path, non-zero exit, network
+  block, and bind-mount readback / two whitelist fallback paths). All 17
+  pass; full `pnpm exec vitest run packages/tools` stays green at 55/55,
+  plus packages/agent-core and packages/sandbox at 94/94.
 - **DeepSeek 400 "tool must be a response to a preceding message with
   tool_calls" after mid-run compression.** When the conversation crossed
   `COMPRESS_TRIGGER_RATIO`, `compressConversation` could land `tailStart` on a

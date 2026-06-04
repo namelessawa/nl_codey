@@ -20,7 +20,9 @@
     "@coding-agent/llm": "workspace:*",
     "@coding-agent/tools": "workspace:*",
     "@coding-agent/sandbox": "workspace:*",
-    "@coding-agent/project-indexer": "workspace:*"
+    "@coding-agent/project-indexer": "workspace:*",
+    "@coding-agent/orchestrator": "workspace:*",
+    "@coding-agent/planner": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

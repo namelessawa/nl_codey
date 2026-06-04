@@ -24,7 +24,13 @@ import type {
   TaskNodeStatus,
   Workspace,
 } from "@coding-agent/shared";
-import { COLUMN_MIGRATIONS, INDEX_SQL, SCHEMA_SQL } from "./schema.js";
+import {
+  COLUMN_MIGRATIONS,
+  INDEX_SQL,
+  SCHEMA_SQL,
+  SCHEMA_VERSION,
+  STRUCTURAL_MIGRATIONS,
+} from "./schema.js";
 import {
   chunkFromRow,
   chunkToBlob,
@@ -92,11 +98,20 @@ export class Storage {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
+    // Detect whether this is a fresh DB (no `workspaces` table yet) BEFORE
+    // we run SCHEMA_SQL, so we can stamp schema_meta straight to the latest
+    // version on first install instead of pretending it's a v1 legacy DB
+    // that needs the structural rewrite.
+    const isFreshDb = !this.hasTable("workspaces");
     // Order matters: create tables, then add columns to pre-existing tables,
-    // then create indexes — some indexes reference migrated columns and would
-    // fail on an upgraded DB if created before migrate(). See schema.ts.
+    // then run structural-version migrations, then create indexes. The
+    // structural migrations rebuild constrained tables (FK CASCADEs), which
+    // must wait for any additive columns from COLUMN_MIGRATIONS so the rebuild
+    // copies the full row shape; indexes have to come last because some
+    // reference columns added by either migration step.
     this.db.exec(SCHEMA_SQL);
     this.migrate();
+    this.applyStructuralMigrations(isFreshDb);
     this.db.exec(INDEX_SQL);
   }
 
@@ -115,6 +130,66 @@ export class Storage {
         const message = err instanceof Error ? err.message : String(err);
         if (!/duplicate column name/i.test(message)) throw err;
       }
+    }
+  }
+
+  /** True when the named table exists in the connected database. */
+  private hasTable(name: string): boolean {
+    const row = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+      .get(name) as { name: string } | undefined;
+    return row !== undefined;
+  }
+
+  /** Read the on-disk schema version, defaulting to 1 for legacy installs. */
+  private readSchemaVersion(): number {
+    const row = this.db
+      .prepare("SELECT version FROM schema_meta WHERE id = 1")
+      .get() as { version: number } | undefined;
+    return row?.version ?? 1;
+  }
+
+  /** Idempotent upsert of the schema_meta singleton row. */
+  private writeSchemaVersion(version: number): void {
+    this.db
+      .prepare(
+        "INSERT INTO schema_meta (id, version, updated_at) VALUES (1, ?, ?) " +
+          "ON CONFLICT(id) DO UPDATE SET version = excluded.version, updated_at = excluded.updated_at",
+      )
+      .run(version, Date.now());
+  }
+
+  /**
+   * Run every {@link STRUCTURAL_MIGRATIONS} entry whose `toVersion` is newer
+   * than the recorded on-disk version, in order. Each migration runs inside
+   * a transaction with `foreign_keys = OFF` so the table-rebuild dance
+   * (create temp → copy rows → drop original → rename) doesn't trip the FK
+   * rule against the partially-rewritten state. The version stamp is written
+   * AFTER the transaction commits; a crash mid-migration re-runs the same
+   * step on next startup.
+   */
+  private applyStructuralMigrations(isFreshDb: boolean): void {
+    if (isFreshDb) {
+      // Brand-new DB: schema_meta is empty, tables are already at the latest
+      // shape via SCHEMA_SQL. Stamp the version directly.
+      this.writeSchemaVersion(SCHEMA_VERSION);
+      return;
+    }
+    let current = this.readSchemaVersion();
+    if (current >= SCHEMA_VERSION) return;
+    for (const migration of STRUCTURAL_MIGRATIONS) {
+      if (migration.toVersion <= current) continue;
+      this.db.pragma("foreign_keys = OFF");
+      try {
+        const tx = this.db.transaction(() => {
+          for (const step of migration.steps) this.db.exec(step);
+        });
+        tx();
+      } finally {
+        this.db.pragma("foreign_keys = ON");
+      }
+      current = migration.toVersion;
+      this.writeSchemaVersion(current);
     }
   }
 

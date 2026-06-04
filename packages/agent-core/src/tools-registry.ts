@@ -1,9 +1,11 @@
 import type {
   LLMToolCall,
   RunCommandOutput,
+  SandboxPolicy,
   ToolContext,
   ToolSchema,
 } from "@coding-agent/shared";
+import type { FileChange } from "@coding-agent/sandbox";
 import {
   applyPatchTool,
   findSymbolTool,
@@ -12,10 +14,17 @@ import {
   listFilesTool,
   readFileRangeTool,
   readFileTool,
-  runCommandTool,
+  runCommandWithPolicy,
   searchTextTool,
   type SnapshotStore,
 } from "@coding-agent/tools";
+import {
+  createPhase3Dispatcher,
+  PHASE3_AGENT_TOOL_NAMES,
+  PHASE3_AGENT_TOOL_SCHEMAS,
+  PHASE3_MUTATING_TOOLS,
+  type Phase3AgentPorts,
+} from "./phase3-schemas.js";
 
 /**
  * Tool schemas exposed to the model via the chat tool-calling API. Kept in sync
@@ -168,13 +177,45 @@ export const AGENT_TOOL_SCHEMAS: ToolSchema[] = [
 export const FILE_MUTATING_TOOLS: readonly string[] = ["apply_patch", "write_file"];
 
 /**
- * The tool schemas advertised to the model. In read-only mode the file-mutating
- * tools are filtered out so the model never even attempts an edit; otherwise the
- * full {@link AGENT_TOOL_SCHEMAS} list is returned.
+ * Union of every tool that mutates persistent state (workspace files or the
+ * project memory store). Used by the read-only filter in {@link agentToolSchemas}
+ * and the dispatcher in {@link createToolExecutor}. Combining these into one
+ * list means a future Phase 3/4 tool can opt in by adding its name to either
+ * {@link FILE_MUTATING_TOOLS} or {@link PHASE3_MUTATING_TOOLS} without touching
+ * either gate.
  */
-export function agentToolSchemas(options: { readOnly?: boolean } = {}): ToolSchema[] {
-  if (!options.readOnly) return AGENT_TOOL_SCHEMAS;
-  return AGENT_TOOL_SCHEMAS.filter((tool) => !FILE_MUTATING_TOOLS.includes(tool.name));
+const ALL_MUTATING_TOOLS: readonly string[] = [
+  ...FILE_MUTATING_TOOLS,
+  ...PHASE3_MUTATING_TOOLS,
+];
+
+/**
+ * The tool schemas advertised to the model. In read-only mode every mutating
+ * tool (file writes + memory writes) is filtered out so the model never even
+ * attempts a state change. Phase 3 tools (semantic_search / memory / web) are
+ * appended when the caller passes {@link Phase3AgentPorts}; without ports the
+ * model only sees the Phase 1/2 catalogue, matching the pre-Phase-3 behaviour.
+ *
+ * `extraSchemas` allows the host to inject additional tool catalogues — most
+ * notably plugin tools, but any other dynamically-loaded surface fits the
+ * same shape. They're appended verbatim after Phase 3 schemas. Read-only mode
+ * does NOT filter `extraSchemas`: the host is responsible for that decision
+ * because mutating-ness is opaque to the agent-core layer.
+ */
+export function agentToolSchemas(
+  options: {
+    readOnly?: boolean;
+    phase3Available?: boolean;
+    extraSchemas?: readonly ToolSchema[];
+  } = {},
+): ToolSchema[] {
+  const base = options.phase3Available
+    ? [...AGENT_TOOL_SCHEMAS, ...PHASE3_AGENT_TOOL_SCHEMAS]
+    : [...AGENT_TOOL_SCHEMAS];
+  const filtered = options.readOnly
+    ? base.filter((tool) => !ALL_MUTATING_TOOLS.includes(tool.name))
+    : base;
+  return options.extraSchemas ? [...filtered, ...options.extraSchemas] : filtered;
 }
 
 /** Outcome of executing one tool call, with metadata for step recording/UI. */
@@ -216,6 +257,38 @@ export type ToolExecutorOptions = {
    * is not even offered the tool. Defaults to false (full read/write agent).
    */
   readOnly?: boolean;
+  /**
+   * Active sandbox policy for `run_command`. When mode is `docker` or `wsl`
+   * commands are routed through the strong-sandbox runners; otherwise they
+   * fall back to the legacy whitelist runner. Optional so existing callers
+   * (tests, headless harnesses) that don't care about isolation keep working.
+   */
+  sandboxPolicy?: SandboxPolicy;
+  /**
+   * Called when an LLM-initiated `run_command` in docker/wsl mode produced
+   * file writes. Must resolve `true` to sync the changes to the host
+   * workspace (snapshotted for rollback) or `false` to discard. When omitted
+   * the executor defaults to discarding any sandboxed writes — safe but
+   * potentially surprising, so the AgentService always provides this.
+   */
+  requestSandboxWriteApproval?: (
+    call: LLMToolCall,
+    changes: FileChange[],
+  ) => Promise<boolean>;
+  /**
+   * Optional Phase 3 port bundle. When provided, calls to semantic_search /
+   * read_memory / write_memory / web_search / web_fetch are routed through the
+   * corresponding port. Omit to keep the executor at the Phase 1/2 surface.
+   */
+  phase3Ports?: Phase3AgentPorts;
+  /**
+   * Optional extra dispatcher tried before the Phase 1/2 switch. Used by the
+   * plugin runtime to route `plugin__<plugin>__<tool>` calls through the
+   * PluginHost (which re-validates enablement + permissions). Return null
+   * when the call is not handled and the executor will fall through to its
+   * built-in dispatch.
+   */
+  extraDispatcher?: (call: LLMToolCall, ctx: ToolContext) => Promise<ExecutedTool | null>;
 };
 
 /**
@@ -226,18 +299,70 @@ export type ToolExecutorOptions = {
 export function createToolExecutor(
   opts: ToolExecutorOptions,
 ): (call: LLMToolCall) => Promise<ExecutedTool> {
-  const { ctx, storage, allowShellExecution, assertToolAllowed, readOnly } = opts;
+  const {
+    ctx,
+    storage,
+    allowShellExecution,
+    assertToolAllowed,
+    readOnly,
+    sandboxPolicy,
+    requestSandboxWriteApproval,
+    phase3Ports,
+    extraDispatcher,
+  } = opts;
+  const phase3Dispatch = phase3Ports ? createPhase3Dispatcher(phase3Ports) : null;
 
   return async (call: LLMToolCall): Promise<ExecutedTool> => {
-    // Read-only ("instruction") mode: refuse any file-mutating tool before it
-    // can write or delete. These tools are also stripped from the advertised
-    // schema, but a model can still emit a call for a name it was never
-    // offered, so we fail closed here too (defense in depth).
-    if (readOnly && FILE_MUTATING_TOOLS.includes(call.name)) {
+    // Read-only ("instruction") mode: refuse any mutating tool before it can
+    // touch the workspace or memory. These tools are also stripped from the
+    // advertised schema, but a model can still emit a call for a name it was
+    // never offered, so we fail closed here too (defense in depth).
+    if (readOnly && ALL_MUTATING_TOOLS.includes(call.name)) {
       return err(
         call.name,
-        `Tool "${call.name}" is disabled: the agent is in read-only (query) mode and must not modify or delete files. Read and explain the code instead — propose changes in prose for the user to apply.`,
+        `Tool "${call.name}" is disabled: the agent is in read-only (query) mode and must not modify or delete files or memory. Read and explain instead — propose changes in prose for the user to apply.`,
       );
+    }
+    // Phase 3 dispatch: try it first so semantic_search / read_memory /
+    // write_memory / web_search / web_fetch never fall into the unknown-tool
+    // branch when ports are wired. Returns null when the call is not a Phase 3
+    // tool, in which case control falls through to the Phase 1/2 switch below.
+    if (phase3Dispatch && (PHASE3_AGENT_TOOL_NAMES as readonly string[]).includes(call.name)) {
+      // Gate the call through the installation gate first (parity with
+      // Phase 1/2 dispatch) so degraded mode can refuse network-touching
+      // Phase 3 tools too.
+      if (assertToolAllowed) {
+        try {
+          assertToolAllowed(call.name);
+        } catch (gateErr) {
+          return err(
+            call.name,
+            gateErr instanceof Error ? gateErr.message : String(gateErr),
+          );
+        }
+      }
+      const result = await phase3Dispatch(call, ctx);
+      if (result) return result;
+    }
+    // Extra dispatcher (plugins / future runtimes). Tried before the built-in
+    // switch so a plugin can't be shadowed by a tool name collision. The
+    // dispatcher returns null when it doesn't recognise the call; only then
+    // do we fall through to the Phase 1/2 dispatch.
+    if (extraDispatcher) {
+      // Same installation-gate parity as Phase 3 — degraded mode refuses
+      // plugin tools too.
+      if (assertToolAllowed) {
+        try {
+          assertToolAllowed(call.name);
+        } catch (gateErr) {
+          return err(
+            call.name,
+            gateErr instanceof Error ? gateErr.message : String(gateErr),
+          );
+        }
+      }
+      const handled = await extraDispatcher(call, ctx);
+      if (handled) return handled;
     }
     // Installation-gate check FIRST — refuse before we touch the workspace.
     // Catch + return-error keeps the loop alive: the model sees the failure
@@ -328,7 +453,24 @@ export function createToolExecutor(
               "Shell execution is disabled in settings. Ask the user to enable it, or finish without running commands.",
             );
           }
-          const out = await runCommandTool.run({ command }, ctx);
+          // LLM-initiated command: any sandbox writes must go through the
+          // user approval gate before they reach the real workspace. When no
+          // gate is wired (test harnesses), default to "discard" so a
+          // sandbox-mode test never leaks sandbox-side writes into the host.
+          const writeback =
+            sandboxPolicy && sandboxPolicy.mode !== "whitelist" && requestSandboxWriteApproval
+              ? {
+                  kind: "approve" as const,
+                  onApprove: (changes: FileChange[]) =>
+                    requestSandboxWriteApproval(call, changes),
+                }
+              : { kind: "discard" as const };
+          const out = await runCommandWithPolicy({ command }, ctx, {
+            ...(sandboxPolicy ? { policy: sandboxPolicy } : {}),
+            writeback,
+            snapshotStore: storage,
+          });
+          const writebackNote = describeWriteback(out.changes, out.binaryConflicts, out.applied, writeback.kind);
           return {
             name: "run_command",
             resultText: JSON.stringify({
@@ -337,6 +479,7 @@ export function createToolExecutor(
               timedOut: out.timedOut,
               stdout: truncate(out.stdout),
               stderr: truncate(out.stderr),
+              ...(writebackNote ? { writeback: writebackNote } : {}),
             }),
             isError: out.exitCode !== 0 || out.timedOut,
             command: out,
@@ -357,6 +500,27 @@ function truncate(text: string): string {
   return text.length > MAX_TOOL_RESULT_OUTPUT
     ? `${text.slice(0, MAX_TOOL_RESULT_OUTPUT)}…(truncated)`
     : text;
+}
+
+/**
+ * Human-readable note for the model summarising what happened to the
+ * sandbox's writes — applied, awaiting approval (rejected by user), discarded
+ * (no gate wired), or blocked because the command produced binary output.
+ * Returned as a short string the model can read alongside the command output.
+ */
+function describeWriteback(
+  changes: FileChange[],
+  binaryConflicts: { path: string; kind: string }[],
+  applied: boolean,
+  mode: "auto" | "approve" | "discard",
+): string | null {
+  if (binaryConflicts.length > 0) {
+    return `${binaryConflicts.length} binary file change(s) detected; sandbox writeback refused (binary blobs are never auto-synced).`;
+  }
+  if (changes.length === 0) return null;
+  if (applied) return `Applied ${changes.length} file change(s) to the workspace (snapshotted for rollback).`;
+  if (mode === "approve") return `User rejected ${changes.length} file change(s); workspace untouched.`;
+  return `Discarded ${changes.length} sandbox-side file change(s); workspace untouched.`;
 }
 
 function ok(name: string, resultText: string): ExecutedTool {

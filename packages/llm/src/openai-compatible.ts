@@ -216,7 +216,13 @@ export class OpenAICompatibleProvider implements ChatLLMProvider {
   }
 
   private baseUrl(): string {
-    return this.config.baseUrl.replace(/\/+$/, "");
+    // Strip trailing slashes without a regex: `/\/+$/` is polynomial in the
+    // number of trailing slashes (CodeQL js/polynomial-redos).
+    let url = this.config.baseUrl;
+    let end = url.length;
+    while (end > 0 && url.charCodeAt(end - 1) === 47) end -= 1;
+    if (end !== url.length) url = url.slice(0, end);
+    return url;
   }
 
   private post(url: string, body: unknown, signal?: AbortSignal): Promise<Response> {

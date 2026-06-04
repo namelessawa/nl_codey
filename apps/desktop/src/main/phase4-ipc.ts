@@ -2,16 +2,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { dialog } from "electron";
 import {
-  DEFAULT_PHASE4_SETTINGS,
   IPC,
-  mergePhase4Settings,
   type FeedbackSignalInput,
   type FinetuneJobInput,
   type GlobalPatternInput,
   type Phase4Settings,
-  type PluginManifest,
-  type PluginPermission,
+  type PluginInstallation,
   type StyleScope,
   type StyleSpec,
   type WorkerNode,
@@ -37,51 +35,28 @@ import {
   scanForDebt,
   dedupeAgainstInbox,
 } from "@coding-agent/proactive";
+import {
+  PluginLoader,
+  type PermissionPrompter,
+  type PluginRepository,
+} from "@coding-agent/plugin-sdk";
 import { handle } from "./ipc-handle.js";
 import type { Services } from "./services.js";
+import { validateInstallPlugin } from "./validators.js";
+import { FinetuneRunner, dispatchFinetuneJob } from "./finetune-runner.js";
 
 type RequireRoot = (workspaceId: string) => string;
 
-/**
- * Phase 4 settings live alongside Phase 1-3 settings as a separate JSON file.
- * Kept separate so users can enable/disable Phase 4 modules without forcing a
- * full settings migration.
- */
-class Phase4SettingsStore {
-  private cache: Phase4Settings | null = null;
-  constructor(private readonly userDataDir: string) {}
-
-  private file(): string {
-    return path.join(this.userDataDir, "phase4-settings.json");
-  }
-
-  get(): Phase4Settings {
-    if (this.cache) return this.cache;
-    try {
-      const raw = fs.readFileSync(this.file(), "utf-8");
-      const parsed = JSON.parse(raw) as Partial<Phase4Settings>;
-      this.cache = mergePhase4Settings(parsed);
-    } catch {
-      this.cache = { ...DEFAULT_PHASE4_SETTINGS };
-    }
-    return this.cache;
-  }
-
-  set(next: Phase4Settings): Phase4Settings {
-    this.cache = next;
-    try {
-      fs.mkdirSync(this.userDataDir, { recursive: true });
-      fs.writeFileSync(this.file(), JSON.stringify(next, null, 2), "utf-8");
-    } catch {
-      // settings persistence is best-effort
-    }
-    return next;
-  }
-}
-
-export function registerPhase4Ipc(services: Services, requireRoot: RequireRoot, userDataDir: string): void {
-  const { storage } = services;
-  const phase4Settings = new Phase4SettingsStore(userDataDir);
+export function registerPhase4Ipc(
+  services: Services,
+  requireRoot: RequireRoot,
+  userDataDir: string,
+): void {
+  const { storage, phase4Settings } = services;
+  const finetuneRunner = new FinetuneRunner(services, userDataDir);
+  // Resume queued jobs that may have been interrupted by an app restart.
+  // Cheap when finetune is disabled (the runner short-circuits).
+  finetuneRunner.resumeQueued();
 
   // ----- Global memory + KG -----
   const kg = new KnowledgeGraph(storage.phase4);
@@ -161,7 +136,11 @@ export function registerPhase4Ipc(services: Services, requireRoot: RequireRoot, 
     if (!phase4Settings.get().finetuneEnabled) {
       throw new Error("Fine-tune feature is disabled in Phase 4 settings");
     }
-    return storage.phase4.createFinetuneJob(input);
+    // Create the job AND kick off the background training process. The IPC
+    // returns immediately with the "queued" job; the runner transitions it to
+    // "training" → "evaluating" or "failed" asynchronously. The UI subscribes
+    // to listFinetuneJobs() to see status changes.
+    return dispatchFinetuneJob(finetuneRunner, services, input);
   });
   handle(IPC.listModels, () => registry.list());
   handle(IPC.getActiveModel, () => registry.getActive());
@@ -185,11 +164,40 @@ export function registerPhase4Ipc(services: Services, requireRoot: RequireRoot, 
     const { id } = args as { id: string };
     return proposalInbox.dismiss(id);
   });
-  handle(IPC.convertProposal, (args) => {
+  handle(IPC.convertProposal, async (args) => {
     const { id } = args as { id: string };
-    // Placeholder: in a real flow this would hand off to the Planner pipeline
-    // and pass back the resulting run id. For now we record a synthetic id.
-    return proposalInbox.convert(id, `pending-${id}`);
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error("IPC payload rejected: id must be a non-empty string");
+    }
+    const proposal = storage.phase4.getProposal(id);
+    if (!proposal) throw new Error(`Proposal not found: ${id}`);
+    if (proposal.status === "converted_to_task") {
+      throw new Error("Proposal has already been converted to a run.");
+    }
+    // Compose a self-contained user task from the proposal so the agent has
+    // full context the moment it starts. The original proposal id is included
+    // so the model can cross-reference the inbox entry and the convertedRunId
+    // backlink stays meaningful even if the proposal text later changes.
+    const lines = [
+      `[Proposal ${proposal.id}] ${proposal.title}`,
+      "",
+      proposal.rationale,
+    ];
+    if (proposal.affectedFiles.length > 0) {
+      lines.push("", "受影响文件：");
+      for (const file of proposal.affectedFiles) lines.push(`- ${file}`);
+    }
+    const task = lines.join("\n");
+    // Hand off to the existing single-agent loop. This reuses every safety
+    // gate (approval, sandbox policy, budget, installation gate), so the
+    // proposal path inherits all the Phase 1/2 guarantees rather than
+    // bypassing them.
+    const detail = await services.agent.runTask(proposal.workspaceId, task);
+    // Mark the proposal with the real run id so the UI can navigate from the
+    // inbox entry to the resulting run, and a future re-convert is refused.
+    // Returns the updated Proposal (matches the IPC contract); the renderer
+    // reads `convertedRunId` to navigate to the live run.
+    return proposalInbox.convert(id, detail.run.id);
   });
   handle(IPC.scanDebtNow, async (args) => {
     const { workspaceId } = args as WorkspaceIdArgs;
@@ -216,25 +224,67 @@ export function registerPhase4Ipc(services: Services, requireRoot: RequireRoot, 
   });
 
   // ----- Plugins -----
+  // The PluginLoader is the ONLY path that may install a plugin: it runs the
+  // SDK manifest validator (rejects bad semver, non-snake_case tools, unknown
+  // permissions), then asks the user to approve each requested permission via
+  // an OS dialog before anything reaches the database. The previous
+  // installPlugin handler skipped both steps and trusted whatever the
+  // renderer sent — a compromised renderer could install a plugin claiming
+  // any permission set. Fixed.
+  const pluginRepo: PluginRepository = {
+    installPlugin: (manifest, installPath, perms) =>
+      storage.phase4.installPlugin(manifest, installPath, perms),
+    listPlugins: () => storage.phase4.listPlugins(),
+    setPluginEnabled: (id, enabled) => storage.phase4.setPluginEnabled(id, enabled),
+    uninstallPlugin: (id) => storage.phase4.uninstallPlugin(id),
+  };
+  const pluginPrompter: PermissionPrompter = {
+    async ask(manifest, requested) {
+      if (requested.length === 0) return [];
+      const lines = requested.map((p, i) => `${i + 1}. ${p}`).join("\n");
+      const result = await dialog.showMessageBox({
+        type: "warning",
+        title: `Install plugin: ${manifest.name}`,
+        message: `Approve permissions for "${manifest.name}" v${manifest.version}?`,
+        detail:
+          `This plugin requests the following permissions:\n\n${lines}\n\n` +
+          `Click "Approve all" to grant every permission, or "Cancel" to abort the install. ` +
+          `Per-permission approval will be available in a future release.`,
+        buttons: ["Cancel", "Approve all"],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      return result.response === 1 ? requested : [];
+    },
+  };
+  const pluginLoader = new PluginLoader(pluginRepo, pluginPrompter);
+
   handle(IPC.listPlugins, () => storage.phase4.listPlugins());
-  handle(IPC.installPlugin, (args) => {
-    const a = args as {
-      manifest: PluginManifest;
-      installPath: string;
-      approvedPermissions: PluginPermission[];
-    };
+  handle(IPC.installPlugin, async (raw): Promise<PluginInstallation> => {
     if (!phase4Settings.get().pluginsEnabled) {
       throw new Error("Plugins feature is disabled in Phase 4 settings");
     }
-    return storage.phase4.installPlugin(a.manifest, a.installPath, a.approvedPermissions);
+    const validated = validateInstallPlugin(raw);
+    const result = await pluginLoader.install(validated.manifest, validated.installPath);
+    if (!result.ok) throw new Error(result.reason);
+    return result.installation;
   });
   handle(IPC.setPluginEnabled, (args) => {
-    const { id, enabled } = args as { id: string; enabled: boolean };
-    return storage.phase4.setPluginEnabled(id, enabled);
+    const a = args as { id: string; enabled: boolean };
+    if (typeof a.id !== "string" || a.id.length === 0) {
+      throw new Error("IPC payload rejected: id must be a non-empty string");
+    }
+    if (typeof a.enabled !== "boolean") {
+      throw new Error("IPC payload rejected: enabled must be a boolean");
+    }
+    return storage.phase4.setPluginEnabled(a.id, a.enabled);
   });
   handle(IPC.uninstallPlugin, (args) => {
-    const { id } = args as { id: string };
-    return { uninstalled: storage.phase4.uninstallPlugin(id) };
+    const a = args as { id: string };
+    if (typeof a.id !== "string" || a.id.length === 0) {
+      throw new Error("IPC payload rejected: id must be a non-empty string");
+    }
+    return { uninstalled: storage.phase4.uninstallPlugin(a.id) };
   });
 
   // ----- Evals -----
