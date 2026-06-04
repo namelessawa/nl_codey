@@ -150,7 +150,23 @@ function extractJsonObject(text: string): string | null {
 /** Strip Markdown code fences a model may wrap a diff in, despite instructions. */
 export function stripDiffFences(text: string): string {
   const trimmed = text.trim();
-  const fence = /^```(?:diff|patch)?\s*\n([\s\S]*?)\n```$/;
-  const match = fence.exec(trimmed);
-  return (match?.[1] ?? trimmed).trim();
+  // Hand-rolled fence detection. The previous regex
+  //   /^```(?:diff|patch)?\s*\n([\s\S]*?)\n```$/
+  // is polynomial in input size on inputs like "```\n" + " ".repeat(n) because
+  // `\s*\n` and `[\s\S]*?` together force backtracking across the whole body
+  // when the closing fence is absent (CodeQL js/polynomial-redos).
+  if (!trimmed.startsWith("```")) return trimmed;
+  if (!trimmed.endsWith("```")) return trimmed;
+  // Strip opening fence header up to the first newline.
+  const afterOpen = trimmed.slice(3);
+  const headerEnd = afterOpen.indexOf("\n");
+  if (headerEnd === -1) return trimmed;
+  const header = afterOpen.slice(0, headerEnd).trim();
+  if (header && header !== "diff" && header !== "patch") return trimmed;
+  // Closing fence must sit on its own line at the end.
+  const bodyStart = headerEnd + 1;
+  const bodyEnd = afterOpen.length - 3;
+  if (bodyEnd <= bodyStart) return trimmed;
+  if (afterOpen.charCodeAt(bodyEnd - 1) !== 10) return trimmed;
+  return afterOpen.slice(bodyStart, bodyEnd - 1).trim();
 }

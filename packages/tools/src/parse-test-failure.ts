@@ -60,7 +60,10 @@ function extractFailures(framework: TestFramework, output: string): TestFailureI
   }
 }
 
-const TSC_LINE = /^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.*)$/;
+// File path token is bounded by `(`; whitespace runs are single literal spaces.
+// Avoids the `\(.+?)\(...\s+...\s+...$/` lazy/greedy mix that backtracks
+// polynomially on padded input (CodeQL js/polynomial-redos).
+const TSC_LINE = /^([^()]+)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
 
 function parseTsc(output: string): TestFailureItem[] {
   const failures: TestFailureItem[] = [];
@@ -77,8 +80,12 @@ function parseTsc(output: string): TestFailureItem[] {
   return failures;
 }
 
-const VITEST_FAIL = /^\s*(?:×|✗|FAIL)\s+(.+?\.[a-z]+)\s*>\s*(.+)$/i;
-const LOCATION = /❯\s+(.+?):(\d+):(\d+)/;
+// `\S+` is bounded by whitespace and `>`; literal spaces replace `\s+`/`\s*`
+// to remove the lazy/variable-whitespace backtracking CodeQL flagged.
+const VITEST_FAIL = /^[ \t]*(?:×|✗|FAIL) +(\S+) +> +(.+)$/i;
+// Path captured with `[^:\s]+` so the engine has a single deterministic
+// stopping point at the colon (no `(.+?):` lazy backtracking).
+const LOCATION = /❯ +([^:\s]+):(\d+):(\d+)/;
 
 function parseVitest(output: string): TestFailureItem[] {
   const lines = output.split("\n");
@@ -113,8 +120,12 @@ function parseVitest(output: string): TestFailureItem[] {
   return failures;
 }
 
-const JEST_TEST = /^\s*●\s+(.+)$/;
-const JEST_AT = /\bat\s+(?:.*\()?(.+?):(\d+):(\d+)\)?$/;
+// Literal spaces and `[ \t]*` are linear-time, unlike `\s*` followed by
+// another `\s+` which CodeQL flags as polynomial on whitespace-only input.
+const JEST_TEST = /^[ \t]*● +(.+)$/;
+// File path token uses `[^():\s]+` so the trailing `:NN:NN)?` has a single
+// deterministic anchor (no `.+?` lazy + greedy mix).
+const JEST_AT = /\bat (?:[^()]*\()?([^():\s]+):(\d+):(\d+)\)?$/;
 
 function parseJest(output: string): TestFailureItem[] {
   const lines = output.split("\n");
@@ -149,8 +160,10 @@ function parseJest(output: string): TestFailureItem[] {
   return failures;
 }
 
-const PYTEST_SUMMARY = /^FAILED\s+(.+?)(?:::(.+?))?\s+-\s+(.*)$/;
-const PYTEST_LOC = /^(.+\.py):(\d+):/;
+// `[^\s:]+` stops cleanly at `:` or whitespace, so the optional `::test` and
+// ` - message` parts have a single anchor and never backtrack.
+const PYTEST_SUMMARY = /^FAILED ([^\s:]+)(?:::(\S+))? - (.+)$/;
+const PYTEST_LOC = /^([^:\n]+\.py):(\d+):/;
 
 function parsePytest(output: string): TestFailureItem[] {
   const lines = output.split("\n");
@@ -175,8 +188,10 @@ function parsePytest(output: string): TestFailureItem[] {
   return failures;
 }
 
-const GO_FAIL = /^--- FAIL:\s+(\S+)/;
-const GO_LOC = /^\s*(\S+\.go):(\d+):\s*(.*)$/;
+const GO_FAIL = /^--- FAIL: +(\S+)/;
+// Replace `\s*`/`\s*` with `[ \t]*` so leading and trailing horizontal
+// whitespace match linearly (CodeQL js/polynomial-redos).
+const GO_LOC = /^[ \t]*(\S+\.go):(\d+):[ \t]*(.*)$/;
 
 function parseGoTest(output: string): TestFailureItem[] {
   const lines = output.split("\n");
@@ -207,8 +222,10 @@ function parseGoTest(output: string): TestFailureItem[] {
   return failures;
 }
 
-const CARGO_FAIL = /^\s*test\s+(\S+)\s+\.\.\.\s+FAILED/;
-const CARGO_PANIC = /panicked at .*?,\s+(\S+?):(\d+):(\d+)/;
+const CARGO_FAIL = /^[ \t]*test +(\S+) +\.\.\. +FAILED/;
+// `[^,\n]*` is equivalent to the original `.*?,` (stops at first `,`) but
+// non-backtracking; path and digits use single-class tokens.
+const CARGO_PANIC = /panicked at [^,\n]*, ([^:\s]+):(\d+):(\d+)/;
 
 function parseCargoTest(output: string): TestFailureItem[] {
   const lines = output.split("\n");

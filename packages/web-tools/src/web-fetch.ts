@@ -31,8 +31,10 @@ export function extractReadableText(html: string): string {
     out = out.replace(blockRe, " ");
   }
 
-  // Drop HTML comments.
-  out = out.replace(/<!--[\s\S]*?-->/g, " ");
+  // Drop HTML comments. The naive `/<!--[\s\S]*?-->/g` regex is polynomial
+  // in input length on inputs with many `<!--` openers (CodeQL
+  // js/polynomial-redos), so scan with indexOf instead.
+  out = stripHtmlComments(out);
 
   // Remove all remaining tags.
   out = out.replace(/<[^>]+>/g, " ");
@@ -45,6 +47,32 @@ export function extractReadableText(html: string): string {
   // Collapse runs of whitespace/newlines into single spaces, then trim.
   out = out.replace(/\s+/g, " ").trim();
 
+  return out;
+}
+
+/**
+ * Replace every `<!-- ... -->` block with a single space. Unterminated
+ * comments collapse the rest of the document to a single space (matching
+ * the previous regex behavior on a truncated tail).
+ */
+function stripHtmlComments(html: string): string {
+  let out = "";
+  let i = 0;
+  while (i < html.length) {
+    const start = html.indexOf("<!--", i);
+    if (start === -1) {
+      out += html.slice(i);
+      return out;
+    }
+    out += html.slice(i, start);
+    const end = html.indexOf("-->", start + 4);
+    if (end === -1) {
+      out += " ";
+      return out;
+    }
+    out += " ";
+    i = end + 3;
+  }
   return out;
 }
 

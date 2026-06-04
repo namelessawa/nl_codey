@@ -33,8 +33,13 @@ function extractPath(line: string): string | null {
   }
   if (line.startsWith("diff --git ")) {
     // diff --git a/<path> b/<path>
-    const match = line.match(/ b\/(.+)$/);
-    return match?.[1] ? match[1].trim() : null;
+    // Use indexOf instead of a `/ b\/(.+)$/` regex: the latter is polynomial
+    // in line length because the engine retries `(.+)$` from every possible
+    // ` b/` start position (CodeQL js/polynomial-redos).
+    const idx = line.indexOf(" b/");
+    if (idx === -1) return null;
+    const tail = line.slice(idx + 3).trim();
+    return tail || null;
   }
   return null;
 }
@@ -42,8 +47,13 @@ function extractPath(line: string): string | null {
 function cleanPath(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed === "/dev/null") return null;
-  const stripped = trimmed.replace(/^[ab]\//, "");
-  return stripped || null;
+  // Strip a leading `a/` or `b/` without a regex (avoids the redundant
+  // backtracking that CodeQL flags for unanchored repeated alternations).
+  if (trimmed.startsWith("a/") || trimmed.startsWith("b/")) {
+    const stripped = trimmed.slice(2);
+    return stripped || null;
+  }
+  return trimmed || null;
 }
 
 /**

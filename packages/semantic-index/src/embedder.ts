@@ -30,7 +30,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
       throw new Error("OpenAIEmbeddingProvider requires an apiKey");
     }
     this.apiKey = config.apiKey;
-    this.baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
+    this.baseUrl = stripTrailingSlashes(config.baseUrl ?? DEFAULT_BASE_URL);
     this.model = config.model ?? DEFAULT_MODEL;
     this.dimensions = config.dimensions ?? DEFAULT_DIMENSIONS;
   }
@@ -96,6 +96,16 @@ function redact(text: string, apiKey: string): string {
     return text.split(apiKey).join("***");
   }
   return text;
+}
+
+/**
+ * Strip trailing slashes from a URL without a regex. The naive `/\/+$/`
+ * regex is polynomial in the trailing-slash count (CodeQL js/polynomial-redos).
+ */
+function stripTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end -= 1;
+  return end === url.length ? url : url.slice(0, end);
 }
 
 /**
