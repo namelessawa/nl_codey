@@ -42,10 +42,28 @@ const WORKSPACE = path
   .resolve(HERE, "..", "..", "..", "test")
   .replace(/\\/g, "/");
 
+// Detect a Docker daemon that can actually run linux images. `docker version`
+// alone isn't enough — GitHub's `windows-latest` runner ships a Docker CLI
+// configured for Windows containers, so `docker version` exits 0 but every
+// `docker run python:3.12-slim` returns 125 ("no matching manifest for
+// windows/amd64"). Probe the server OSType to filter that out.
 const dockerAvailable = ((): boolean => {
   try {
     execFileSync("docker", ["version"], { stdio: "ignore", timeout: 5000 });
-    return true;
+  } catch {
+    return false;
+  }
+  try {
+    const osType = execFileSync(
+      "docker",
+      ["info", "--format", "{{.OSType}}"],
+      { timeout: 5000, encoding: "utf8" },
+    )
+      .trim()
+      .toLowerCase();
+    // These tests pull linux images (python:3.12-slim). Windows-container hosts
+    // and broken daemons (empty/missing OSType) get skipped.
+    return osType === "linux";
   } catch {
     return false;
   }
