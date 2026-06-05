@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Fixed (CI — windows-latest docker e2e skip probe)
+- **build-windows job failed on main** because
+  `packages/tools/src/e2e-docker.test.ts` only checked `docker version`
+  before deciding whether to skip the docker-bound suite. GitHub's
+  `windows-latest` runner ships a Docker CLI configured for Windows
+  containers, so `docker version` exits 0 and `dockerAvailable` was
+  `true`, but every `docker run python:3.12-slim …` returned exit code
+  125 (`no matching manifest for windows/amd64`), failing 6 cases. The
+  probe now also calls `docker info --format "{{.OSType}}"` and only
+  enables the docker suite when OSType is `linux`. Hosts running Windows
+  containers or a broken daemon skip cleanly; hosts with a real Linux
+  engine (Docker Desktop / Linux CI) still run the full suite. Verified
+  locally: 13 pass + 7 skip on a host with no daemon; `pnpm typecheck`
+  green.
+
 ### Fixed (follow-up after PR #16 merge to `main`)
 - **`build-windows` CI typecheck unblocked.** Two debug trace harnesses
   (`packages/agent-core/src/complex-multiagent.debug.test.ts:382`,
