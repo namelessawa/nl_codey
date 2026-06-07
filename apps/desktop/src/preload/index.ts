@@ -125,6 +125,7 @@ const api: AgentApi = {
   resumeInstallationGate: () => ipcRenderer.invoke(IPC.resumeInstallationGate),
   markFirstRunCompleted: () => ipcRenderer.invoke(IPC.markFirstRunCompleted),
   openDockerInstallPage: () => ipcRenderer.invoke(IPC.openDockerInstallPage),
+  startDocker: () => ipcRenderer.invoke(IPC.startDocker),
   onAgentEvent: (handler: (event: AgentEvent) => void) => {
     const listener = (_e: unknown, payload: AgentEvent): void => handler(payload);
     ipcRenderer.on(IPC_EVENT, listener);

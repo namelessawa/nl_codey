@@ -416,6 +416,18 @@ const STRINGS = {
   "docker.rechecking": { "zh-CN": "正在检测…", "en-US": "Re-checking…" },
   "docker.install": { "zh-CN": "安装 Docker Desktop", "en-US": "Install Docker Desktop" },
   "docker.close": { "zh-CN": "关闭", "en-US": "Close" },
+  "docker.start": { "zh-CN": "启动 Docker 并进入", "en-US": "Start Docker & continue" },
+  "docker.starting": { "zh-CN": "正在启动…", "en-US": "Starting…" },
+  "docker.startingBody": {
+    "zh-CN": "正在启动 Docker Desktop 并等待守护进程就绪——通常需要 30 至 90 秒。准备就绪后本窗口将自动关闭。",
+    "en-US":
+      "Launching Docker Desktop and waiting for the daemon — usually 30–90 seconds. This window will close automatically once it's ready.",
+  },
+  "docker.startFailed": {
+    "zh-CN": "未能启动 Docker：{error}。请尝试手动启动 Docker Desktop，然后点击重新检测。",
+    "en-US":
+      "Couldn't start Docker: {error}. Try launching Docker Desktop manually, then click Re-check.",
+  },
 
   // ─────────────  DockerStatusBadge  ─────────────
   "docker.notInstalled": { "zh-CN": "未安装 Docker", "en-US": "Docker not installed" },
