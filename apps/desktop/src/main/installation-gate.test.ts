@@ -213,6 +213,114 @@ describe("InstallationGate — persistence", () => {
   });
 });
 
+describe("InstallationGate — startDocker", () => {
+  it("returns ok=true and marks first-run completed once the daemon comes up", async () => {
+    const events: AgentEvent[] = [];
+    // The probe starts as installed+stopped, then flips to installed+running
+    // on the second invocation — mimicking Docker Desktop finishing its boot.
+    let calls = 0;
+    const gate = new InstallationGate(tmpDir(), (e) => events.push(e), {
+      probeFn: async () => {
+        calls += 1;
+        return {
+          installed: true,
+          version: "Docker version 24.0.0",
+          daemonRunning: calls >= 2,
+          error: calls >= 2 ? null : "exit 1",
+        };
+      },
+      openExternal: async () => undefined,
+      launchDocker: async () => ({ ok: true, error: null }),
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+      pollTimeoutMs: 1_000,
+    });
+
+    // Initial recheck primes the "installed but stopped" state.
+    await gate.recheck();
+    expect(gate.status().docker.installed).toBe(true);
+    expect(gate.status().docker.daemonRunning).toBe(false);
+
+    const result = await gate.startDocker();
+    expect(result.ok).toBe(true);
+    expect(result.error).toBeNull();
+    expect(result.status.docker.daemonRunning).toBe(true);
+    expect(result.status.gate.firstRunCompleted).toBe(true);
+    // Last broadcast should reflect the successful state.
+    expect(events.at(-1)).toMatchObject({
+      kind: "installation_status",
+      status: { docker: { daemonRunning: true } },
+    });
+  });
+
+  it("returns ok=false with the launcher's error when Docker Desktop can't be spawned", async () => {
+    const gate = new InstallationGate(tmpDir(), () => undefined, {
+      probeFn: makeProbe({ installed: true, daemonRunning: false, error: "exit 1" }),
+      openExternal: async () => undefined,
+      launchDocker: async () => ({ ok: false, error: "not_found" }),
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+      pollTimeoutMs: 1_000,
+    });
+    await gate.recheck();
+    const result = await gate.startDocker();
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("not_found");
+  });
+
+  it("returns ok=false with timeout when the daemon never comes up", async () => {
+    const gate = new InstallationGate(tmpDir(), () => undefined, {
+      probeFn: makeProbe({ installed: true, daemonRunning: false, error: "exit 1" }),
+      openExternal: async () => undefined,
+      launchDocker: async () => ({ ok: true, error: null }),
+      sleep: async () => undefined,
+      // 0ms timeout means the first deadline check fails immediately after
+      // the first poll cycle that still sees daemonRunning=false.
+      pollIntervalMs: 0,
+      pollTimeoutMs: 5,
+    });
+    await gate.recheck();
+    const result = await gate.startDocker();
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("timeout");
+  });
+
+  it("refuses to start when Docker isn't installed (caller should use the install flow)", async () => {
+    const gate = new InstallationGate(tmpDir(), () => undefined, {
+      probeFn: makeProbe({ installed: false }),
+      openExternal: async () => undefined,
+      launchDocker: async () => ({ ok: true, error: null }),
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+      pollTimeoutMs: 1_000,
+    });
+    await gate.recheck();
+    const result = await gate.startDocker();
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("not_installed");
+  });
+
+  it("returns ok=true immediately when the daemon is already running", async () => {
+    let launches = 0;
+    const gate = new InstallationGate(tmpDir(), () => undefined, {
+      probeFn: makeProbe({ installed: true, daemonRunning: true }),
+      openExternal: async () => undefined,
+      launchDocker: async () => {
+        launches += 1;
+        return { ok: true, error: null };
+      },
+      sleep: async () => undefined,
+      pollIntervalMs: 0,
+      pollTimeoutMs: 1_000,
+    });
+    await gate.recheck();
+    const result = await gate.startDocker();
+    expect(result.ok).toBe(true);
+    // We should not have wasted a spawn on an already-running daemon.
+    expect(launches).toBe(0);
+  });
+});
+
 describe("InstallationGate — install page", () => {
   it("returns opened=true when the external open succeeds", async () => {
     let called = "";

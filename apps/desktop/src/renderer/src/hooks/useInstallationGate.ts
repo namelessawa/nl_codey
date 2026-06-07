@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AgentEvent, InstallationStatus } from "@coding-agent/shared";
+import type {
+  AgentEvent,
+  DockerStartResult,
+  InstallationStatus,
+} from "@coding-agent/shared";
 import {
   DEFAULT_DOCKER_STATUS,
   DEFAULT_INSTALLATION_GATE,
@@ -21,6 +25,8 @@ export type UseInstallationGate = {
   loading: boolean;
   /** True while a re-check is running (set by the modal's "Re-check" button). */
   rechecking: boolean;
+  /** True while a start-Docker is in flight. The modal renders the spinner. */
+  starting: boolean;
   /** Trigger a fresh `docker --version` + `docker info` probe. */
   recheck: () => Promise<void>;
   /** User chose "Skip and accept the risk". */
@@ -31,6 +37,12 @@ export type UseInstallationGate = {
   markFirstRunCompleted: () => Promise<void>;
   /** Open the Docker download page in the user's default browser. */
   openInstallPage: () => Promise<void>;
+  /**
+   * Launch Docker Desktop and wait for the daemon to come up. Resolves with
+   * a {@link DockerStartResult} so the caller can show a contextual error
+   * (`not_found`, `timeout`, …) if the start fails.
+   */
+  startDocker: () => Promise<DockerStartResult>;
 };
 
 const INITIAL_STATUS: InstallationStatus = {
@@ -43,6 +55,7 @@ export function useInstallationGate(): UseInstallationGate {
   const [status, setStatus] = useState<InstallationStatus>(INITIAL_STATUS);
   const [loading, setLoading] = useState<boolean>(true);
   const [rechecking, setRechecking] = useState<boolean>(false);
+  const [starting, setStarting] = useState<boolean>(false);
 
   useEffect(() => {
     void api
@@ -92,14 +105,31 @@ export function useInstallationGate(): UseInstallationGate {
     await api.openDockerInstallPage();
   }, []);
 
+  const startDocker = useCallback(async (): Promise<DockerStartResult> => {
+    setStarting(true);
+    try {
+      const result = await api.startDocker();
+      // The main process broadcasts an `installation_status` event before
+      // returning, so `status` is usually already up to date by the time we
+      // get here — but apply the result.status explicitly to cover edge
+      // cases where the broadcast hasn't been dispatched yet (e.g. tests).
+      setStatus(result.status);
+      return result;
+    } finally {
+      setStarting(false);
+    }
+  }, []);
+
   return {
     status,
     loading,
     rechecking,
+    starting,
     recheck,
     skip,
     resume,
     markFirstRunCompleted,
     openInstallPage,
+    startDocker,
   };
 }
