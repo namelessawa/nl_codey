@@ -34,7 +34,7 @@ import type {
   WorkerNode,
   WorkspaceContributionMode,
 } from "./phase4.js";
-import type { InstallationStatus, InstallationEvent } from "./installation.js";
+import type { DockerStartResult, InstallationStatus, InstallationEvent } from "./installation.js";
 
 /** Consistent response envelope for every IPC call. */
 export type IpcResult<T> =
@@ -136,6 +136,7 @@ export const IPC = {
   resumeInstallationGate: "installation:resumeGate",
   markFirstRunCompleted: "installation:markFirstRunCompleted",
   openDockerInstallPage: "installation:openInstallPage",
+  startDocker: "installation:startDocker",
 } as const;
 
 /** Push channel: main -> renderer live updates while a run progresses. */
@@ -292,6 +293,12 @@ export interface AgentApi {
   markFirstRunCompleted(): Promise<IpcResult<InstallationStatus>>;
   /** Open the Docker Desktop download page in the user's default browser. */
   openDockerInstallPage(): Promise<IpcResult<{ opened: boolean }>>;
+  /**
+   * Launch Docker Desktop (when installed but the daemon isn't running) and
+   * wait for the daemon to come up. Polls `docker info` in the background;
+   * intermediate snapshots are broadcast as `installation_status` events.
+   */
+  startDocker(): Promise<IpcResult<DockerStartResult>>;
   onAgentEvent(handler: (event: AgentEvent) => void): () => void;
 }
 

@@ -5,6 +5,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Added (first-run Docker bootstrap — "Start Docker & continue")
+- **DockerInstallModal can now launch Docker Desktop for the user.** Before
+  this change, when Docker was installed but the daemon wasn't running, the
+  first-run modal told the user to start it manually and click *Re-check*.
+  Now the modal renders a **"Start Docker & continue"** primary button in
+  that state. Clicking it:
+  1. Spawns Docker Desktop detached (Windows: `C:\Program Files\Docker\
+     Docker\Docker Desktop.exe` then `%LOCALAPPDATA%\Docker\…`; macOS:
+     `open -a Docker`; Linux: `systemctl --user start docker-desktop`).
+  2. Polls `docker info` every 3 s for up to 150 s, broadcasting
+     `installation_status` events so the modal renders the "starting…"
+     spinner without renderer-side polling.
+  3. Once the daemon answers, marks the installation gate as
+     first-run-completed and the modal auto-closes — the user lands in the
+     app without an extra click.
+
+  On failure (`not_found`, `timeout`, spawn error) the modal stays open
+  with a contextual error and the user can fall back to *Install* or
+  *Skip*. The first-run rule is unchanged when Docker is already running —
+  the modal never opens.
+
+  Touched: `packages/shared/src/{installation,ipc}.ts` (added
+  `DockerStartResult` + `IPC.startDocker`), `apps/desktop/src/main/
+  installation-gate.ts` (new `startDocker()` + platform-specific launcher
+  with injectable `launchDocker`/`sleep` for tests), `apps/desktop/src/
+  main/ipc.ts`, `apps/desktop/src/preload/index.ts`, `apps/desktop/src/
+  renderer/src/{api.ts, hooks/useInstallationGate.ts, components/
+  DockerInstallModal.tsx, App.tsx, i18n.ts, installation-styles.css}`. New
+  tests in `installation-gate.test.ts` cover the success-with-first-run
+  flip, launcher-fail, timeout, not-installed refusal, and the
+  already-running short-circuit (no wasted spawn). `pnpm typecheck` green;
+  18/18 InstallationGate tests pass.
+
 ### Fixed (CI — windows-latest docker e2e skip probe)
 - **build-windows job failed on main** because
   `packages/tools/src/e2e-docker.test.ts` only checked `docker version`

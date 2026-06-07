@@ -3,6 +3,7 @@ import type {
   AgentRun,
   AgentRunDetail,
   AppSettings,
+  DockerStartResult,
   InstallationStatus,
   EvalRunResult,
   FeedbackSignal,
@@ -234,6 +235,8 @@ export const api = {
     unwrap(window.agentApi.markFirstRunCompleted()),
   openDockerInstallPage: (): Promise<{ opened: boolean }> =>
     unwrap(window.agentApi.openDockerInstallPage()),
+  startDocker: (): Promise<DockerStartResult> =>
+    unwrap(window.agentApi.startDocker()),
   onAgentEvent: (handler: (event: AgentEvent) => void): (() => void) =>
     window.agentApi.onAgentEvent(handler),
 };

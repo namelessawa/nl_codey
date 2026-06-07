@@ -14,6 +14,7 @@
  * choice, not a configuration field.
  */
 
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { shell } from "electron";
@@ -23,6 +24,7 @@ import {
   DOCKER_INSTALL_URL,
   UNSAFE_WITHOUT_SANDBOX_TOOLS,
   type AgentEvent,
+  type DockerStartResult,
   type DockerStatus,
   type InstallationGateState,
   type InstallationStatus,
@@ -34,6 +36,18 @@ import {
 
 const STATE_FILE = "installation-gate.json";
 
+/** Outcome of attempting to spawn the Docker Desktop binary. */
+export type LaunchResult = { ok: boolean; error: string | null };
+
+/**
+ * Defaults tuned for Windows + WSL2: Docker Desktop usually wakes the engine
+ * in 20–60s but can drag past 90s on slow disks or when the WSL distro is
+ * being upgraded. Poll every 3s — Docker is gentle on rapid `docker info`
+ * calls, but a tighter cadence would just spam the daemon for no benefit.
+ */
+const DEFAULT_POLL_INTERVAL_MS = 3_000;
+const DEFAULT_POLL_TIMEOUT_MS = 150_000;
+
 /**
  * Optional overrides for tests. Defaults to the real Electron shell and
  * the real Docker probe. Tests inject mocks here instead of stubbing
@@ -43,6 +57,14 @@ const STATE_FILE = "installation-gate.json";
 export type InstallationGateDeps = {
   probeFn?: () => Promise<DockerProbeResult>;
   openExternal?: (url: string) => Promise<void>;
+  /** Spawn Docker Desktop. Override in tests to avoid actually launching it. */
+  launchDocker?: () => Promise<LaunchResult>;
+  /** Sleep used between poll cycles inside `startDocker`. Defaults to setTimeout. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Interval between `docker info` polls while waiting for the daemon. */
+  pollIntervalMs?: number;
+  /** Hard deadline for `startDocker` before it gives up with `timeout`. */
+  pollTimeoutMs?: number;
 };
 
 export class InstallationGate {
@@ -51,6 +73,12 @@ export class InstallationGate {
   private readonly statePath: string;
   private readonly probeFn: () => Promise<DockerProbeResult>;
   private readonly openExternal: (url: string) => Promise<void>;
+  private readonly launchDocker: () => Promise<LaunchResult>;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly pollIntervalMs: number;
+  private readonly pollTimeoutMs: number;
+  /** Guard against double-firing while a `startDocker` is in flight. */
+  private starting = false;
 
   constructor(
     userDataDir: string,
@@ -64,6 +92,10 @@ export class InstallationGate {
       (async (url) => {
         await shell.openExternal(url);
       });
+    this.launchDocker = deps.launchDocker ?? defaultLaunchDocker;
+    this.sleep = deps.sleep ?? defaultSleep;
+    this.pollIntervalMs = deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.pollTimeoutMs = deps.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
     this.loadFromDisk();
   }
 
@@ -161,6 +193,58 @@ export class InstallationGate {
     }
   }
 
+  /**
+   * Launch Docker Desktop (when installed but the daemon isn't running) and
+   * poll until the daemon answers `docker info`. Intermediate snapshots are
+   * broadcast as `installation_status` events so the renderer can render the
+   * "starting…" state without polling. On success, the gate marks the install
+   * as first-run-completed so the modal never re-prompts on subsequent boots.
+   */
+  async startDocker(): Promise<DockerStartResult> {
+    if (this.starting) {
+      return { ok: false, error: "already_starting", status: this.status() };
+    }
+    // No point launching Docker Desktop when the CLI isn't even on PATH —
+    // the user needs the install flow, not the start flow.
+    if (!this.docker.installed) {
+      return { ok: false, error: "not_installed", status: this.status() };
+    }
+    // Already up — return immediately.
+    if (this.docker.daemonRunning) {
+      return { ok: true, error: null, status: this.status() };
+    }
+
+    this.starting = true;
+    try {
+      const launch = await this.launchDocker();
+      if (!launch.ok) {
+        return { ok: false, error: launch.error ?? "launch_failed", status: this.status() };
+      }
+
+      const deadline = monotonicNow() + this.pollTimeoutMs;
+      // First poll happens after the interval — Docker Desktop's tray icon
+      // appears in <1s but the engine itself isn't reachable for many more,
+      // so polling immediately is just a wasted round-trip.
+      while (monotonicNow() < deadline) {
+        await this.sleep(this.pollIntervalMs);
+        await this.recheck();
+        if (this.docker.daemonRunning) {
+          if (!this.gate.firstRunCompleted) {
+            this.gate = { ...this.gate, firstRunCompleted: true };
+            this.persist();
+            const status = this.status();
+            this.emit({ kind: "installation_status", status });
+            return { ok: true, error: null, status };
+          }
+          return { ok: true, error: null, status: this.status() };
+        }
+      }
+      return { ok: false, error: "timeout", status: this.status() };
+    } finally {
+      this.starting = false;
+    }
+  }
+
   /* ---------- persistence ---------- */
 
   private loadFromDisk(): void {
@@ -190,5 +274,94 @@ export class InstallationGate {
       // already updated; we just won't survive a restart. That's a tolerable
       // degradation — the user will see the modal again next launch.
     }
+  }
+}
+
+/* ---------- platform-specific Docker Desktop launcher ---------- */
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function monotonicNow(): number {
+  // Use the wall clock — tests inject a fast `sleep` so the deadline check
+  // always reaches the next iteration before any real ms have elapsed.
+  return Date.now();
+}
+
+function asMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+/**
+ * Spawn Docker Desktop detached from the Electron process so it survives
+ * after the app exits. On Windows we try the two locations the installer
+ * uses (Program Files for system-wide, LOCALAPPDATA for per-user). On
+ * macOS, `open -a Docker` is the documented way. On Linux we fall back to
+ * the systemd user unit Docker Desktop ships.
+ */
+async function defaultLaunchDocker(): Promise<LaunchResult> {
+  if (process.platform === "win32") {
+    const candidates = winDockerDesktopPaths();
+    const found = candidates.find((p) => safeExists(p));
+    if (!found) {
+      return { ok: false, error: "not_found" };
+    }
+    try {
+      const child = spawn(found, [], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      child.unref();
+      return { ok: true, error: null };
+    } catch (err) {
+      return { ok: false, error: asMessage(err) };
+    }
+  }
+  if (process.platform === "darwin") {
+    try {
+      const child = spawn("open", ["-a", "Docker"], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return { ok: true, error: null };
+    } catch (err) {
+      return { ok: false, error: asMessage(err) };
+    }
+  }
+  // Linux Docker Desktop ships a systemd user unit named docker-desktop.
+  try {
+    const child = spawn("systemctl", ["--user", "start", "docker-desktop"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return { ok: true, error: null };
+  } catch (err) {
+    return { ok: false, error: asMessage(err) };
+  }
+}
+
+function winDockerDesktopPaths(): string[] {
+  const programFiles =
+    process.env["ProgramFiles"] ?? "C:\\Program Files";
+  const localAppData = process.env["LOCALAPPDATA"];
+  const paths: string[] = [
+    path.join(programFiles, "Docker", "Docker", "Docker Desktop.exe"),
+  ];
+  if (localAppData) {
+    paths.push(path.join(localAppData, "Docker", "Docker Desktop.exe"));
+  }
+  return paths;
+}
+
+function safeExists(p: string): boolean {
+  try {
+    return fs.existsSync(p);
+  } catch {
+    return false;
   }
 }

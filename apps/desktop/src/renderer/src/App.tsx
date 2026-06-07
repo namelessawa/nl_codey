@@ -80,6 +80,9 @@ export function App(): JSX.Element {
   // First-run rule: open the install modal automatically the first time the
   // app boots without a usable Docker. Subsequent launches re-open it only
   // when the user explicitly clicks the red badge or the settings warning.
+  // The companion rule lives below: once Docker becomes usable while the
+  // modal is open (e.g. the user clicked "Start Docker Desktop" and the
+  // daemon came up), auto-close so they can get on with using the app.
   useEffect(() => {
     if (installation.loading) return;
     const dockerUsable =
@@ -88,7 +91,10 @@ export function App(): JSX.Element {
     if (!dockerUsable && firstRun) {
       setInstallModalOpen(true);
     }
-  }, [installation.loading, installation.status]);
+    if (dockerUsable && installModalOpen) {
+      setInstallModalOpen(false);
+    }
+  }, [installation.loading, installation.status, installModalOpen]);
 
   const openInstallReminder = useCallback(() => {
     setInstallModalOpen(true);
@@ -107,6 +113,13 @@ export function App(): JSX.Element {
 
   const handleOpenDockerPage = useCallback(() => {
     void installation.openInstallPage();
+  }, [installation]);
+
+  const handleStartDocker = useCallback(async (): Promise<string | null> => {
+    const result = await installation.startDocker();
+    // The modal auto-closes via the dockerUsable effect when ok=true; only
+    // bubble an error code up to the modal for inline rendering on failure.
+    return result.ok ? null : result.error ?? "unknown_error";
   }, [installation]);
 
   const activeRunIdRef = useRef<string | null>(null);
@@ -567,10 +580,12 @@ export function App(): JSX.Element {
         open={installModalOpen}
         status={installation.status}
         rechecking={installation.rechecking}
+        starting={installation.starting}
         onRecheck={() => void installation.recheck()}
         onInstall={handleOpenDockerPage}
         onSkip={handleSkipInstall}
         onClose={closeInstallReminder}
+        onStart={handleStartDocker}
       />
       <QuickPrefsPopover
         open={quickPrefsOpen}

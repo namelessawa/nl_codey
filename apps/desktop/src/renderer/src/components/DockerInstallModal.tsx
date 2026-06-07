@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { InstallationStatus } from "@coding-agent/shared";
 import { Icon } from "./Icons.js";
 import { useLang, useT } from "../lang-context.js";
@@ -8,21 +8,31 @@ type Props = {
   open: boolean;
   status: InstallationStatus;
   rechecking: boolean;
+  /** True while the main process is launching Docker and polling for the daemon. */
+  starting: boolean;
   onRecheck: () => void;
   onInstall: () => void;
   onSkip: () => void;
   onClose: () => void;
+  /**
+   * Launch Docker Desktop and wait for the daemon. Resolves with `null` on
+   * success (the parent will close the modal because daemonRunning flips to
+   * true) or a short error code (`not_found`, `timeout`, …) on failure so we
+   * can show a contextual message.
+   */
+  onStart: () => Promise<string | null>;
 };
 
 /**
- * Install reminder shown when Docker is not detected. The user has three
- * exits:
+ * Install reminder shown when Docker is not detected or the daemon is
+ * stopped. The exits depend on which situation the user is in:
  *
- *  - "Install Docker Desktop" — opens the download page; we leave the modal
- *    open so the user can re-check after running the installer.
- *  - "Re-check" — re-probes Docker (the user just installed it).
- *  - "Skip and accept the risk" — sets the persistent skip flag; the app
- *    enters degraded mode (unsafe tools disabled, Agent settings locked).
+ *  - Docker not installed → "Install Docker Desktop" (primary) + "Re-check"
+ *    + "Skip and accept the risk".
+ *  - Docker installed but daemon stopped → "Start Docker Desktop" (primary)
+ *    + "Re-check" + "Skip". Starting spawns Docker Desktop detached and
+ *    polls `docker info`; the modal auto-closes once the daemon is up.
+ *  - Docker installed and running → modal does not open at all.
  *
  * The scrim does NOT close the modal — the user must make an explicit
  * choice. The "x" in the corner is also intentionally absent on first run;
@@ -33,13 +43,17 @@ export function DockerInstallModal({
   open,
   status,
   rechecking,
+  starting,
   onRecheck,
   onInstall,
   onSkip,
   onClose,
+  onStart,
 }: Props): JSX.Element | null {
   const tr = useT();
   const lang = useLang();
+  const [startError, setStartError] = useState<string | null>(null);
+
   // Lock body scroll while open — same convention as SettingsModal.
   useEffect(() => {
     if (!open) return;
@@ -50,10 +64,23 @@ export function DockerInstallModal({
     };
   }, [open]);
 
+  // Clear any stale "start failed" message whenever the underlying probe
+  // succeeds (the user retried, or another path brought the daemon up).
+  useEffect(() => {
+    if (status.docker.daemonRunning) setStartError(null);
+  }, [status.docker.daemonRunning]);
+
   if (!open) return null;
 
   const canDismiss = status.gate.firstRunCompleted;
   const probeFailed = status.docker.error && status.docker.error !== "not_installed";
+  const daemonStopped = status.docker.installed && !status.docker.daemonRunning;
+
+  const handleStart = async (): Promise<void> => {
+    setStartError(null);
+    const error = await onStart();
+    if (error) setStartError(error);
+  };
 
   return (
     <div
@@ -111,9 +138,20 @@ export function DockerInstallModal({
               {tr("docker.probeFailed")} <code>{status.docker.error}</code>
             </div>
           ) : null}
-          {status.docker.installed && !status.docker.daemonRunning ? (
+          {daemonStopped && !starting ? (
             <div className="dim-probe-error">
               {tf("docker.daemonStopped", lang, { version: status.docker.version ?? "" })}
+            </div>
+          ) : null}
+          {starting ? (
+            <div className="dim-starting" role="status" aria-live="polite">
+              <span className="dim-spinner" aria-hidden="true" />
+              <span>{tr("docker.startingBody")}</span>
+            </div>
+          ) : null}
+          {startError ? (
+            <div className="dim-probe-error">
+              {tf("docker.startFailed", lang, { error: startError })}
             </div>
           ) : null}
         </section>
@@ -124,6 +162,7 @@ export function DockerInstallModal({
             className="btn ghost danger"
             onClick={onSkip}
             title={tr("docker.skipTitle")}
+            disabled={starting}
           >
             {tr("docker.skip")}
           </button>
@@ -132,14 +171,26 @@ export function DockerInstallModal({
             type="button"
             className="btn"
             onClick={onRecheck}
-            disabled={rechecking}
+            disabled={rechecking || starting}
           >
             {rechecking ? tr("docker.rechecking") : tr("docker.recheck")}
           </button>
-          <button type="button" className="btn primary" onClick={onInstall}>
-            <Icon name="folder" size={13} />
-            {tr("docker.install")}
-          </button>
+          {daemonStopped ? (
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => void handleStart()}
+              disabled={starting}
+            >
+              <Icon name="sparkle" size={13} />
+              {starting ? tr("docker.starting") : tr("docker.start")}
+            </button>
+          ) : (
+            <button type="button" className="btn primary" onClick={onInstall} disabled={starting}>
+              <Icon name="folder" size={13} />
+              {tr("docker.install")}
+            </button>
+          )}
         </footer>
       </div>
     </div>

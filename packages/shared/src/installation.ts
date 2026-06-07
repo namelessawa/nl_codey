@@ -83,3 +83,17 @@ export type InstallationEvent = {
   kind: "installation_status";
   status: InstallationStatus;
 };
+
+/**
+ * Result of attempting to launch Docker Desktop and wait for the daemon to
+ * come up. `ok=true` means the daemon answered `docker info` before the
+ * timeout; `ok=false` returns a short error code: `not_installed`,
+ * `not_found` (binary missing from known install paths), `already_starting`
+ * (a concurrent start is in flight), `timeout`, or a free-form spawn error.
+ */
+export type DockerStartResult = {
+  ok: boolean;
+  error: string | null;
+  /** Latest snapshot — useful for the renderer to render the next state. */
+  status: InstallationStatus;
+};

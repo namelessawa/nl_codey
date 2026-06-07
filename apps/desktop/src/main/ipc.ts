@@ -134,6 +134,7 @@ export function registerIpc(services: Services): void {
   handle(IPC.resumeInstallationGate, () => installationGate.resume());
   handle(IPC.markFirstRunCompleted, () => installationGate.markFirstRunCompleted());
   handle(IPC.openDockerInstallPage, () => installationGate.openInstallPage());
+  handle(IPC.startDocker, () => installationGate.startDocker());
 
   registerPhase3Ipc(services, requireWorkspaceRoot);
   registerPhase4Ipc(services, requireWorkspaceRoot, app.getPath("userData"));
