@@ -357,10 +357,63 @@ export class Phase4Storage {
   }
 
   listPreferenceDatasets(): PreferenceDataset[] {
+    // Single aggregate join — without the COUNT(*) the renderer's "N 对"
+    // counter always showed 0 (the list endpoint used to pass `[]` for
+    // every dataset's pairs). Loading the full pairs array per dataset
+    // would balloon the response on large training sets, so we pass the
+    // count out-of-band via PreferenceDataset.pairCount.
     const rows = this.db
-      .prepare("SELECT * FROM preference_datasets ORDER BY created_at DESC")
-      .all() as PreferenceDatasetRow[];
-    return rows.map((r) => toPreferenceDataset(r, []));
+      .prepare(
+        `SELECT pd.*, COUNT(pp.id) AS pair_count
+         FROM preference_datasets pd
+         LEFT JOIN preference_pairs pp ON pp.dataset_id = pd.id
+         GROUP BY pd.id
+         ORDER BY pd.created_at DESC`,
+      )
+      .all() as (PreferenceDatasetRow & { pair_count: number })[];
+    return rows.map((r) => {
+      const dataset = toPreferenceDataset(r, []);
+      return { ...dataset, pairCount: r.pair_count };
+    });
+  }
+
+  /**
+   * Replace every pair in a dataset with the provided list, atomically. Used by
+   * curation: buildDatasetFromSignals inserts the raw pairs, curatePairs filters
+   * out duplicates / low-quality / over-similar entries, then this method
+   * rewrites the table so subsequent training reads only the kept set. Without
+   * this step the count was reported as filtered but the dataset still held the
+   * raw pairs, so training silently consumed pre-curation data.
+   */
+  replacePreferenceDatasetPairs(
+    datasetId: string,
+    pairs: PreferencePair[],
+  ): void {
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare("DELETE FROM preference_pairs WHERE dataset_id = ?")
+        .run(datasetId);
+      const ins = this.db.prepare(
+        `INSERT INTO preference_pairs
+           (id, dataset_id, prompt, chosen, rejected, category, quality_score, signal_id, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+      );
+      const now = Date.now();
+      for (const p of pairs) {
+        ins.run(
+          p.id,
+          datasetId,
+          p.prompt,
+          p.chosen,
+          p.rejected,
+          p.category,
+          p.qualityScore,
+          p.signalId,
+          p.createdAt || now,
+        );
+      }
+    });
+    tx();
   }
 
   // ===== finetune jobs =====

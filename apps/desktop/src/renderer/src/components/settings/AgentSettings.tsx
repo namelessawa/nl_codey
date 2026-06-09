@@ -159,6 +159,13 @@ export function AgentSettings({
 
         <div className="fld-stack toggle-stack">
           <ToggleRow
+            id="agent-sandbox-enabled"
+            checked={value.sandboxEnabled}
+            onChange={(c) => set("sandboxEnabled", c)}
+            label={t("agent.sandboxEnabled", lang)}
+            hint={t("agent.sandboxEnabledHint", lang)}
+          />
+          <ToggleRow
             id="agent-allow-shell"
             checked={value.allowShellExecution}
             onChange={(c) => set("allowShellExecution", c)}
@@ -178,6 +185,13 @@ export function AgentSettings({
             onChange={(c) => set("readOnly", c)}
             label={t("agent.readOnly", lang)}
             hint={t("agent.readOnlyHint", lang)}
+          />
+          <ToggleRow
+            id="agent-multi-agent"
+            checked={value.multiAgentEnabled}
+            onChange={(c) => set("multiAgentEnabled", c)}
+            label={t("agent.multiAgent", lang)}
+            hint={t("agent.multiAgentHint", lang)}
           />
         </div>
 

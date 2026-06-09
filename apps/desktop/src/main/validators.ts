@@ -12,6 +12,7 @@
  * shapes here are simple objects of strings/booleans/string arrays.
  */
 
+import path from "node:path";
 import type {
   ContinueAgentTaskArgs,
   CreateMemoryArgs,
@@ -106,7 +107,9 @@ const KNOWN_PLUGIN_PERMISSION_TOKENS: readonly string[] = [
 ];
 function isKnownPluginPermission(value: string): value is PluginPermission {
   if (KNOWN_PLUGIN_PERMISSION_TOKENS.includes(value)) return true;
-  return value.startsWith("network:");
+  // Require a non-empty host suffix; bare "network:" is meaningless and
+  // would never authorize an actual request.
+  return value.startsWith("network:") && value.length > "network:".length;
 }
 
 /* ---------- IPC payload validators ---------- */
@@ -316,7 +319,28 @@ export function validateInstallPlugin(raw: unknown): {
       name: requireNonEmptyString(m.name, "manifest.name"),
       version: requireNonEmptyString(m.version, "manifest.version"),
     } as PluginManifest,
-    installPath: requireNonEmptyString(r.installPath, "installPath"),
+    installPath: requireAbsolutePath(r.installPath, "installPath"),
     approvedPermissions: permsRaw as PluginPermission[],
   };
+}
+
+/**
+ * Reject a path that isn't absolute or that contains `..` segments after
+ * normalisation. Plugin installation paths are concatenated into the
+ * shell-rendered command via `node "<installPath>/tools/<name>.js"` — a
+ * relative or `..`-laden path would let a malicious manifest direct the
+ * spawn at an attacker-chosen file outside the install directory.
+ */
+function requireAbsolutePath(value: unknown, label: string): string {
+  const raw = requireNonEmptyString(value, label);
+  if (!path.isAbsolute(raw)) {
+    throw new IPCValidationError(`${label} must be an absolute path; got "${raw}"`);
+  }
+  const normalized = path.normalize(raw);
+  if (normalized.split(path.sep).includes("..")) {
+    throw new IPCValidationError(
+      `${label} must not contain ".." segments after normalisation; got "${raw}"`,
+    );
+  }
+  return normalized;
 }

@@ -70,7 +70,11 @@ const API_KEY = process.env.LLM_API_KEY ?? "";
 const BASE_URL = process.env.LLM_BASE_URL ?? "";
 const MODEL = process.env.LLM_MODEL ?? "mimo-v2.5-pro";
 const HAS_KEY = API_KEY.length > 0 && BASE_URL.length > 0;
-const describeReal = HAS_KEY ? describe : describe.skip;
+// Opt-in gate (mirrors full-trace.debug.test.ts): default `pnpm test`
+// MUST NOT spawn real LLM calls or open Storage(":memory:"). Set
+// RUN_AGENT_DEBUG_TESTS=1 to actually run this harness.
+const DEBUG_ENABLED = process.env.RUN_AGENT_DEBUG_TESTS === "1";
+const describeReal = HAS_KEY && DEBUG_ENABLED ? describe : describe.skip;
 
 // Buggy calculator: add returns a-b, mul returns a+b, sub correct.
 const BUGGY_CALCULATOR = `def add(a, b):
@@ -367,6 +371,10 @@ describe("complex-multiagent (preflight)", () => {
   it("reports skip reason when LLM_API_KEY / LLM_BASE_URL unset", () => {
     if (!HAS_KEY) {
       console.log("[complex-multiagent] Skipped: set LLM_API_KEY and LLM_BASE_URL.");
+    } else if (!DEBUG_ENABLED) {
+      console.log(
+        "[complex-multiagent] Skipped: set RUN_AGENT_DEBUG_TESTS=1 to run the real-LLM debug harness.",
+      );
     }
     expect(true).toBe(true);
   });

@@ -67,6 +67,8 @@ const api: AgentApi = {
   cancelTaskNode: (args: TaskNodeIdArgs) => ipcRenderer.invoke(IPC.cancelTaskNode, args),
   // --- Phase 3: role messages ---
   listRoleMessages: (args: TaskNodeIdArgs) => ipcRenderer.invoke(IPC.listRoleMessages, args),
+  listRoleMessagesForRun: (args: RunIdArgs) =>
+    ipcRenderer.invoke(IPC.listRoleMessagesForRun, args),
   // --- Phase 3: git ---
   getGitStatus: (args: WorkspaceIdArgs) => ipcRenderer.invoke(IPC.getGitStatus, args),
   generatePRDescription: (args: RunIdArgs) => ipcRenderer.invoke(IPC.generatePRDescription, args),

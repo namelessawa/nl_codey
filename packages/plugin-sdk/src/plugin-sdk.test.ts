@@ -59,6 +59,54 @@ describe("validateManifest", () => {
     });
     expect(result.ok).toBe(false);
   });
+
+  // Regression: previously isKnownPermission did startsWith for every prefix,
+  // so garbage strings starting with a real token slipped through validation
+  // and persisted into installed manifests, even though the host's
+  // exact-match authorize() would never grant them at runtime.
+  it.each([
+    "run_command_extra",
+    "read_workspace_anything",
+    "write_workspace_evil",
+    "read_memory_dump",
+  ])("rejects garbage permission that merely starts with a known token: %s", (perm) => {
+    const result = validateManifest({
+      ...goodManifest,
+      tools: [
+        {
+          ...goodManifest.tools[0]!,
+          permissions: [perm as unknown as PluginPermission],
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects bare network: with no host suffix", () => {
+    const result = validateManifest({
+      ...goodManifest,
+      tools: [
+        {
+          ...goodManifest.tools[0]!,
+          permissions: ["network:" as unknown as PluginPermission],
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("accepts network:<host> with a real suffix", () => {
+    const result = validateManifest({
+      ...goodManifest,
+      tools: [
+        {
+          ...goodManifest.tools[0]!,
+          permissions: ["network:api.example.com" as PluginPermission],
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe("authorize", () => {
@@ -125,6 +173,53 @@ describe("PluginLoader", () => {
     const prompter: PermissionPrompter = { ask: async () => [] };
     const loader = new PluginLoader(repo, prompter);
     const result = await loader.install({ name: "" }, "/tmp/plugin");
+    expect(result.ok).toBe(false);
+  });
+
+  // P1.3 regression: the IPC handler passes the renderer's per-checkbox
+  // selection as preApprovedPermissions; the loader must honor it without
+  // routing through the prompter.
+  it("honors preApprovedPermissions and skips the prompter", async () => {
+    const repo = makeRepo();
+    let prompted = false;
+    const prompter: PermissionPrompter = {
+      ask: async () => {
+        prompted = true;
+        return [];
+      },
+    };
+    const loader = new PluginLoader(repo, prompter);
+    const result = await loader.install(goodManifest, "/tmp/plugin", ["run_command"]);
+    expect(prompted).toBe(false);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.installation.approvedPermissions).toEqual(["run_command"]);
+    }
+  });
+
+  it("filters preApprovedPermissions to the manifest's requested set", async () => {
+    const repo = makeRepo();
+    const prompter: PermissionPrompter = { ask: async () => [] };
+    const loader = new PluginLoader(repo, prompter);
+    // network:other.com isn't in goodManifest.tools[0].permissions, so it
+    // must be filtered out even if a buggy renderer ships it.
+    const result = await loader.install(goodManifest, "/tmp/plugin", [
+      "run_command",
+      "network:other.com" as PluginPermission,
+    ]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.installation.approvedPermissions).toEqual(["run_command"]);
+    }
+  });
+
+  it("declines when preApprovedPermissions intersection is empty", async () => {
+    const repo = makeRepo();
+    const prompter: PermissionPrompter = { ask: async () => [] };
+    const loader = new PluginLoader(repo, prompter);
+    const result = await loader.install(goodManifest, "/tmp/plugin", [
+      "network:other.com" as PluginPermission,
+    ]);
     expect(result.ok).toBe(false);
   });
 });

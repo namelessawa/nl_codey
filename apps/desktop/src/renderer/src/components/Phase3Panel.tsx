@@ -5,13 +5,15 @@ import { RoleTimeline } from "./RoleTimeline.js";
 import { GitDiffPreview } from "./GitDiffPreview.js";
 import { FailureLibraryView } from "./FailureLibraryView.js";
 import { SandboxIndicator } from "./SandboxIndicator.js";
+import { SemanticSearchView } from "./SemanticSearchView.js";
+import { DebugView } from "./DebugView.js";
 
 interface Phase3PanelProps {
   workspaceId: string;
   runId: string | null;
 }
 
-type Phase3Tab = "memory" | "tasks" | "roles" | "git" | "failures";
+type Phase3Tab = "memory" | "tasks" | "roles" | "git" | "failures" | "search" | "debug";
 
 const TABS: { id: Phase3Tab; label: string }[] = [
   { id: "memory", label: "Memory" },
@@ -19,6 +21,8 @@ const TABS: { id: Phase3Tab; label: string }[] = [
   { id: "tasks", label: "Tasks" },
   { id: "roles", label: "Roles" },
   { id: "git", label: "Git" },
+  { id: "search", label: "Semantic search" },
+  { id: "debug", label: "Debug" },
 ];
 
 /**
@@ -57,7 +61,7 @@ export function Phase3Panel({ workspaceId, runId }: Phase3PanelProps): JSX.Eleme
           ))}
         {tab === "roles" &&
           (runId ? (
-            <RoleTimeline taskNodeId={runId} />
+            <RoleTimeline runId={runId} />
           ) : (
             <div className="empty">Run a task to see role messages.</div>
           ))}
@@ -67,6 +71,8 @@ export function Phase3Panel({ workspaceId, runId }: Phase3PanelProps): JSX.Eleme
           ) : (
             <div className="empty">Run a task to inspect git state.</div>
           ))}
+        {tab === "search" && <SemanticSearchView workspaceId={workspaceId} />}
+        {tab === "debug" && <DebugView workspaceId={workspaceId} />}
       </div>
     </div>
   );

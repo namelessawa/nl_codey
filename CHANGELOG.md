@@ -52,6 +52,268 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
   engine (Docker Desktop / Linux CI) still run the full suite. Verified
   locally: 13 pass + 7 skip on a host with no daemon; `pnpm typecheck`
   green.
+### Fixed (bug audit follow-up — multi-agent + plugin install + Phase 4 plumbing)
+- **P1.1 (security): multi-agent reviewer no longer bypasses command
+  approval.** `runPlanner` and `runReviewer` in
+  `packages/agent-core/src/multi-agent.ts` hard-wired
+  `requiresApproval: () => false` / `waitForApproval: async () => true`,
+  while `runCoder` already honored `deps.requiresApproval` /
+  `deps.waitForApproval` plumbed through by `service.ts:815`. Because
+  `ROLE_TOOLS.reviewer` (in `packages/orchestrator/src/roles.ts:48-54`)
+  includes `run_command`, every reviewer-driven `run_command` slipped
+  past the host's command-confirmation gate that the single-agent and
+  coder paths still honored. Both wrappers now forward the host gates
+  with a permissive `() => false` / `async () => true` fallback for
+  tests that don't wire them.
+- **P1.3 (security): plugin install honors the renderer's per-permission
+  checkboxes instead of dropping them.** `PluginManager.tsx` collects
+  per-permission `approvedPermissions`, `validators.ts` accepts them,
+  but `phase4-ipc.ts` previously only forwarded
+  `(manifest, installPath)` to `pluginLoader.install`, silently
+  discarding the user's selection in favor of a coarse
+  "Approve all / Cancel" OS dialog. `PluginLoader.install` now accepts
+  an optional `preApprovedPermissions` argument; when provided it is
+  intersected with the manifest's requested set (defense-in-depth
+  against a compromised renderer) and used directly, skipping the
+  prompter. The OS dialog remains the fallback when no pre-approval
+  is supplied. Nine new vitest cases lock the behavior in.
+- **P1.2 (UX/honesty): plugin install dialog now warns when "whitelist"
+  sandbox is selected.** `PluginManager.tsx`'s sandbox selector now
+  surfaces an inline warning that the `whitelist` mode runs the plugin
+  script as a full Node process with declared permissions only
+  constraining host-side SDK helpers, and notes that the `docker` /
+  `wsl` sandboxes are not yet implemented for plugin invocation
+  (matching the runtime's actual fail-closed behavior in
+  `plugin-runtime.ts`).
+- **P2.1: planner / coder / reviewer now honor `runToolLoop` terminal
+  outcomes.** All three role wrappers in `multi-agent.ts` previously
+  `await runToolLoop(...)` without inspecting `outcome.state`. A
+  cancelled or budget-exhausted planner fell into the misleading
+  "Planner did not produce a task breakdown" throw; a cancelled coder
+  returned `{ diff: lastDiff, testOutput: lastTestOutput }` (usually
+  empty) and the reviewer then "changes_requested"'d an empty diff;
+  a cancelled reviewer fell into `parseReviewResult("")`'s JSON-failure
+  fallback. The review loop would then burn another iteration on a run
+  that should already be terminating. Each wrapper now throws a clear
+  `Planner/Coder/Reviewer cancelled by user` /
+  `... budget exceeded ...` / `... failed ...` error, which the
+  Coordinator's existing escalation path converts to immediate
+  cancellation via the `askHuman` port.
+- **P2.2: packaged Electron no longer re-launches the app instead of
+  running plugin scripts.** `plugin-runtime.ts:execNode` spawns
+  `process.execPath` (the Node binary in dev, the Electron exe in a
+  packaged build). Without `ELECTRON_RUN_AS_NODE=1` the packaged
+  Electron exe re-launches the whole app instead of executing the
+  script. Env merge now appends `ELECTRON_RUN_AS_NODE: "1"` LAST so a
+  plugin can never override it.
+- **P2.3: preference dataset curation now persists its filtered set.**
+  `phase4-ipc.ts:buildPreferenceDataset` ran `curatePairs(...)` but
+  only returned a `rejected` count; the dataset itself still held
+  every raw pair, so subsequent training silently consumed
+  pre-curation data even though the UI reported the filter as
+  applied. New `Phase4Storage.replacePreferenceDatasetPairs(datasetId,
+  pairs)` rewrites the table atomically; the IPC handler now calls
+  it after curation.
+- **P2.4: Finetune dataset dropdown now displays real pair counts.**
+  `Phase4Storage.listPreferenceDatasets` previously returned
+  `pairs: []` for every row, so `FinetuneManager.tsx`'s
+  `{d.pairs.length} 对` rendered "0 对" universally. Added optional
+  `PreferenceDataset.pairCount` (shared type), populated from a
+  `LEFT JOIN + COUNT(*)` in the list endpoint; renderer now reads
+  `pairCount ?? pairs.length` so the single-dataset endpoint still
+  works unchanged.
+- **P2.5: clearRuns now cascades into Phase 3 tables.**
+  `Storage.deleteRunsForWorkspace` only deleted `agent_steps`,
+  `agent_run_messages`, `file_snapshots`, `agent_runs`. The Phase 3
+  tables `task_nodes`, `role_messages`, `git_actions` lack FK cascade
+  and were not touched, so wipes left orphan rows surfacing in the
+  task tree / role timeline / git log panels after the user thought
+  they had cleared the workspace. The transaction now explicitly
+  removes role messages (joined through `task_nodes.parent_run_id`),
+  task nodes, and git actions for each removed run id.
+- **P3.1 (security): plugin manifest permission validation no longer
+  accepts `<known_token>_<garbage>` strings.**
+  `manifest-schema.ts:isKnownPermission` previously used
+  `startsWith(prefix)` for every entry in
+  `KNOWN_PERMISSION_PREFIXES`, so `"run_command_extra"`,
+  `"read_workspace_anything"`, `"write_workspace_evil"`, and
+  `"read_memory_dump"` all passed validation. The host-side `authorize`
+  is exact-match, so the loose strings would never authorize anything
+  at runtime, but they polluted the install prompt and persisted as
+  if legitimate. Now exact-matches the four fixed permissions and
+  prefix-matches only `network:` (with a required non-empty host
+  suffix; bare `network:` is meaningless and now rejected). Same
+  tightening applied to `validators.ts:isKnownPluginPermission` for
+  IPC payloads. Five new vitest cases cover the regression points.
+- **P3.2: `proactiveScanIntervalMin` is now wired to a real scheduler.**
+  The setting existed in `phase4.ts:399` and the Phase 4 settings UI
+  but nothing consumed it — only the manual `scanDebtNow` IPC ran
+  the debt scan. `phase4-ipc.ts` now starts a `setTimeout`-chained
+  scheduler that re-reads the interval each tick (so settings changes
+  apply on the next iteration), iterates the 10 most-recently-opened
+  workspaces, skips silently when `proactiveEnabled` is off, and
+  isolates per-workspace failures from one another. The timer is
+  `unref()`'d and an `app.on("before-quit", stop)` hook cancels it
+  cleanly on shutdown.
+- **Verification.** `pnpm typecheck` passes across all 21 workspace
+  projects; the test suite passes 73 files / 565 tests (8 skipped per
+  the documented exclusions: `storage.test.ts` ABI mismatch,
+  `*.debug.test.ts` real-LLM gates, `real-llm.integration.test.ts`
+  preflight, `e2e-docker.test.ts` partials).
+
+### Added (Phase 3 / Phase 4 surface reachable from main UI)
+- **`AgentSettings` panel now exposes `multiAgentEnabled` and a standalone
+  `sandboxEnabled` toggle.** `service.ts:355` has been reading
+  `multiAgentEnabled` since Phase 3 landed, but the renderer had no toggle
+  for it; sandbox-enabled could only be flipped on indirectly by clicking
+  a sandbox-mode card. Two new `ToggleRow`s in
+  `apps/desktop/src/renderer/src/components/settings/AgentSettings.tsx`
+  plus i18n keys (`agent.multiAgent` / `agent.multiAgentHint` /
+  `agent.sandboxEnabled` / `agent.sandboxEnabledHint`) close the gap.
+- **Phase 4 settings panel now wires the two non-boolean fields.**
+  `contributionMode` (select: `isolated` / `contribute` / `team_shared`)
+  and `proactiveScanIntervalMin` (number input, 1..1440) were defined in
+  `packages/shared/src/phase4.ts:388` but had no UI surface — meaning the
+  workspace contribution mode and proactive scan cadence could only be
+  changed by hand-editing `phase4-settings.json`. Phase4Panel.tsx now
+  renders both alongside the existing 7 feature flags.
+- **New `WorkbenchModal` plus a Topbar entry point.** Phase 3 and Phase 4
+  panels existed (`Phase3Panel.tsx`, `Phase4Panel.tsx`) but `App.tsx`
+  never imported them — every memory / task-tree / role-timeline / git
+  / failure-library / KG / style / learning / finetune / proposals /
+  cluster / plugins view was therefore unreachable. New
+  `apps/desktop/src/renderer/src/components/WorkbenchModal.tsx` mounts
+  both panels behind a single Topbar button (`history` icon, next to
+  Settings) and a full-screen modal that reuses the `settings-modal`
+  shell. New i18n keys `topbar.workbench` / `topbar.workbenchTitle`.
+- **Full plugin-install form in `PluginManager`.** Adds a collapsible
+  installer that exposes every field of `PluginManifest` (name, version,
+  description, author, sandbox kind) plus the `installPath` and the
+  separate `approvedPermissions` checklist. Tools array supports
+  add/remove with per-tool name, description, JSON-edited
+  `Record<string, PluginToolParameter>`, and the four fixed permissions
+  (`run_command` / `read_workspace` / `write_workspace` / `read_memory`).
+  An "add network:host" widget appends `network:` template-literal
+  permissions. `api.installPlugin(...)` was the lone wrapper without a
+  caller — it now drives this form.
+- **Full worker-register form in `ClusterMonitor`.** Adds a collapsible
+  form with every `WorkerNode` field except the backend-stamped
+  `registeredAt`: id, hostname, endpoint, status (4-value enum),
+  capabilities (CSV), activeAssignments (CSV). `lastHeartbeat` is
+  stamped at submit time. The node table now also surfaces the endpoint
+  column and the `registeredAt` timestamp.
+- **Full finetune-job form in `FinetuneManager`.** New collapsible form
+  emits a `FinetuneJobInput` (name / baseModel / datasetId / method),
+  with `datasetId` driven by a live `listPreferenceDatasets()` dropdown
+  and `baseModel` autocompleted from the model registry. A new "Eval
+  Runs" section consumes `listEvalRuns(taskId?, modelId?)` with two
+  filter inputs — the eval-runs wrapper had no caller before.
+- **Manual feedback-signal form in `LearningDashboard`.** Adds a
+  collapsible form that exposes the full `FeedbackSignalInput`
+  (workspaceId injected, runId, taskNodeId, kind, before, after,
+  reason, filePath). Lets the user back-fill historical signals when
+  the auto-record path missed them.
+- **New `SemanticSearchView` (Phase 3 tab).** Surfaces the previously
+  uncalled `rebuildSemanticIndex`, `getSemanticIndexStatus`, and
+  `semanticSearch` wrappers. Shows index status (`indexedFiles/total`,
+  last-updated, building flag with 2 s polling while a rebuild runs),
+  a rebuild button, and a query box with `topK` (1..50) + `kinds`
+  checkboxes (`code` / `doc` / `comment`). Results render with file
+  path, line range, symbol name (when present), score, and snippet.
+- **Wiring follow-ups.** `Topbar` gains an `onOpenWorkbench` prop;
+  `App.tsx` owns the modal-open state and forwards the active
+  workspace id + run id into the modal so Phase 3 tabs that need a run
+  (Tasks / Roles / Git) still get one. Phase3Panel grows a sixth tab
+  pointing at the semantic search view. `pnpm typecheck` passes
+  across all 21 workspace projects.
+- **New `DebugView` (Phase 3 tab #7).** Covers the three remaining
+  direct-action wrappers that no other panel exposes: `runCommand`,
+  `listWorkspaceFiles`, `readFile`. Three sub-sections —
+  *Command runner* sends a sandbox-routed command and renders
+  exitCode / timedOut / stdout / stderr from `RunCommandOutput`;
+  *File browser* lists up to 500 workspace files with a live substring
+  filter; *File viewer* reads any in-workspace path (≤ 200KB, binaries
+  rejected) and renders the content in a scrollable `pre`. All three
+  bypass agent reasoning by design and are clearly labelled as a debug
+  channel that writes no snapshot and produces no run history.
+
+### Security (audit follow-up — plugin gates + debug-test hygiene + live events + renderer sandbox)
+- **P1 fix: plugin tools now respect read-only AND degraded gates.**
+  `DynamicToolBundle` now carries `mutatingNames: readonly string[]`
+  listing the qualified plugin-tool names whose declared permissions
+  (`run_command` / `write_workspace`) can change workspace state.
+  `service.ts` filters those names out of the advertised schema when
+  read-only mode is on, refuses them at dispatch as defense-in-depth
+  (even if the model emits a call we didn't advertise), and wraps the
+  installation gate so degraded mode also blocks them — the gate
+  previously only matched the three built-in `run_command` /
+  `apply_patch` / `write_file` names, so `plugin__*` calls slipped
+  through. `plugin-runtime.ts` populates `mutatingNames` by scanning
+  each tool's declared permissions; non-mutating bundles pass through
+  unchanged.
+- **P1 fix: plugin runtime no longer leaks `process.env` and no longer
+  installs zero-permission manifests.** Plugin child processes spawned
+  by `plugin-runtime.ts:execNode` now run with a scrubbed
+  `NodeJS.ProcessEnv` — the new `scrubPluginEnv` drops a hard-coded
+  list of credential variables (`LLM_API_KEY`, every supported
+  provider's typical key, `GITHUB_TOKEN`, `NPM_TOKEN`, `AWS_*`,
+  `DATABASE_URL`, …), every `npm_config_*` (pnpm/yarn project the full
+  registry credential set into that namespace), and anything whose
+  name matches `/(?:^|_)(api[_-]?key|token|secret|password|credential)s?(?:$|_)/i`.
+  `plugin-loader.ts` now rejects manifests that declare zero
+  permissions — the previous code skipped the permission-confirmation
+  dialog entirely for those, so a malicious manifest could install
+  silently and still run as a full Node process. `validators.ts`
+  `installPath` validation tightened: `requireAbsolutePath` rejects
+  relative paths and any `..` segment that survives normalisation,
+  closing the path-traversal vector where the install path is
+  concatenated into the rendered `node "<path>/tools/<name>.js"`
+  command.
+- **P2 fix: `*.debug.test.ts` no longer runs under default `pnpm test`.**
+  `full-trace.debug.test.ts` and `complex-multiagent.debug.test.ts` now
+  gate `describeReal` on `RUN_AGENT_DEBUG_TESTS=1` in addition to the
+  existing `LLM_API_KEY` / `LLM_BASE_URL` check. Without the flag both
+  files cleanly skip every real-LLM scenario — the
+  `Storage(":memory:")` calls that previously fired during default
+  `pnpm test` (and hit the native-binding ABI mismatch under Node) no
+  longer execute. Preflight blocks now print a clear "set
+  RUN_AGENT_DEBUG_TESTS=1" hint so the next operator knows how to
+  re-enable.
+- **P2 fix: Roles tab now actually shows role messages.**
+  `Phase3Panel` was passing a `runId` to `RoleTimeline`'s `taskNodeId`
+  prop; the IPC then queried `role_messages WHERE task_node_id = <runId>`
+  and always returned an empty list. Added
+  `Storage.listRoleMessagesForRun(runId)` which joins through
+  `task_nodes.parent_run_id`, a new `IPC.listRoleMessagesForRun`
+  channel + handler + preload bridge + renderer wrapper, and switched
+  `RoleTimeline` to take a `runId` prop end-to-end. Multi-agent runs
+  now populate the Planner/Coder/Reviewer swimlanes as soon as the
+  IPC returns.
+- **P3 fix: Phase 3 live events (`task_updated` / `role_message` /
+  `index_status`) now emit at production points.** `service.ts`
+  wraps `MultiAgentStore` so every `createTaskNode` /
+  `setTaskNodeStatus` / `addRoleMessage` write also broadcasts a typed
+  event (task-node and role-message paths are stable; role payload is
+  parsed via `parseRow` from `@coding-agent/orchestrator` and
+  swallowed-on-error so an emit failure never unwinds a successful
+  write). `phase3-ipc.ts:rebuildSemanticIndex` emits `index_status`
+  with `building: true` before the indexer runs and a final status
+  after, even on error. `TaskTreeView`, `RoleTimeline`, and the new
+  `SemanticSearchView` subscribe to `api.onAgentEvent` and refresh on
+  matching events; the 2 s poll in `SemanticSearchView` stays as a
+  belt-and-braces fallback.
+- **P3 fix: Electron renderer sandbox enabled.** `apps/desktop/src/main/index.ts`
+  flips `webPreferences.sandbox` from `false` to `true`. The preload
+  only touches `electron.contextBridge` and `electron.ipcRenderer`
+  (both sandbox-safe), so all IPC continues to work; the renderer
+  process now drops Node integration entirely, shrinking the attack
+  surface for foreign HTML the agent might fetch
+  (`web_fetch` / readability, LLM-rendered markdown).
+- **Verification.** `pnpm typecheck` passes across all 21 workspace
+  projects; `pnpm exec vitest run --exclude "**/storage.test.ts"`
+  passes 73/73 test files / 563 tests (1 skipped). Native-ABI
+  `storage.test.ts` remains excluded by the known environment
+  caveat documented in `CLAUDE.md`.
 
 ### Fixed (follow-up after PR #16 merge to `main`)
 - **`build-windows` CI typecheck unblocked.** Two debug trace harnesses

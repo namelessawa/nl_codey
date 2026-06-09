@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Phase4Settings } from "@coding-agent/shared";
+import type { Phase4Settings, WorkspaceContributionMode } from "@coding-agent/shared";
 import { KnowledgeGraphView } from "./KnowledgeGraphView";
 import { StyleProfilePanel } from "./StyleProfilePanel";
 import { LearningDashboard } from "./LearningDashboard";
@@ -83,6 +83,14 @@ function Phase4SettingsView({
     const cur = settings[key];
     if (typeof cur === "boolean") onChange({ ...settings, [key]: !cur });
   };
+  const setContribution = (mode: WorkspaceContributionMode): void => {
+    onChange({ ...settings, contributionMode: mode });
+  };
+  const setInterval = (raw: string): void => {
+    const next = Number(raw);
+    if (!Number.isFinite(next) || next < 1) return;
+    onChange({ ...settings, proactiveScanIntervalMin: Math.round(next) });
+  };
   return (
     <div className="phase4-settings">
       <h2>Phase 4 功能开关</h2>
@@ -96,6 +104,38 @@ function Phase4SettingsView({
         <Toggle label="主动工程伙伴" on={settings.proactiveEnabled} onToggle={toggle("proactiveEnabled")} />
         <Toggle label="插件机制" on={settings.pluginsEnabled} onToggle={toggle("pluginsEnabled")} />
       </ul>
+
+      <h3 className="phase4-subhead">本工作区贡献模式</h3>
+      <p className="phase4-help">
+        控制本工作区学到的模式是否汇入全局知识池。仅在跨项目记忆开启时生效。
+      </p>
+      <div className="phase4-field">
+        <label htmlFor="phase4-contribution-mode">贡献模式</label>
+        <select
+          id="phase4-contribution-mode"
+          value={settings.contributionMode}
+          onChange={(e) => setContribution(e.target.value as WorkspaceContributionMode)}
+        >
+          <option value="isolated">隔离 · 不读不写全局池</option>
+          <option value="contribute">贡献 · 读写全局池</option>
+          <option value="team_shared">团队共享 · 仅同团队可见</option>
+        </select>
+      </div>
+
+      <h3 className="phase4-subhead">主动工程伙伴</h3>
+      <p className="phase4-help">后台扫描技术债 / 待办的频率。仅在主动模式开启时生效。</p>
+      <div className="phase4-field">
+        <label htmlFor="phase4-proactive-interval">扫描间隔(分钟)</label>
+        <input
+          id="phase4-proactive-interval"
+          type="number"
+          min={1}
+          max={1440}
+          step={1}
+          value={settings.proactiveScanIntervalMin}
+          onChange={(e) => setInterval(e.target.value)}
+        />
+      </div>
     </div>
   );
 }

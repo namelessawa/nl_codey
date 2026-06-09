@@ -85,8 +85,13 @@ const BASE_URL = process.env.LLM_BASE_URL ?? "";
 const MODEL = process.env.LLM_MODEL ?? "mimo-v2.5-pro";
 const DOCKER_IMAGE = process.env.DOCKER_DEBUG_IMAGE ?? "python:3.12-slim";
 const HAS_KEY = API_KEY.length > 0 && BASE_URL.length > 0;
+// Opt-in gate. The default `pnpm test` MUST NOT spin up real LLM calls
+// or open a Storage(":memory:") — both produce flaky CI runs (rate
+// limits, ABI mismatch under Node vs. Electron builds). Run explicitly
+// with RUN_AGENT_DEBUG_TESTS=1 when you actually want this harness.
+const DEBUG_ENABLED = process.env.RUN_AGENT_DEBUG_TESTS === "1";
 
-const describeReal = HAS_KEY ? describe : describe.skip;
+const describeReal = HAS_KEY && DEBUG_ENABLED ? describe : describe.skip;
 
 // Check WSL availability once; we only run scenario G if a real Linux distro
 // is installed (docker-desktop's internal distros don't accept arbitrary
@@ -508,6 +513,10 @@ describe("comprehensive trace (preflight)", () => {
     if (!HAS_KEY) {
       console.log(
         "[full-trace] Skipped: set LLM_API_KEY and LLM_BASE_URL in env or .env to enable.",
+      );
+    } else if (!DEBUG_ENABLED) {
+      console.log(
+        "[full-trace] Skipped: set RUN_AGENT_DEBUG_TESTS=1 to run the real-LLM debug harness.",
       );
     }
     expect(true).toBe(true);

@@ -17,7 +17,20 @@ export type ManifestValidationResult =
   | { ok: false; issues: ValidationIssue[] };
 
 const ALLOWED_SANDBOXES = new Set(["whitelist", "wsl", "docker"]);
-const KNOWN_PERMISSION_PREFIXES = ["run_command", "read_workspace", "write_workspace", "read_memory", "network:"];
+// The four fixed permissions are exact-match only. `network:` is the sole
+// prefix form because the host suffix is free-form (e.g. `network:api.example.com`).
+// Previously every entry was matched with startsWith, so garbage strings like
+// `run_command_extra`, `read_workspace_anything`, or `read_memory_dump` all
+// passed validation and got persisted in installed manifests — the
+// host-side authorize() then exact-matched them and never granted anything,
+// silently breaking the plugin while polluting the permission model.
+const FIXED_PERMISSIONS = new Set<string>([
+  "run_command",
+  "read_workspace",
+  "write_workspace",
+  "read_memory",
+]);
+const NETWORK_PREFIX = "network:";
 
 export function validateManifest(input: unknown): ManifestValidationResult {
   const issues: ValidationIssue[] = [];
@@ -91,7 +104,13 @@ function validateParameter(input: unknown, path: string, issues: ValidationIssue
 
 function isKnownPermission(value: unknown): value is PluginPermission {
   if (typeof value !== "string") return false;
-  return KNOWN_PERMISSION_PREFIXES.some((p) => value === p || value.startsWith(p));
+  if (FIXED_PERMISSIONS.has(value)) return true;
+  // network: requires a non-empty host suffix. Bare `network:` is meaningless
+  // and would never authorize an actual request, so reject it at validation.
+  if (value.startsWith(NETWORK_PREFIX) && value.length > NETWORK_PREFIX.length) {
+    return true;
+  }
+  return false;
 }
 
 export type AuthorizationOutcome =

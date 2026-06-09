@@ -28,6 +28,7 @@ import { DockerInstallModal } from "./components/DockerInstallModal.js";
 import { QuickPrefsPopover } from "./components/QuickPrefsPopover.js";
 import { ModelSwitcher } from "./components/ModelSwitcher.js";
 import { RightPanel } from "./components/RightPanel.js";
+import { WorkbenchModal } from "./components/WorkbenchModal.js";
 import { Toast, type ToastMessage } from "./components/Toast.js";
 import { Icon } from "./components/Icons.js";
 import { applyAppearance } from "./appearance.js";
@@ -57,6 +58,7 @@ export function App(): JSX.Element {
   const [modelAnchor, setModelAnchor] = useState<DOMRect | null>(null);
   const [gitRefreshTick, setGitRefreshTick] = useState<number>(0);
   const [installModalOpen, setInstallModalOpen] = useState<boolean>(false);
+  const [workbenchOpen, setWorkbenchOpen] = useState<boolean>(false);
   const [leftCollapsed, setLeftCollapsed] = useState<boolean>(() => readBoolLocal(LEFT_COLLAPSED_KEY));
   const [rightCollapsed, setRightCollapsed] = useState<boolean>(() => readBoolLocal(RIGHT_COLLAPSED_KEY));
 
@@ -510,6 +512,7 @@ export function App(): JSX.Element {
           setSettingsOpen(true);
         }}
         onOpenInstallReminder={openInstallReminder}
+        onOpenWorkbench={() => setWorkbenchOpen(true)}
       />
       <ThreadsSidebar
         runs={runs}
@@ -575,6 +578,13 @@ export function App(): JSX.Element {
         onClose={() => setSettingsOpen(false)}
         onSaved={onSettingsSaved}
         onToast={showToast}
+      />
+      <WorkbenchModal
+        open={workbenchOpen}
+        workspaceId={workspace?.id ?? null}
+        runId={detail?.run.id ?? null}
+        lang={lang}
+        onClose={() => setWorkbenchOpen(false)}
       />
       <DockerInstallModal
         open={installModalOpen}

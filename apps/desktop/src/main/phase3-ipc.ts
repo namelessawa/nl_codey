@@ -117,7 +117,19 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
     const root = requireRoot(args.workspaceId);
     const files = await collectIndexFiles(root);
     const indexer = phase3.indexer();
-    await indexer.indexFiles(args.workspaceId, files);
+    // Broadcast the start so any open SemanticSearchView flips to the
+    // "building" affordance without waiting for its 2 s poll.
+    services.emit({
+      kind: "index_status",
+      workspaceId: args.workspaceId,
+      status: { ...indexer.status(args.workspaceId, files.length), building: true },
+    });
+    try {
+      await indexer.indexFiles(args.workspaceId, files);
+    } finally {
+      const final = indexer.status(args.workspaceId, files.length);
+      services.emit({ kind: "index_status", workspaceId: args.workspaceId, status: final });
+    }
     return indexer.status(args.workspaceId, files.length);
   });
 
@@ -169,6 +181,11 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
   handle(IPC.listRoleMessages, (raw): RoleMessage[] => {
     const args = validateTaskNodeId(raw);
     return storage.listRoleMessages(args.taskNodeId).map(parseRow);
+  });
+
+  handle(IPC.listRoleMessagesForRun, (raw): RoleMessage[] => {
+    const args = validateRunId(raw);
+    return storage.listRoleMessagesForRun(args.runId).map(parseRow);
   });
 
   // --- git ---
