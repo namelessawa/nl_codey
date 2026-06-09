@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   validateContinueAgentTask,
@@ -128,8 +129,17 @@ describe("IPC validators reject malformed payloads", () => {
 
     it("accepts a well-formed payload with known permissions", () => {
       const out = validateInstallPlugin(baseArgs);
-      expect(out.installPath).toBe("/plugins/demo");
+      // The validator normalises the path so separators match the host OS
+      // (forward slash on POSIX, backslash on Windows). Use path.normalize
+      // for the expectation so the assertion is platform-correct.
+      expect(out.installPath).toBe(path.normalize("/plugins/demo"));
       expect(out.approvedPermissions).toEqual(["read_workspace"]);
+    });
+
+    it("rejects a relative installPath", () => {
+      expect(() =>
+        validateInstallPlugin({ ...baseArgs, installPath: "plugins/demo" }),
+      ).toThrow(/installPath must be an absolute path/);
     });
 
     it("accepts network:domain permissions (template literal type)", () => {

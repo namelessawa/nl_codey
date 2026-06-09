@@ -3,7 +3,15 @@ import type { AgentRole, RoleMessage, RoleMessageKind } from "@coding-agent/shar
 import { api } from "../api.js";
 
 interface RoleTimelineProps {
-  taskNodeId: string;
+  /**
+   * Run id whose role-message trace to render. Role messages are stored
+   * per-task-node, but the UI shows them grouped per-run; the renderer
+   * aggregates them via {@link api.listRoleMessagesForRun} which joins
+   * task_nodes server-side. Passing a task-node id here used to be the
+   * contract — the join fixes the historical mismatch where Phase3Panel
+   * passed a run id that returned an empty list.
+   */
+  runId: string;
 }
 
 const LANES: { role: AgentRole; label: string }[] = [
@@ -24,7 +32,7 @@ const KIND_LABEL: Record<RoleMessageKind, string> = {
  * block in its sender's lane, time-ordered; clicking a block toggles its
  * JSON payload. Color-coded by message kind.
  */
-export function RoleTimeline({ taskNodeId }: RoleTimelineProps): JSX.Element {
+export function RoleTimeline({ runId }: RoleTimelineProps): JSX.Element {
   const [messages, setMessages] = useState<RoleMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -32,15 +40,26 @@ export function RoleTimeline({ taskNodeId }: RoleTimelineProps): JSX.Element {
   const load = useCallback(async () => {
     setError(null);
     try {
-      setMessages(await api.listRoleMessages(taskNodeId));
+      setMessages(await api.listRoleMessagesForRun(runId));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [taskNodeId]);
+  }, [runId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Live updates: refetch whenever a Planner/Coder/Reviewer message lands
+  // for this run. Without this the swimlanes would only fill in on
+  // panel-reopen.
+  useEffect(() => {
+    return api.onAgentEvent((event) => {
+      if (event.kind === "role_message" && event.runId === runId) {
+        void load();
+      }
+    });
+  }, [runId, load]);
 
   const ordered = [...messages].sort((a, b) => a.createdAt - b.createdAt);
 

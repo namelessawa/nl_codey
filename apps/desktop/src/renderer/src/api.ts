@@ -129,6 +129,8 @@ export const api = {
   // --- Phase 3: role messages ---
   listRoleMessages: (taskNodeId: string): Promise<RoleMessage[]> =>
     unwrap(window.agentApi.listRoleMessages({ taskNodeId })),
+  listRoleMessagesForRun: (runId: string): Promise<RoleMessage[]> =>
+    unwrap(window.agentApi.listRoleMessagesForRun({ runId })),
   // --- Phase 3: git ---
   getGitStatus: (workspaceId: string): Promise<GitWorkingTreeStatus> =>
     unwrap(window.agentApi.getGitStatus({ workspaceId })),

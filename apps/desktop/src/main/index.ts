@@ -18,7 +18,14 @@ function createWindow(): void {
       preload: path.join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // Chromium sandbox enabled. Our preload only touches
+      // `electron.contextBridge` and `electron.ipcRenderer` — both
+      // sandbox-safe — and the renderer talks to the main process
+      // exclusively over IPC. This shrinks the attack surface for any
+      // foreign HTML the agent might fetch (web_fetch / readability /
+      // LLM markdown rendering) by stripping Node integration from
+      // the renderer process entirely.
+      sandbox: true,
     },
   });
 

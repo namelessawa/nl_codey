@@ -229,17 +229,19 @@ async function runPlanner(
     { role: "user", content: userTask },
   ];
 
-  await runToolLoop(messages, {
+  const outcome = await runToolLoop(messages, {
     llm: deps.llm,
     tools: schemasForRole(deps.baseSchemas, "planner"),
     budget: deps.budget,
     signal: deps.signal,
     temperature: 0.2,
-    // Planner is read-only by design; it never produces tool calls that
-    // need user approval, so we hard-wire no-op gates here rather than
-    // wiring the AgentService's gates through.
-    requiresApproval: () => false,
-    waitForApproval: async () => true,
+    // Planner's allowlist (ROLE_TOOLS.planner) contains only read tools, so in
+    // a well-formed run no approval prompt will fire. But the model still
+    // chooses what to call — if it ever emits a mutating name the host gates
+    // are the last line of defense. Forward them instead of hard-wiring no-op
+    // gates that would silently let such a call through.
+    requiresApproval: deps.requiresApproval ?? (() => false),
+    waitForApproval: deps.waitForApproval ?? (async () => true),
     ...(deps.onChunk ? { onChunk: deps.onChunk } : {}),
     ...(deps.onAssistant ? { onAssistant: deps.onAssistant } : {}),
     ...(deps.onToolCall ? { onToolCall: deps.onToolCall } : {}),
@@ -258,12 +260,32 @@ async function runPlanner(
     },
   });
 
+  // Surface terminal outcomes explicitly. Without this branch a cancelled or
+  // budget-exhausted planner falls into the "did not produce a task breakdown"
+  // error below, which is misleading (the planner never got to run, the user
+  // cancelled or the budget tripped). Service-level error handling converts
+  // the throw into the right run state once it sees an honest message.
+  if (outcome.state !== "done") {
+    throw new Error(plannerOutcomeError(outcome));
+  }
+
   if (!breakdown) {
     throw new Error(
       "Planner did not produce a task breakdown. The model must call propose_task_breakdown.",
     );
   }
   return breakdown;
+}
+
+function plannerOutcomeError(outcome: { state: string; reason?: string }): string {
+  if (outcome.state === "cancelled") return "Planner cancelled by user.";
+  if (outcome.state === "budget_exceeded") {
+    return `Planner aborted: budget exceeded (${outcome.reason ?? "unknown"}).`;
+  }
+  if (outcome.state === "failed") {
+    return `Planner failed: ${outcome.reason ?? "unknown error"}.`;
+  }
+  return `Planner exited with unexpected state: ${outcome.state}.`;
 }
 
 async function runCoder(
@@ -305,7 +327,7 @@ async function runCoder(
     { role: "user", content: userParts.join("\n") },
   ];
 
-  await runToolLoop(messages, {
+  const outcome = await runToolLoop(messages, {
     llm: deps.llm,
     tools: schemasForRole(deps.baseSchemas, "coder"),
     budget: deps.budget,
@@ -355,7 +377,32 @@ async function runCoder(
     },
   });
 
+  // A non-`done` outcome means the coder never reached request_review. Without
+  // this branch we'd return whatever empty / partial diff and testOutput were
+  // captured, the reviewer would predictably emit "changes_requested" against
+  // an empty diff, and the review loop would burn another iteration on a run
+  // that should already be terminating. Surface the failure so the coordinator
+  // escalates immediately.
+  if (outcome.state !== "done") {
+    throw new Error(roleOutcomeError("Coder", outcome, node.id));
+  }
+
   return pendingReview ?? { diff: lastDiff, testOutput: lastTestOutput };
+}
+
+function roleOutcomeError(
+  role: string,
+  outcome: { state: string; reason?: string },
+  nodeId: string,
+): string {
+  if (outcome.state === "cancelled") return `${role} cancelled by user (node ${nodeId}).`;
+  if (outcome.state === "budget_exceeded") {
+    return `${role} aborted on node ${nodeId}: budget exceeded (${outcome.reason ?? "unknown"}).`;
+  }
+  if (outcome.state === "failed") {
+    return `${role} failed on node ${nodeId}: ${outcome.reason ?? "unknown error"}.`;
+  }
+  return `${role} exited on node ${nodeId} with unexpected state: ${outcome.state}.`;
 }
 
 async function runReviewer(
@@ -385,16 +432,19 @@ async function runReviewer(
   ];
 
   let finalText = "";
-  await runToolLoop(messages, {
+  const outcome = await runToolLoop(messages, {
     llm: deps.llm,
     tools: schemasForRole(deps.baseSchemas, "reviewer"),
     budget: deps.budget,
     signal: deps.signal,
     temperature: 0,
-    // Reviewer is read-only: it inspects diffs and emits a JSON verdict.
-    // Hard-wire no-op gates here for the same reason as the planner.
-    requiresApproval: () => false,
-    waitForApproval: async () => true,
+    // Reviewer's allowlist includes run_command (see ROLE_TOOLS.reviewer in
+    // packages/orchestrator/src/roles.ts:51), so it CAN trigger the host's
+    // command-confirmation gate. Forward the host gates instead of hard-wiring
+    // no-ops — otherwise the reviewer silently bypasses approval that the
+    // single-agent and coder paths already honor.
+    requiresApproval: deps.requiresApproval ?? (() => false),
+    waitForApproval: deps.waitForApproval ?? (async () => true),
     ...(deps.onChunk ? { onChunk: deps.onChunk } : {}),
     onAssistant: (text, toolCalls, usage) => {
       if (text.trim()) finalText = text.trim();
@@ -411,6 +461,15 @@ async function runReviewer(
       return result.resultText;
     },
   });
+
+  // A non-`done` outcome means the reviewer never emitted a verdict. Without
+  // this branch we'd parse an empty `finalText`, fall into the JSON-failure
+  // fallback at parseReviewResult, and report a phantom "changes_requested"
+  // verdict — which the review loop would then iterate on, burning more
+  // budget on a run the user already cancelled (or that already exhausted).
+  if (outcome.state !== "done") {
+    throw new Error(roleOutcomeError("Reviewer", outcome, node.id));
+  }
 
   return parseReviewResult(finalText);
 }

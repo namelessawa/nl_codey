@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { dialog } from "electron";
+import { app, dialog } from "electron";
 import {
   IPC,
   type FeedbackSignalInput,
@@ -120,6 +120,11 @@ export function registerPhase4Ipc(
     const result = buildDatasetFromSignals(storage.phase4, signals, { name });
     const dataset = storage.phase4.getPreferenceDataset(result.dataset.id);
     const curated = curatePairs(dataset?.pairs ?? []);
+    // Persist the curated set back over the raw pairs. Without this rewrite
+    // the IPC merely reported a `rejected` count while the underlying table
+    // still held every raw entry, so downstream training silently consumed
+    // pre-curation pairs even though the UI claimed they had been filtered.
+    storage.phase4.replacePreferenceDatasetPairs(result.dataset.id, curated.kept);
     return {
       datasetId: result.dataset.id,
       built: result.built,
@@ -238,6 +243,11 @@ export function registerPhase4Ipc(
     setPluginEnabled: (id, enabled) => storage.phase4.setPluginEnabled(id, enabled),
     uninstallPlugin: (id) => storage.phase4.uninstallPlugin(id),
   };
+  // Fallback prompter used only when the install IPC arrives without
+  // pre-approval (e.g., a future programmatic install path). The renderer's
+  // PluginManager form ships `approvedPermissions` per-checkbox and goes
+  // through the pre-approval path in PluginLoader.install, bypassing this
+  // dialog entirely.
   const pluginPrompter: PermissionPrompter = {
     async ask(manifest, requested) {
       if (requested.length === 0) return [];
@@ -249,7 +259,7 @@ export function registerPhase4Ipc(
         detail:
           `This plugin requests the following permissions:\n\n${lines}\n\n` +
           `Click "Approve all" to grant every permission, or "Cancel" to abort the install. ` +
-          `Per-permission approval will be available in a future release.`,
+          `For per-permission approval, use the install dialog in the renderer UI instead.`,
         buttons: ["Cancel", "Approve all"],
         defaultId: 0,
         cancelId: 0,
@@ -265,7 +275,11 @@ export function registerPhase4Ipc(
       throw new Error("Plugins feature is disabled in Phase 4 settings");
     }
     const validated = validateInstallPlugin(raw);
-    const result = await pluginLoader.install(validated.manifest, validated.installPath);
+    const result = await pluginLoader.install(
+      validated.manifest,
+      validated.installPath,
+      validated.approvedPermissions,
+    );
     if (!result.ok) throw new Error(result.reason);
     return result.installation;
   });
@@ -303,6 +317,92 @@ export function registerPhase4Ipc(
     const { settings: next } = args as { settings: Phase4Settings };
     return phase4Settings.set(next);
   });
+
+  // ----- Proactive scheduler -----
+  // proactiveScanIntervalMin was previously dead config: only `scanDebtNow`
+  // (manual button) ran the debt scan. This setTimeout-chained loop honors
+  // both the toggle (proactiveEnabled) and the cadence on every tick, so a
+  // settings change applies on the next iteration without a restart. The
+  // timer is unref'd and a before-quit hook cancels it cleanly.
+  const stopScheduler = startProactiveScheduler({
+    services,
+    requireRoot,
+    proposalInbox,
+  });
+  app.on("before-quit", stopScheduler);
+}
+
+type SchedulerDeps = {
+  services: Services;
+  requireRoot: RequireRoot;
+  proposalInbox: ProposalInbox;
+};
+
+function startProactiveScheduler(deps: SchedulerDeps): () => void {
+  const { services, requireRoot, proposalInbox } = deps;
+  let timer: NodeJS.Timeout | null = null;
+  let stopped = false;
+  let running = false;
+
+  const computeNextDelayMs = (): number => {
+    const flags = services.phase4Settings.get();
+    // Clamp to [1, 1440] minutes to defend against settings-store drift; the
+    // UI already enforces the same range, but a manually edited JSON file
+    // could bypass it.
+    const min = Math.max(1, Math.min(1440, flags.proactiveScanIntervalMin));
+    return min * 60_000;
+  };
+
+  const tick = async (): Promise<void> => {
+    if (stopped || running) {
+      schedule();
+      return;
+    }
+    running = true;
+    try {
+      const flags = services.phase4Settings.get();
+      if (!flags.proactiveEnabled) return; // toggle off — skip scan, keep ticking
+      // Scan up to 10 most-recently-opened workspaces per tick. A user with
+      // dozens of historical workspaces shouldn't pay the full sweep cost
+      // every interval; the active ones are the ones worth scanning.
+      const workspaces = services.storage.listWorkspaces(10);
+      for (const ws of workspaces) {
+        if (stopped) return;
+        try {
+          const root = requireRoot(ws.id);
+          const files = await readSampleFiles(root, 200);
+          const raw = scanForDebt(ws.id, files);
+          const existing = proposalInbox.list(ws.id);
+          const deduped = dedupeAgainstInbox(raw, { workspaceId: ws.id, existing });
+          proposalInbox.ingestMany(deduped);
+        } catch {
+          // Per-workspace failures (workspace root missing, permission
+          // denied, etc.) must never break the scheduler for other workspaces.
+        }
+      }
+    } finally {
+      running = false;
+      schedule();
+    }
+  };
+
+  const schedule = (): void => {
+    if (stopped) return;
+    timer = setTimeout(() => {
+      void tick();
+    }, computeNextDelayMs());
+    timer.unref?.();
+  };
+
+  schedule(); // First tick happens after one interval, not immediately on startup.
+
+  return () => {
+    stopped = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
 }
 
 async function readSampleFiles(root: string, max: number): Promise<FileSample[]> {

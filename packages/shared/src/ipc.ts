@@ -79,6 +79,7 @@ export const IPC = {
   cancelTaskNode: "task:cancelNode",
   // --- Phase 3: role messages ---
   listRoleMessages: "role:list",
+  listRoleMessagesForRun: "role:listForRun",
   // --- Phase 3: git ---
   getGitStatus: "git:status",
   generatePRDescription: "git:generatePR",
@@ -230,6 +231,7 @@ export interface AgentApi {
   cancelTaskNode(args: TaskNodeIdArgs): Promise<IpcResult<TaskNode>>;
   // --- Phase 3: role messages ---
   listRoleMessages(args: TaskNodeIdArgs): Promise<IpcResult<RoleMessage[]>>;
+  listRoleMessagesForRun(args: RunIdArgs): Promise<IpcResult<RoleMessage[]>>;
   // --- Phase 3: git ---
   getGitStatus(args: WorkspaceIdArgs): Promise<IpcResult<GitWorkingTreeStatus>>;
   generatePRDescription(args: RunIdArgs): Promise<IpcResult<PRDescription>>;

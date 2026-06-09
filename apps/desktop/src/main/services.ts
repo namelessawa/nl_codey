@@ -25,6 +25,12 @@ export type Services = {
    * UI and the runtime always agree on what's enabled.
    */
   phase4Settings: Phase4SettingsStore;
+  /**
+   * Broadcast a live event to the renderer. Exposed on the Services bundle so
+   * IPC handlers (e.g. the semantic-index rebuild) can publish Phase 3
+   * `index_status` updates without a back-channel reference.
+   */
+  emit: (event: AgentEvent) => void;
 };
 
 /** Build the storage + settings + agent service. `emit` broadcasts live events. */
@@ -118,6 +124,6 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
     emit,
   });
 
-  bundle = { storage, settings, agent, installationGate, phase4Settings };
+  bundle = { storage, settings, agent, installationGate, phase4Settings, emit };
   return bundle;
 }

@@ -147,6 +147,13 @@ export type PreferenceDataset = {
   id: string;
   name: string;
   pairs: PreferencePair[];
+  /**
+   * Total pair count when known. The list endpoint sets this without loading
+   * the full `pairs` array (wasteful for many-row datasets); the
+   * single-dataset endpoint omits it since `pairs.length` is authoritative
+   * there. Renderers should display `pairCount ?? pairs.length`.
+   */
+  pairCount?: number;
   /** Filtering applied during curation. */
   curationNotes: string;
   createdAt: number;
