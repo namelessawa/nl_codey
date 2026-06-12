@@ -21,6 +21,13 @@ export type ConsumedTurn = {
 
 const ZERO_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
+/** Default for {@link ToolLoopDeps.maxRepairAttempts}. See its docstring. */
+export const DEFAULT_MAX_REPAIR_ATTEMPTS = 3;
+
+/** Halt notice appended once when consecutive apply_patch crosses the cap. */
+const REPAIR_CAP_NOTICE_TEMPLATE =
+  "❗ 已达自动修复上限（连续 {n} 次 apply_patch 未通过验证）。请停止 apply_patch,改为向用户报告当前进展、或采取不同策略(如先 read_file 调查、或回退已写补丁)。";
+
 /**
  * Drain one `chat()` stream into an aggregated turn, forwarding each chunk to
  * `onChunk` for live UI. Tool-call chunks are collected; the final usage and
@@ -98,8 +105,26 @@ export type ToolLoopDeps = {
    * Runs the project's test/build command and returns feedback to append to
    * the conversation (a pass note or a structured failure for the model to
    * repair), or null to skip. Drives the verify→repair loop.
+   *
+   * **Fail-open contract:** a throw is caught and treated as null inside the
+   * loop, so a crashing verifier (network blip, OOM, parse error) can never
+   * trap the agent. Mirrors MiMo's `goalGate` `Effect.catch` (`fail-open on
+   * any judge error so a flaky judge can never trap the user`).
    */
   verifyAfterPatch?: (call: LLMToolCall, result: string) => Promise<string | null>;
+  /**
+   * Hard cap on **consecutive** `apply_patch` calls that receive verifier
+   * feedback. Once the streak exceeds the cap, a single halt notice is
+   * appended and further verifier feedback is suppressed until any other
+   * tool call resets the streak. Defaults to {@link DEFAULT_MAX_REPAIR_ATTEMPTS}.
+   *
+   * Mirrors MiMo's `MAX_GOAL_REACT` / `MAX_TASK_GATE_MAIN_REACT` bounded-
+   * ReAct safety pattern: without a cap a perpetually-failing verifier turns
+   * the run into an apply_patch ↔ verify-fail churn that only the budget
+   * controller can stop, wasting tokens and burying the real failure under
+   * repair noise.
+   */
+  maxRepairAttempts?: number;
   /**
    * Optional context-window compression. When the conversation exceeds the
    * trigger ratio of `contextWindow`, the middle is folded into a summary
@@ -126,6 +151,13 @@ export async function runToolLoop(
   deps: ToolLoopDeps,
 ): Promise<ToolLoopOutcome> {
   let messages: LLMMessage[] = [...initialMessages];
+  /**
+   * Consecutive-apply_patch streak counter. Bumped on every apply_patch,
+   * reset on any other tool call. Drives the {@link ToolLoopDeps.maxRepairAttempts}
+   * cap.
+   */
+  let consecutiveRepairs = 0;
+  const repairCap = deps.maxRepairAttempts ?? DEFAULT_MAX_REPAIR_ATTEMPTS;
 
   while (true) {
     const limit = deps.budget.exceeded();
@@ -189,9 +221,37 @@ export async function runToolLoop(
       deps.onToolResult?.(call, result);
       messages.push({ role: "tool", toolCallId: call.id, content: result });
 
+      // Maintain the consecutive-apply_patch streak: every other tool call
+      // resets it. Tracked unconditionally so the cap behaves the same
+      // whether or not a verifier is wired.
+      if (call.name === "apply_patch") {
+        consecutiveRepairs += 1;
+      } else {
+        consecutiveRepairs = 0;
+      }
+
       if (deps.verifyAfterPatch && call.name === "apply_patch") {
-        const feedback = await deps.verifyAfterPatch(call, result);
-        if (feedback) messages.push({ role: "user", content: feedback });
+        if (consecutiveRepairs === repairCap + 1) {
+          // First crossing → halt notice once. Further over-cap patches stay
+          // silent so the model can't keep getting the same nudge.
+          messages.push({
+            role: "user",
+            content: REPAIR_CAP_NOTICE_TEMPLATE.replace("{n}", String(repairCap)),
+          });
+        } else if (consecutiveRepairs <= repairCap) {
+          // Fail-open: a verifier crash must NEVER fail the run. Logging
+          // is the caller's job — surface via onToolResult or the future
+          // tool-result envelope; here we just continue.
+          let feedback: string | null = null;
+          try {
+            feedback = await deps.verifyAfterPatch(call, result);
+          } catch {
+            feedback = null;
+          }
+          if (feedback) messages.push({ role: "user", content: feedback });
+        }
+        // consecutiveRepairs > repairCap + 1: silently suppress further
+        // verifier feedback until a non-apply_patch call resets the streak.
         if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
       }
     }
