@@ -122,15 +122,42 @@ export class MemoryRetriever {
         : hits;
 
     filtered.sort((a, b) => b.score - a.score);
+
+    // Relative-floor filter (MiMo memory/service.ts pattern). ALWAYS keep
+    // the top-1; drop any subsequent hit whose score is below top × ratio.
+    // BM25/cosine magnitudes scale with corpus + embedder, so an absolute
+    // floor would wipe real hits in small corpora — this scales with the
+    // actual top score and only trims common-word/noise tail.
+    const floorRatio = opts.floorRatio ?? 0;
+    const trimmed =
+      floorRatio > 0 && filtered.length > 1
+        ? (() => {
+            const topScore = filtered[0]!.score;
+            const cutoff = topScore * floorRatio;
+            return filtered.filter((hit, i) => i === 0 || hit.score >= cutoff);
+          })()
+        : filtered;
+
     const cap = opts.maxEntries ?? DEFAULT_MAX_ENTRIES;
-    return filtered.slice(0, cap);
+    return trimmed.slice(0, cap);
   }
 
+  /**
+   * Embed the query, or return null on any failure. Fail-open: a flaky or
+   * misconfigured embedder must NEVER trap retrieval — the existing
+   * keyword-overlap path in `scoreEntry` handles all entries when this is
+   * null (see the `embedding && queryEmbedding` guard there). Mirrors the
+   * MiMo goal-judge fail-open pattern.
+   */
   private async embedQuery(query: string): Promise<number[] | null> {
     const text = query.trim();
     if (text.length === 0) return null;
-    const vectors = await this.embedder.embed([text]);
-    return vectors[0] ?? null;
+    try {
+      const vectors = await this.embedder.embed([text]);
+      return vectors[0] ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private scoreEntry(args: {

@@ -56,6 +56,21 @@ export type MemoryRetrievalOptions = {
   preferKinds?: MemoryKind[];
   /** Minimum cosine similarity to include a candidate. */
   minScore?: number;
+  /**
+   * Relative-floor filter (MiMo memory/service.ts pattern). When > 0, the
+   * retriever ALWAYS keeps the top-1 hit and drops any subsequent hit whose
+   * score is below `topScore * floorRatio`.
+   *
+   * Why relative, not absolute: cosine/BM25 magnitudes are corpus-/embedder-
+   * dependent. In a small corpus or with a low-dimensional embedder every
+   * score collapses toward 0, so any absolute `minScore` floor would wrongly
+   * wipe real hits. The relative floor scales with the actual top score,
+   * keeping the gold result while trimming common-word noise.
+   *
+   * 0 (default) = disabled (keep all matches up to `maxEntries`). Composes
+   * with `minScore`: an entry must pass BOTH filters to be returned.
+   */
+  floorRatio?: number;
 };
 
 export type MemoryHit = {

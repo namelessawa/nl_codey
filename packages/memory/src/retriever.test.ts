@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MemoryEntry } from "@coding-agent/shared";
+import type { EmbeddingProvider, MemoryEntry } from "@coding-agent/shared";
 import { MemoryRetriever, cosineSimilarity } from "./retriever.js";
 import {
   FakeEmbeddingProvider,
@@ -144,5 +144,116 @@ describe("MemoryRetriever.retrieve", () => {
     expect(await retriever.retrieve("anything", { workspaceId: "ws-1" })).toEqual(
       [],
     );
+  });
+
+  // ----- B3: relative floor + embedder fail-open --------------------------
+  // Mirrors MiMo memory/service.ts:79-133 (BM25 magnitudes are corpus-
+  // dependent; an absolute floor wipes real hits in small corpora — use a
+  // RELATIVE floor that always keeps the top-1).
+
+  it("B3 floorRatio drops tail hits whose score is below top × ratio", async () => {
+    const store = new FakeMemoryStore();
+    // Use a high-dim fake embedder so token-bucket collisions don't inflate
+    // the cosine of a genuinely-unrelated entry.
+    const embedder = new FakeEmbeddingProvider(256);
+    // Strong match (lots of overlapping tokens with the query).
+    await embedSeed(
+      store,
+      embedder,
+      makeEntry({ id: "top", title: "database migration sqlite schema rows" }),
+    );
+    // Moderate match (some overlap).
+    await embedSeed(
+      store,
+      embedder,
+      makeEntry({ id: "mid", title: "database query result rows" }),
+    );
+    // Weak match (almost no overlap with the query terms).
+    await embedSeed(
+      store,
+      embedder,
+      makeEntry({ id: "weak", title: "css animation styling color" }),
+    );
+
+    const retriever = new MemoryRetriever(store, embedder);
+    const noFloor = await retriever.retrieve("database migration sqlite", {
+      workspaceId: "ws-1",
+    });
+    expect(noFloor.length).toBe(3);
+
+    const withFloor = await retriever.retrieve("database migration sqlite", {
+      workspaceId: "ws-1",
+      floorRatio: 0.3,
+    });
+    // Top hit must always survive; the weak hit must be trimmed.
+    expect(withFloor[0]?.entry.id).toBe("top");
+    expect(withFloor.some((h) => h.entry.id === "weak")).toBe(false);
+    // And every kept hit must be at least top × ratio.
+    const top = withFloor[0]!.score;
+    for (const h of withFloor) expect(h.score).toBeGreaterThanOrEqual(top * 0.3);
+  });
+
+  it("B3 floorRatio always keeps top-1 even when only one candidate exists", async () => {
+    const store = new FakeMemoryStore();
+    const embedder = new FakeEmbeddingProvider();
+    await embedSeed(store, embedder, makeEntry({ id: "only", title: "lonely topic" }));
+
+    const retriever = new MemoryRetriever(store, embedder);
+    const hits = await retriever.retrieve("lonely topic", {
+      workspaceId: "ws-1",
+      floorRatio: 0.99, // aggressive cutoff
+    });
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.entry.id).toBe("only");
+  });
+
+  it("B3 floorRatio=0 (default) preserves all hits up to maxEntries", async () => {
+    const store = new FakeMemoryStore();
+    const embedder = new FakeEmbeddingProvider();
+    for (let i = 0; i < 5; i += 1) {
+      await embedSeed(
+        store,
+        embedder,
+        makeEntry({ id: `e${i}`, title: `topic word${i}` }),
+      );
+    }
+    const retriever = new MemoryRetriever(store, embedder);
+    const hits = await retriever.retrieve("topic", { workspaceId: "ws-1" });
+    expect(hits.length).toBe(5);
+  });
+
+  it("B3 embedder fail-open: a throwing embedder falls back to keyword overlap", async () => {
+    const store = new FakeMemoryStore();
+    const realEmbedder = new FakeEmbeddingProvider();
+    // Seed with the real embedder so entries DO have embeddings on disk —
+    // the fail-open path must still kick in because the QUERY embedding
+    // can't be computed.
+    await embedSeed(
+      store,
+      realEmbedder,
+      makeEntry({ id: "match", title: "alpha beta gamma" }),
+    );
+    await embedSeed(
+      store,
+      realEmbedder,
+      makeEntry({ id: "miss", title: "unrelated delta epsilon" }),
+    );
+
+    const throwing: EmbeddingProvider = {
+      model: "throwing",
+      dimensions: 16,
+      embed: async () => {
+        throw new Error("embedder unavailable");
+      },
+    };
+
+    const retriever = new MemoryRetriever(store, throwing);
+    // Must not throw.
+    const hits = await retriever.retrieve("alpha beta", { workspaceId: "ws-1" });
+
+    expect(hits.length).toBeGreaterThan(0);
+    // Keyword-overlap fallback should still rank the matching entry first.
+    expect(hits[0]?.entry.id).toBe("match");
   });
 });
