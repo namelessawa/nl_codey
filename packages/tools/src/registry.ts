@@ -20,7 +20,7 @@ import type {
   SemanticSearchPort,
   TaskPort,
   WebPort,
-} from "./phase3-deps.js";
+} from "./tool-ports.js";
 
 /** Read-only / non-mutating tools the agent may call autonomously. */
 export const readOnlyTools = {

@@ -30,7 +30,7 @@ export type {
   TaskPort,
   ReviewPort,
   WebPort,
-} from "./phase3-deps.js";
+} from "./tool-ports.js";
 
 // NOTE: git_create_branch and git_commit are NOT exposed as LLM AgentTools.
 // Per the Phase 3 spec they are system calls the Orchestrator invokes directly

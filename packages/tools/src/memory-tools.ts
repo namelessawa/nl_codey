@@ -6,7 +6,7 @@ import type {
   WriteMemoryOutput,
 } from "@nlc/shared";
 import { TOOL_CODES, ToolError } from "./errors.js";
-import type { MemoryPort } from "./phase3-deps.js";
+import type { MemoryPort } from "./tool-ports.js";
 
 const DEFAULT_MAX_ENTRIES = 10;
 

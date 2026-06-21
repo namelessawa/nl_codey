@@ -3,7 +3,7 @@ import type {
   SemanticSearchToolInput,
   SemanticSearchToolOutput,
 } from "@nlc/shared";
-import type { SemanticSearchPort } from "./phase3-deps.js";
+import type { SemanticSearchPort } from "./tool-ports.js";
 
 /**
  * semantic_search (Planner / Coder): natural-language retrieval over indexed

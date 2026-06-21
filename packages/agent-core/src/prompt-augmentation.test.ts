@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { GlobalPattern, StyleSpec } from "@nlc/shared";
 import {
-  buildPhase4PromptAugmentation,
+  buildPromptAugmentation,
   MODEL_IDENTITY_REMINDER,
-} from "./phase4-prompt.js";
+} from "./prompt-augmentation.js";
 
 function pattern(title: string, sources: string[], confidence: number): GlobalPattern {
   return {
@@ -20,9 +20,9 @@ function pattern(title: string, sources: string[], confidence: number): GlobalPa
   };
 }
 
-describe("buildPhase4PromptAugmentation", () => {
+describe("buildPromptAugmentation", () => {
   it("renders empty string when no inputs", () => {
-    expect(buildPhase4PromptAugmentation({})).toBe("");
+    expect(buildPromptAugmentation({})).toBe("");
   });
 
   it("caps patterns at 3 with provenance", () => {
@@ -32,7 +32,7 @@ describe("buildPhase4PromptAugmentation", () => {
       pattern("C", ["p1"], 0.6),
       pattern("D", ["p1"], 0.5),
     ];
-    const text = buildPhase4PromptAugmentation({ globalPatterns: patterns });
+    const text = buildPromptAugmentation({ globalPatterns: patterns });
     expect(text).toContain("A");
     expect(text).toContain("B");
     expect(text).toContain("C");
@@ -75,7 +75,7 @@ describe("buildPhase4PromptAugmentation", () => {
       version: 1,
       updatedAt: 0,
     };
-    const text = buildPhase4PromptAugmentation({ styleSpec: spec });
+    const text = buildPromptAugmentation({ styleSpec: spec });
     const mustIdx = text.indexOf("MUST");
     const preferIdx = text.indexOf("PREFER");
     expect(mustIdx).toBeLessThan(preferIdx);
@@ -83,7 +83,7 @@ describe("buildPhase4PromptAugmentation", () => {
   });
 
   it("appends model identity reminder when requested", () => {
-    const text = buildPhase4PromptAugmentation({ includeModelIdentityReminder: true });
+    const text = buildPromptAugmentation({ includeModelIdentityReminder: true });
     expect(text).toBe(MODEL_IDENTITY_REMINDER);
     expect(text).toContain("微调");
     expect(text).toContain("verify");

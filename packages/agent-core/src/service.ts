@@ -51,8 +51,8 @@ export type Phase4AugmentationFn = (workspaceId: string) => string;
  * factory is called once per run so settings changes (API keys, sandbox mode)
  * take effect on the next task without requiring a restart.
  */
-import type { Phase3AgentPorts } from "./phase3-schemas.js";
-export type Phase3PortsFn = (workspaceId: string) => Phase3AgentPorts | null;
+import type { ExtendedAgentPorts } from "./extended-tools.js";
+export type Phase3PortsFn = (workspaceId: string) => ExtendedAgentPorts | null;
 
 /**
  * A dynamically-loaded tool bundle (schemas the model sees + a dispatcher).
@@ -669,7 +669,7 @@ export class AgentService {
     // Resolve Phase 3 ports once per loop entry. A null return (or a thrown
     // error during construction) cleanly falls back to the Phase 1/2 surface;
     // failures here must NEVER block a normal run.
-    let phase3Ports: Phase3AgentPorts | null = null;
+    let phase3Ports: ExtendedAgentPorts | null = null;
     try {
       phase3Ports = this.getPhase3Ports?.(workspaceId) ?? null;
     } catch {
@@ -839,7 +839,7 @@ export class AgentService {
     const ctx: ToolContext = { workspaceRoot, runId, signal: controller.signal };
     const settings = this.getAgentSettings();
     const readOnly = this.effectiveReadOnly();
-    let phase3Ports: Phase3AgentPorts | null = null;
+    let phase3Ports: ExtendedAgentPorts | null = null;
     try {
       phase3Ports = this.getPhase3Ports?.(workspaceId) ?? null;
     } catch {

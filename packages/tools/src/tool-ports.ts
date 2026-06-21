@@ -19,10 +19,11 @@ import type {
 } from "@nlc/shared";
 
 /**
- * Port interfaces the Phase 3 tools depend on. Each tool is a factory that
- * closes over one of these ports; the main process wires concrete services
- * (semantic index, memory store, task/review orchestrator, web client) later.
- * Keeping the surface minimal mirrors the existing SnapshotStore pattern.
+ * Port interfaces the extended (port-backed) tools depend on. Each tool is
+ * a factory that closes over one of these ports; the main process wires
+ * concrete services (semantic index, memory store, task/review orchestrator,
+ * web client) later. Keeping the surface minimal mirrors the existing
+ * SnapshotStore pattern.
  */
 
 export interface SemanticSearchPort {

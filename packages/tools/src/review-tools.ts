@@ -7,7 +7,7 @@ import type {
   RequestReviewInput,
   RequestReviewOutput,
 } from "@nlc/shared";
-import type { ReviewPort } from "./phase3-deps.js";
+import type { ReviewPort } from "./tool-ports.js";
 
 /**
  * request_review (Coder -> Reviewer): hand a TaskNode's diff and test output

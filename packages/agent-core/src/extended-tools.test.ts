@@ -9,12 +9,12 @@ import type {
   WriteMemoryInput,
 } from "@nlc/shared";
 import {
-  PHASE3_AGENT_TOOL_NAMES,
-  PHASE3_AGENT_TOOL_SCHEMAS,
-  PHASE3_MUTATING_TOOLS,
-  createPhase3Dispatcher,
-  type Phase3AgentPorts,
-} from "./phase3-schemas.js";
+  EXTENDED_AGENT_TOOL_NAMES,
+  EXTENDED_AGENT_TOOL_SCHEMAS,
+  EXTENDED_MUTATING_TOOLS,
+  createExtendedDispatcher,
+  type ExtendedAgentPorts,
+} from "./extended-tools.js";
 import {
   AGENT_TOOL_SCHEMAS,
   agentToolSchemas,
@@ -28,11 +28,11 @@ function makeCall(name: string, args: Record<string, unknown>): LLMToolCall {
 }
 
 /**
- * In-memory test double for the Phase 3 ports. Captures the inputs the
+ * In-memory test double for the extended ports. Captures the inputs the
  * dispatcher passes through and lets each test script the response.
  */
 function makePorts(): {
-  ports: Phase3AgentPorts;
+  ports: ExtendedAgentPorts;
   semanticCalls: { query: string; opts?: unknown }[];
   memoryReads: { query?: string; kind?: string; max: number }[];
   memoryWrites: WriteMemoryInput[];
@@ -45,7 +45,7 @@ function makePorts(): {
   const webSearches: WebSearchToolInput[] = [];
   const webFetches: WebFetchToolInput[] = [];
 
-  const ports: Phase3AgentPorts = {
+  const ports: ExtendedAgentPorts = {
     semanticSearch: {
       async search(query, opts) {
         semanticCalls.push({ query, opts });
@@ -94,41 +94,41 @@ function makePorts(): {
   return { ports, semanticCalls, memoryReads, memoryWrites, webSearches, webFetches };
 }
 
-describe("PHASE3_AGENT_TOOL_SCHEMAS", () => {
-  it("declares all five single-agent Phase 3 tools by name", () => {
-    const names = PHASE3_AGENT_TOOL_SCHEMAS.map((s) => s.name).sort();
+describe("EXTENDED_AGENT_TOOL_SCHEMAS", () => {
+  it("declares all five single-agent extended tools by name", () => {
+    const names = EXTENDED_AGENT_TOOL_SCHEMAS.map((s) => s.name).sort();
     expect(names).toEqual(
-      [...PHASE3_AGENT_TOOL_NAMES].sort(),
+      [...EXTENDED_AGENT_TOOL_NAMES].sort(),
     );
   });
 
   it("marks write_memory as a mutating tool", () => {
-    expect(PHASE3_MUTATING_TOOLS).toContain("write_memory");
-    expect(PHASE3_MUTATING_TOOLS).not.toContain("read_memory");
+    expect(EXTENDED_MUTATING_TOOLS).toContain("write_memory");
+    expect(EXTENDED_MUTATING_TOOLS).not.toContain("read_memory");
   });
 });
 
-describe("agentToolSchemas integration with Phase 3", () => {
-  it("does not advertise Phase 3 tools when phase3Available is false", () => {
+describe("agentToolSchemas integration with extended tools", () => {
+  it("does not advertise extended tools when phase3Available is false", () => {
     const schemas = agentToolSchemas({ phase3Available: false });
     expect(schemas.map((s) => s.name)).toEqual(AGENT_TOOL_SCHEMAS.map((s) => s.name));
   });
 
-  it("advertises all Phase 3 tools when phase3Available is true", () => {
+  it("advertises all extended tools when phase3Available is true", () => {
     const schemas = agentToolSchemas({ phase3Available: true });
-    for (const name of PHASE3_AGENT_TOOL_NAMES) {
+    for (const name of EXTENDED_AGENT_TOOL_NAMES) {
       expect(schemas.find((s) => s.name === name)).toBeDefined();
     }
   });
 
-  it("strips write_memory in read-only mode but keeps read-only Phase 3 tools", () => {
+  it("strips write_memory in read-only mode but keeps read-only extended tools", () => {
     const schemas = agentToolSchemas({ phase3Available: true, readOnly: true });
     const names = schemas.map((s) => s.name);
     // Mutating tools stripped
     expect(names).not.toContain("write_memory");
     expect(names).not.toContain("apply_patch");
     expect(names).not.toContain("write_file");
-    // Read-only Phase 3 tools survive
+    // Read-only extended tools survive
     expect(names).toContain("semantic_search");
     expect(names).toContain("read_memory");
     expect(names).toContain("web_search");
@@ -144,17 +144,17 @@ describe("agentToolSchemas integration with Phase 3", () => {
   });
 });
 
-describe("createPhase3Dispatcher", () => {
+describe("createExtendedDispatcher", () => {
   it("returns null for unknown tool names so the caller can fall through", async () => {
     const { ports } = makePorts();
-    const dispatch = createPhase3Dispatcher(ports);
+    const dispatch = createExtendedDispatcher(ports);
     const result = await dispatch(makeCall("read_file", { path: "x" }), CTX);
     expect(result).toBeNull();
   });
 
   it("routes semantic_search to the semantic port and serialises hits", async () => {
     const { ports, semanticCalls } = makePorts();
-    const dispatch = createPhase3Dispatcher(ports);
+    const dispatch = createExtendedDispatcher(ports);
     const result = await dispatch(
       makeCall("semantic_search", { query: "auth flow", topK: 3 }),
       CTX,
@@ -173,7 +173,7 @@ describe("createPhase3Dispatcher", () => {
 
   it("rejects semantic_search with no query", async () => {
     const { ports } = makePorts();
-    const dispatch = createPhase3Dispatcher(ports);
+    const dispatch = createExtendedDispatcher(ports);
     const result = await dispatch(makeCall("semantic_search", {}), CTX);
     expect(result?.isError).toBe(true);
     expect(JSON.parse(result!.resultText).error).toContain("query");
@@ -181,7 +181,7 @@ describe("createPhase3Dispatcher", () => {
 
   it("routes read_memory and forwards optional filters", async () => {
     const { ports, memoryReads } = makePorts();
-    const dispatch = createPhase3Dispatcher(ports);
+    const dispatch = createExtendedDispatcher(ports);
     const result = await dispatch(
       makeCall("read_memory", { query: "logger", kind: "decision", maxEntries: 5 }),
       CTX,
@@ -192,14 +192,14 @@ describe("createPhase3Dispatcher", () => {
 
   it("defaults read_memory max to 10 when not provided", async () => {
     const { ports, memoryReads } = makePorts();
-    const dispatch = createPhase3Dispatcher(ports);
+    const dispatch = createExtendedDispatcher(ports);
     await dispatch(makeCall("read_memory", {}), CTX);
     expect(memoryReads[0]?.max).toBe(10);
   });
 
   it("routes write_memory and rejects disallowed kinds", async () => {
     const { ports, memoryWrites } = makePorts();
-    const dispatch = createPhase3Dispatcher(ports);
+    const dispatch = createExtendedDispatcher(ports);
     const ok = await dispatch(
       makeCall("write_memory", {
         kind: "decision",
@@ -225,7 +225,7 @@ describe("createPhase3Dispatcher", () => {
 
   it("routes web_search and web_fetch through the web port", async () => {
     const { ports, webSearches, webFetches } = makePorts();
-    const dispatch = createPhase3Dispatcher(ports);
+    const dispatch = createExtendedDispatcher(ports);
     await dispatch(makeCall("web_search", { query: "vitest mocks" }), CTX);
     await dispatch(makeCall("web_fetch", { url: "https://example.com" }), CTX);
     expect(webSearches[0]?.query).toBe("vitest mocks");
@@ -233,7 +233,7 @@ describe("createPhase3Dispatcher", () => {
   });
 
   it("wraps a thrown port error into a structured tool result", async () => {
-    const ports: Phase3AgentPorts = {
+    const ports: ExtendedAgentPorts = {
       semanticSearch: {
         async search() {
           throw new Error("embedder offline");
@@ -256,7 +256,7 @@ describe("createPhase3Dispatcher", () => {
         },
       },
     };
-    const dispatch = createPhase3Dispatcher(ports);
+    const dispatch = createExtendedDispatcher(ports);
     const result = await dispatch(
       makeCall("semantic_search", { query: "x" }),
       CTX,

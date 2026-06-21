@@ -7,13 +7,13 @@ export {
   type DynamicToolBundleFn,
 } from "./service.js";
 export {
-  PHASE3_AGENT_TOOL_NAMES,
-  PHASE3_AGENT_TOOL_SCHEMAS,
-  PHASE3_MUTATING_TOOLS,
-  createPhase3Dispatcher,
-  type Phase3AgentPorts,
-  type Phase3AgentToolName,
-} from "./phase3-schemas.js";
+  EXTENDED_AGENT_TOOL_NAMES,
+  EXTENDED_AGENT_TOOL_SCHEMAS,
+  EXTENDED_MUTATING_TOOLS,
+  createExtendedDispatcher,
+  type ExtendedAgentPorts,
+  type ExtendedAgentToolName,
+} from "./extended-tools.js";
 export {
   ORCHESTRATOR_TOOL_SCHEMAS,
   runMultiAgentTask,
@@ -37,10 +37,10 @@ export {
   getReadonlySystemPrompt,
 } from "./prompts.js";
 export {
-  buildPhase4PromptAugmentation,
+  buildPromptAugmentation,
   MODEL_IDENTITY_REMINDER,
-  type Phase4PromptInputs,
-} from "./phase4-prompt.js";
+  type PromptAugmentationInputs,
+} from "./prompt-augmentation.js";
 export { rollbackRun, type RollbackArgs } from "./rollback.js";
 export {
   compressConversation,

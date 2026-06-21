@@ -5,7 +5,7 @@ import type {
   UpdateTaskStatusInput,
   UpdateTaskStatusOutput,
 } from "@nlc/shared";
-import type { TaskPort } from "./phase3-deps.js";
+import type { TaskPort } from "./tool-ports.js";
 
 /**
  * propose_task_breakdown (Planner): submit a TaskNode DAG for validation and

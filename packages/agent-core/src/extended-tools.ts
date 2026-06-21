@@ -1,7 +1,7 @@
 /**
- * Phase 3 tool schemas + dispatchers exposed to the single-agent loop.
+ * Extended tool schemas + dispatchers exposed to the single-agent loop.
  *
- * In Phase 3 the wider tool catalogue lives in {@link createPhase3Tools}
+ * The wider port-backed tool catalogue lives in `createExtendedTools`
  * (`@nlc/tools`), where every tool closes over an injected port.
  * The single-agent loop sees a deliberately narrow subset that is useful
  * outside the multi-agent orchestrator:
@@ -31,8 +31,8 @@ import {
 } from "@nlc/tools";
 import type { ExecutedTool } from "./tools-registry.js";
 
-/** Single-agent Phase 3 tools exposed to the model. */
-export const PHASE3_AGENT_TOOL_NAMES = [
+/** Single-agent extended (port-backed) tools exposed to the model. */
+export const EXTENDED_AGENT_TOOL_NAMES = [
   "semantic_search",
   "read_memory",
   "write_memory",
@@ -40,17 +40,17 @@ export const PHASE3_AGENT_TOOL_NAMES = [
   "web_fetch",
 ] as const;
 
-export type Phase3AgentToolName = (typeof PHASE3_AGENT_TOOL_NAMES)[number];
+export type ExtendedAgentToolName = (typeof EXTENDED_AGENT_TOOL_NAMES)[number];
 
 /**
- * Phase 3 tools that mutate persistent project state (memory entries). In
+ * Extended tools that mutate persistent project state (memory entries). In
  * read-only ("instruction") mode they are stripped from the advertised schema
- * AND hard-refused at dispatch, mirroring how {@link FILE_MUTATING_TOOLS}
- * locks down file writes.
+ * AND hard-refused at dispatch, mirroring how `FILE_MUTATING_TOOLS` locks
+ * down file writes.
  */
-export const PHASE3_MUTATING_TOOLS: readonly string[] = ["write_memory"];
+export const EXTENDED_MUTATING_TOOLS: readonly string[] = ["write_memory"];
 
-export const PHASE3_AGENT_TOOL_SCHEMAS: ToolSchema[] = [
+export const EXTENDED_AGENT_TOOL_SCHEMAS: ToolSchema[] = [
   {
     name: "semantic_search",
     description:
@@ -129,24 +129,24 @@ export const PHASE3_AGENT_TOOL_SCHEMAS: ToolSchema[] = [
 ];
 
 /**
- * Concrete Phase 3 port bundle the single-agent loop runs against. All five
- * ports must be provided together; partial bundles aren't supported because
- * the schema is advertised as a single block.
+ * Concrete extended port bundle the single-agent loop runs against. All
+ * three ports must be provided together; partial bundles aren't supported
+ * because the schema is advertised as a single block.
  */
-export type Phase3AgentPorts = {
+export type ExtendedAgentPorts = {
   semanticSearch: SemanticSearchPort;
   memory: MemoryPort;
   web: WebPort;
 };
 
 /**
- * Build a dispatcher for the Phase 3 single-agent tools. Returns `null` when
- * the tool name is not a Phase 3 tool so the caller can fall through to its
- * existing Phase 1/2 dispatch. Errors are caught and returned as structured
+ * Build a dispatcher for the extended single-agent tools. Returns `null` when
+ * the tool name is not an extended tool so the caller can fall through to its
+ * existing built-in dispatch. Errors are caught and returned as structured
  * tool results so the autonomous loop can recover instead of crashing.
  */
-export function createPhase3Dispatcher(
-  ports: Phase3AgentPorts,
+export function createExtendedDispatcher(
+  ports: ExtendedAgentPorts,
 ): (call: LLMToolCall, ctx: ToolContext) => Promise<ExecutedTool | null> {
   const semanticSearch = createSemanticSearchTool(ports.semanticSearch);
   const readMemory = createReadMemoryTool(ports.memory);

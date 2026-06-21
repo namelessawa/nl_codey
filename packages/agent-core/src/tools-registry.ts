@@ -19,12 +19,12 @@ import {
   type SnapshotStore,
 } from "@nlc/tools";
 import {
-  createPhase3Dispatcher,
-  PHASE3_AGENT_TOOL_NAMES,
-  PHASE3_AGENT_TOOL_SCHEMAS,
-  PHASE3_MUTATING_TOOLS,
-  type Phase3AgentPorts,
-} from "./phase3-schemas.js";
+  createExtendedDispatcher,
+  EXTENDED_AGENT_TOOL_NAMES,
+  EXTENDED_AGENT_TOOL_SCHEMAS,
+  EXTENDED_MUTATING_TOOLS,
+  type ExtendedAgentPorts,
+} from "./extended-tools.js";
 
 /**
  * Tool schemas exposed to the model via the chat tool-calling API. Kept in sync
@@ -181,19 +181,19 @@ export const FILE_MUTATING_TOOLS: readonly string[] = ["apply_patch", "write_fil
  * project memory store). Used by the read-only filter in {@link agentToolSchemas}
  * and the dispatcher in {@link createToolExecutor}. Combining these into one
  * list means a future Phase 3/4 tool can opt in by adding its name to either
- * {@link FILE_MUTATING_TOOLS} or {@link PHASE3_MUTATING_TOOLS} without touching
+ * {@link FILE_MUTATING_TOOLS} or {@link EXTENDED_MUTATING_TOOLS} without touching
  * either gate.
  */
 const ALL_MUTATING_TOOLS: readonly string[] = [
   ...FILE_MUTATING_TOOLS,
-  ...PHASE3_MUTATING_TOOLS,
+  ...EXTENDED_MUTATING_TOOLS,
 ];
 
 /**
  * The tool schemas advertised to the model. In read-only mode every mutating
  * tool (file writes + memory writes) is filtered out so the model never even
  * attempts a state change. Phase 3 tools (semantic_search / memory / web) are
- * appended when the caller passes {@link Phase3AgentPorts}; without ports the
+ * appended when the caller passes {@link ExtendedAgentPorts}; without ports the
  * model only sees the Phase 1/2 catalogue, matching the pre-Phase-3 behaviour.
  *
  * `extraSchemas` allows the host to inject additional tool catalogues — most
@@ -210,7 +210,7 @@ export function agentToolSchemas(
   } = {},
 ): ToolSchema[] {
   const base = options.phase3Available
-    ? [...AGENT_TOOL_SCHEMAS, ...PHASE3_AGENT_TOOL_SCHEMAS]
+    ? [...AGENT_TOOL_SCHEMAS, ...EXTENDED_AGENT_TOOL_SCHEMAS]
     : [...AGENT_TOOL_SCHEMAS];
   const filtered = options.readOnly
     ? base.filter((tool) => !ALL_MUTATING_TOOLS.includes(tool.name))
@@ -280,7 +280,7 @@ export type ToolExecutorOptions = {
    * read_memory / write_memory / web_search / web_fetch are routed through the
    * corresponding port. Omit to keep the executor at the Phase 1/2 surface.
    */
-  phase3Ports?: Phase3AgentPorts;
+  phase3Ports?: ExtendedAgentPorts;
   /**
    * Optional extra dispatcher tried before the Phase 1/2 switch. Used by the
    * plugin runtime to route `plugin__<plugin>__<tool>` calls through the
@@ -310,7 +310,7 @@ export function createToolExecutor(
     phase3Ports,
     extraDispatcher,
   } = opts;
-  const phase3Dispatch = phase3Ports ? createPhase3Dispatcher(phase3Ports) : null;
+  const phase3Dispatch = phase3Ports ? createExtendedDispatcher(phase3Ports) : null;
 
   return async (call: LLMToolCall): Promise<ExecutedTool> => {
     // Read-only ("instruction") mode: refuse any mutating tool before it can
@@ -327,7 +327,7 @@ export function createToolExecutor(
     // write_memory / web_search / web_fetch never fall into the unknown-tool
     // branch when ports are wired. Returns null when the call is not a Phase 3
     // tool, in which case control falls through to the Phase 1/2 switch below.
-    if (phase3Dispatch && (PHASE3_AGENT_TOOL_NAMES as readonly string[]).includes(call.name)) {
+    if (phase3Dispatch && (EXTENDED_AGENT_TOOL_NAMES as readonly string[]).includes(call.name)) {
       // Gate the call through the installation gate first (parity with
       // Phase 1/2 dispatch) so degraded mode can refuse network-touching
       // Phase 3 tools too.

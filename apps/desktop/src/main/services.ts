@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   AgentService,
-  buildPhase4PromptAugmentation,
+  buildPromptAugmentation,
 } from "@nlc/agent-core";
 import { createLLMProvider, createLLMProviderFromEnv } from "@nlc/llm";
 import { Storage } from "@nlc/storage";
@@ -106,7 +106,7 @@ export function buildServices(
           : null;
         const activeModel = storage.phase4.getActiveModel();
         const includeModelIdentityReminder = !!activeModel && activeModel.kind !== "base";
-        return buildPhase4PromptAugmentation({
+        return buildPromptAugmentation({
           ...(globalPatterns ? { globalPatterns } : {}),
           styleSpec,
           includeModelIdentityReminder,

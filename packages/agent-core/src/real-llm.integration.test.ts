@@ -28,18 +28,18 @@ import { createLLMProvider } from "@nlc/llm";
 import { BudgetController } from "./budget.js";
 import { runToolLoop } from "./loop.js";
 import { agentToolSchemas, createToolExecutor } from "./tools-registry.js";
-import { type Phase3AgentPorts } from "./phase3-schemas.js";
+import { type ExtendedAgentPorts } from "./extended-tools.js";
 
 const HAS_KEY = !!process.env.DEEPSEEK_API_KEY;
 const describeReal = HAS_KEY ? describe : describe.skip;
 
 function buildPorts(): {
-  ports: Phase3AgentPorts;
+  ports: ExtendedAgentPorts;
   callLog: { tool: string; args: Record<string, unknown> }[];
 } {
   const callLog: { tool: string; args: Record<string, unknown> }[] = [];
 
-  const ports: Phase3AgentPorts = {
+  const ports: ExtendedAgentPorts = {
     semanticSearch: {
       async search(query: string): Promise<SemanticSearchToolHit[]> {
         callLog.push({ tool: "semantic_search", args: { query } });

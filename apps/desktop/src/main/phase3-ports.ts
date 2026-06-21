@@ -17,7 +17,7 @@ import {
   type SearchBackend,
 } from "@nlc/web-tools";
 import { searchChunks } from "@nlc/semantic-index";
-import type { Phase3AgentPorts } from "@nlc/agent-core";
+import type { ExtendedAgentPorts } from "@nlc/agent-core";
 import type {
   MemoryRetrievalOptions,
   ReadMemoryHit,
@@ -38,7 +38,7 @@ import { Phase3Services } from "./phase3-services.js";
 export function buildPhase3Ports(
   services: Services,
   workspaceId: string,
-): Phase3AgentPorts | null {
+): ExtendedAgentPorts | null {
   const ws = services.storage.getWorkspace(workspaceId);
   if (!ws) return null;
   const phase3 = new Phase3Services(services);

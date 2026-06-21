@@ -5,7 +5,7 @@ import type {
   WebSearchToolInput,
   WebSearchToolOutput,
 } from "@nlc/shared";
-import type { WebPort } from "./phase3-deps.js";
+import type { WebPort } from "./tool-ports.js";
 
 /**
  * web_search (Coder): search the web for documentation, error messages, or

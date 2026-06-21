@@ -10,7 +10,7 @@ import { createSemanticSearchTool } from "./semantic-search-tool.js";
 import { createUpdateTaskStatusTool } from "./task-tools.js";
 import { createReadMemoryTool, createWriteMemoryTool } from "./memory-tools.js";
 import { ToolError } from "./errors.js";
-import type { MemoryPort, SemanticSearchPort, TaskPort } from "./phase3-deps.js";
+import type { MemoryPort, SemanticSearchPort, TaskPort } from "./tool-ports.js";
 
 const ctx: ToolContext = { workspaceRoot: "/ws", runId: "run-1" };
 
