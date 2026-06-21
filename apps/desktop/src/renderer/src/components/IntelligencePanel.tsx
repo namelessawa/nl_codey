@@ -8,14 +8,14 @@ import { SandboxIndicator } from "./SandboxIndicator.js";
 import { SemanticSearchView } from "./SemanticSearchView.js";
 import { DebugView } from "./DebugView.js";
 
-interface Phase3PanelProps {
+interface IntelligencePanelProps {
   workspaceId: string;
   runId: string | null;
 }
 
-type Phase3Tab = "memory" | "tasks" | "roles" | "git" | "failures" | "search" | "debug";
+type IntelligenceTab = "memory" | "tasks" | "roles" | "git" | "failures" | "search" | "debug";
 
-const TABS: { id: Phase3Tab; label: string }[] = [
+const TABS: { id: IntelligenceTab; label: string }[] = [
   { id: "memory", label: "Memory" },
   { id: "failures", label: "Failures" },
   { id: "tasks", label: "Tasks" },
@@ -30,12 +30,12 @@ const TABS: { id: Phase3Tab; label: string }[] = [
  * git workflow, and failure-library views, with a sandbox-mode indicator in
  * the header. Run-scoped views prompt to run a task when no run exists yet.
  */
-export function Phase3Panel({ workspaceId, runId }: Phase3PanelProps): JSX.Element {
-  const [tab, setTab] = useState<Phase3Tab>("memory");
+export function IntelligencePanel({ workspaceId, runId }: IntelligencePanelProps): JSX.Element {
+  const [tab, setTab] = useState<IntelligenceTab>("memory");
 
   return (
-    <div className="phase3">
-      <div className="phase3-head">
+    <div className="intelligence-panel">
+      <div className="intelligence-head">
         <div className="row tabs">
           {TABS.map((t) => (
             <button
@@ -50,7 +50,7 @@ export function Phase3Panel({ workspaceId, runId }: Phase3PanelProps): JSX.Eleme
         <SandboxIndicator workspaceId={workspaceId} />
       </div>
 
-      <div className="phase3-body">
+      <div className="intelligence-body">
         {tab === "memory" && <MemoryPanel workspaceId={workspaceId} />}
         {tab === "failures" && <FailureLibraryView workspaceId={workspaceId} />}
         {tab === "tasks" &&

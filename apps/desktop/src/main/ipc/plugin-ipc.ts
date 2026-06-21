@@ -16,7 +16,7 @@ import { handle } from "../ipc-handle.js";
 import type { Services } from "../services.js";
 
 export function registerPluginIpc(services: Services): void {
-  const { storage, phase4Settings } = services;
+  const { storage, advancedSettings } = services;
 
   // The PluginLoader is the ONLY path that may install a plugin: it runs the
   // SDK manifest validator (rejects bad semver, non-snake_case tools, unknown
@@ -60,7 +60,7 @@ export function registerPluginIpc(services: Services): void {
 
   handle(IPC.listPlugins, () => storage.plugins.listPlugins());
   handle(IPC.installPlugin, async (raw): Promise<PluginInstallation> => {
-    if (!phase4Settings.get().pluginsEnabled) {
+    if (!advancedSettings.get().pluginsEnabled) {
       throw new Error("Plugins feature is disabled in advanced settings");
     }
     const validated = validateInstallPlugin(raw);

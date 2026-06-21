@@ -43,7 +43,7 @@ import { parseRow as parseRoleMessageRow } from "@nlc/orchestrator";
  * identity reminder. Implementations should respect their own feature flags
  * and return an empty string when Phase 4 is disabled.
  */
-export type Phase4AugmentationFn = (workspaceId: string) => string;
+export type PromptAugmentationFn = (workspaceId: string) => string;
 
 /**
  * Optional Phase 3 port factory. Returns the live semantic-search / memory /
@@ -52,7 +52,7 @@ export type Phase4AugmentationFn = (workspaceId: string) => string;
  * take effect on the next task without requiring a restart.
  */
 import type { ExtendedAgentPorts } from "./extended-tools.js";
-export type Phase3PortsFn = (workspaceId: string) => ExtendedAgentPorts | null;
+export type ExtendedPortsFn = (workspaceId: string) => ExtendedAgentPorts | null;
 
 /**
  * A dynamically-loaded tool bundle (schemas the model sees + a dispatcher).
@@ -206,14 +206,14 @@ export type AgentDeps = {
    * append after the base system prompt. When omitted (or returning an empty
    * string) the system prompt is unchanged, preserving Phase 1/2 behaviour.
    */
-  getPhase4Augmentation?: Phase4AugmentationFn;
+  getPromptAugmentation?: PromptAugmentationFn;
   /**
    * Optional Phase 3 port factory. When it returns a non-null bundle the
    * single-agent loop advertises semantic_search / read_memory / write_memory /
    * web_search / web_fetch in addition to the Phase 1/2 catalogue. Returning
    * null (or omitting the hook) keeps the model at the Phase 1/2 surface.
    */
-  getPhase3Ports?: Phase3PortsFn;
+  getExtendedPorts?: ExtendedPortsFn;
   /**
    * Optional dynamic tool bundle factory (plugins, MCP servers, etc.). When
    * it returns non-null the bundle's schemas are advertised after Phase 1/2
@@ -251,8 +251,8 @@ export class AgentService {
   private readonly assertToolAllowed: ((toolName: string) => void) | undefined;
   /** Hard override; when undefined, per-run settings.agent.readOnly wins. */
   private readonly readOnlyOverride: boolean | undefined;
-  private readonly getPhase4Augmentation: Phase4AugmentationFn | undefined;
-  private readonly getPhase3Ports: Phase3PortsFn | undefined;
+  private readonly getPromptAugmentation: PromptAugmentationFn | undefined;
+  private readonly getExtendedPorts: ExtendedPortsFn | undefined;
   private readonly getDynamicTools: DynamicToolBundleFn | undefined;
   private readonly emit: (event: AgentEvent) => void;
   private readonly pending = new Map<string, Pending>();
@@ -287,8 +287,8 @@ export class AgentService {
     this.getLanguage = deps.getLanguage ?? ((): LanguagePreference => "zh-CN");
     this.assertToolAllowed = deps.assertToolAllowed;
     this.readOnlyOverride = deps.readOnly;
-    this.getPhase4Augmentation = deps.getPhase4Augmentation;
-    this.getPhase3Ports = deps.getPhase3Ports;
+    this.getPromptAugmentation = deps.getPromptAugmentation;
+    this.getExtendedPorts = deps.getExtendedPorts;
     this.getDynamicTools = deps.getDynamicTools;
     this.emit = deps.emit;
   }
@@ -477,7 +477,7 @@ export class AgentService {
     // advisory; never let a Phase 4 lookup block a run.
     let augmentation = "";
     try {
-      augmentation = this.getPhase4Augmentation?.(workspaceId) ?? "";
+      augmentation = this.getPromptAugmentation?.(workspaceId) ?? "";
     } catch {
       augmentation = "";
     }
@@ -671,7 +671,7 @@ export class AgentService {
     // failures here must NEVER block a normal run.
     let phase3Ports: ExtendedAgentPorts | null = null;
     try {
-      phase3Ports = this.getPhase3Ports?.(workspaceId) ?? null;
+      phase3Ports = this.getExtendedPorts?.(workspaceId) ?? null;
     } catch {
       phase3Ports = null;
     }
@@ -841,7 +841,7 @@ export class AgentService {
     const readOnly = this.effectiveReadOnly();
     let phase3Ports: ExtendedAgentPorts | null = null;
     try {
-      phase3Ports = this.getPhase3Ports?.(workspaceId) ?? null;
+      phase3Ports = this.getExtendedPorts?.(workspaceId) ?? null;
     } catch {
       phase3Ports = null;
     }

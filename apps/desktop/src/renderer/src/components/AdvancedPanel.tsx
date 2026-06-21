@@ -1,11 +1,12 @@
 /**
- * Phase 4 surface — a single panel that mounts all Phase 4 views as tabs.
- * Keeps the Phase 3 chat-centric shell untouched; users open this from the
- * Topbar like the existing Phase 3 panel.
+ * Advanced-features surface — a single panel that mounts knowledge graph,
+ * style profile, learning, finetune, proposals, cluster, and plugins as
+ * tabs. Keeps the chat-centric shell untouched; opened from the Topbar
+ * alongside the Intelligence panel.
  */
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Phase4Settings, WorkspaceContributionMode } from "@nlc/shared";
+import type { AdvancedSettings, WorkspaceContributionMode } from "@nlc/shared";
 import { KnowledgeGraphView } from "./KnowledgeGraphView";
 import { StyleProfilePanel } from "./StyleProfilePanel";
 import { LearningDashboard } from "./LearningDashboard";
@@ -27,9 +28,9 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "settings", label: "功能开关" },
 ];
 
-export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JSX.Element {
+export function AdvancedPanel({ workspaceId }: { workspaceId: string | null }): JSX.Element {
   const [tab, setTab] = useState<TabId>("kg");
-  const [settings, setSettings] = useState<Phase4Settings | null>(null);
+  const [settings, setSettings] = useState<AdvancedSettings | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JS
     // when the IPC failed. Track the error explicitly so the user sees what
     // went wrong instead of an indefinite spinner.
     api
-      .getPhase4Settings()
+      .getAdvancedSettings()
       .then((next) => {
         setSettings(next);
         setSettingsError(null);
@@ -46,20 +47,20 @@ export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JS
   }, []);
 
   return (
-    <div className="phase4-panel">
-      <div className="phase4-tabs">
+    <div className="advanced-panel">
+      <div className="advanced-tabs">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
-            className={`phase4-tab ${tab === t.id ? "phase4-tab--active" : ""}`}
+            className={`advanced-tab ${tab === t.id ? "advanced-tab--active" : ""}`}
             onClick={() => setTab(t.id)}
           >
             {t.label}
           </button>
         ))}
       </div>
-      <div className="phase4-tabbody">
+      <div className="advanced-tabbody">
         {tab === "kg" && <KnowledgeGraphView workspaceId={workspaceId} />}
         {tab === "style" && <StyleProfilePanel workspaceId={workspaceId} />}
         {tab === "learning" && <LearningDashboard workspaceId={workspaceId} />}
@@ -68,7 +69,7 @@ export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JS
         {tab === "cluster" && <ClusterMonitor />}
         {tab === "plugins" && <PluginManager />}
         {tab === "settings" && (
-          <Phase4SettingsView
+          <AdvancedSettingsView
             settings={settings}
             error={settingsError}
             onChange={(next) => {
@@ -77,7 +78,7 @@ export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JS
               // UI showing the new values while the backend still had the
               // old ones.
               api
-                .updatePhase4Settings(next)
+                .updateAdvancedSettings(next)
                 .then(() => setSettingsError(null))
                 .catch((e) => setSettingsError(String(e)));
             }}
@@ -88,24 +89,24 @@ export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JS
   );
 }
 
-function Phase4SettingsView({
+function AdvancedSettingsView({
   settings,
   error,
   onChange,
 }: {
-  settings: Phase4Settings | null;
+  settings: AdvancedSettings | null;
   error: string | null;
-  onChange: (next: Phase4Settings) => void;
+  onChange: (next: AdvancedSettings) => void;
 }): JSX.Element {
   if (error && !settings) {
     return (
-      <div className="phase4-settings">
-        <div className="phase4-error">无法加载 Phase 4 设置:{error}</div>
+      <div className="advanced-settings">
+        <div className="advanced-error">无法加载高级设置:{error}</div>
       </div>
     );
   }
   if (!settings) return <div>Loading…</div>;
-  const toggle = (key: keyof Phase4Settings) => () => {
+  const toggle = (key: keyof AdvancedSettings) => () => {
     const cur = settings[key];
     if (typeof cur === "boolean") onChange({ ...settings, [key]: !cur });
   };
@@ -118,10 +119,10 @@ function Phase4SettingsView({
     onChange({ ...settings, proactiveScanIntervalMin: Math.round(next) });
   };
   return (
-    <div className="phase4-settings">
-      <h2>Phase 4 功能开关</h2>
-      {error && <div className="phase4-error">设置同步失败:{error}</div>}
-      <p className="phase4-help">每个模块独立可关。关闭后系统退回完整可用的第三阶段形态。</p>
+    <div className="advanced-settings">
+      <h2>高级功能开关</h2>
+      {error && <div className="advanced-error">设置同步失败:{error}</div>}
+      <p className="advanced-help">每个模块独立可关。关闭后系统退回完整可用的第三阶段形态。</p>
       <ul>
         <Toggle label="跨项目记忆与知识图谱" on={settings.globalMemoryEnabled} onToggle={toggle("globalMemoryEnabled")} />
         <Toggle label="编码风格画像" on={settings.styleProfileEnabled} onToggle={toggle("styleProfileEnabled")} />
@@ -132,14 +133,14 @@ function Phase4SettingsView({
         <Toggle label="插件机制" on={settings.pluginsEnabled} onToggle={toggle("pluginsEnabled")} />
       </ul>
 
-      <h3 className="phase4-subhead">本工作区贡献模式</h3>
-      <p className="phase4-help">
+      <h3 className="advanced-subhead">本工作区贡献模式</h3>
+      <p className="advanced-help">
         控制本工作区学到的模式是否汇入全局知识池。仅在跨项目记忆开启时生效。
       </p>
-      <div className="phase4-field">
-        <label htmlFor="phase4-contribution-mode">贡献模式</label>
+      <div className="advanced-field">
+        <label htmlFor="advanced-contribution-mode">贡献模式</label>
         <select
-          id="phase4-contribution-mode"
+          id="advanced-contribution-mode"
           value={settings.contributionMode}
           onChange={(e) => setContribution(e.target.value as WorkspaceContributionMode)}
         >
@@ -149,12 +150,12 @@ function Phase4SettingsView({
         </select>
       </div>
 
-      <h3 className="phase4-subhead">主动工程伙伴</h3>
-      <p className="phase4-help">后台扫描技术债 / 待办的频率。仅在主动模式开启时生效。</p>
-      <div className="phase4-field">
-        <label htmlFor="phase4-proactive-interval">扫描间隔(分钟)</label>
+      <h3 className="advanced-subhead">主动工程伙伴</h3>
+      <p className="advanced-help">后台扫描技术债 / 待办的频率。仅在主动模式开启时生效。</p>
+      <div className="advanced-field">
+        <label htmlFor="advanced-proactive-interval">扫描间隔(分钟)</label>
         <input
-          id="phase4-proactive-interval"
+          id="advanced-proactive-interval"
           type="number"
           min={1}
           max={1440}
@@ -177,7 +178,7 @@ function Toggle({
   onToggle: () => void;
 }): JSX.Element {
   return (
-    <li className="phase4-toggle">
+    <li className="advanced-toggle">
       <label>
         <input type="checkbox" checked={on} onChange={onToggle} />
         <span>{label}</span>

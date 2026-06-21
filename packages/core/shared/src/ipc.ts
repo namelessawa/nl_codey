@@ -30,7 +30,7 @@ import type {
   PluginPermission,
 } from "./plugin-types.js";
 import type { FrozenSuiteSnapshot } from "./evaluation-types.js";
-import type { Phase4Settings } from "./advanced-settings-types.js";
+import type { AdvancedSettings } from "./advanced-settings-types.js";
 import type { DockerStartResult, InstallationStatus, InstallationEvent } from "./installation.js";
 
 /** Consistent response envelope for every IPC call. */
@@ -125,8 +125,8 @@ export const IPC = {
   listFrozenSnapshots: "phase4:listFrozenSnapshots",
   listEvalRuns: "phase4:listEvalRuns",
   // --- Phase 4: settings ---
-  getPhase4Settings: "phase4:getSettings",
-  updatePhase4Settings: "phase4:updateSettings",
+  getAdvancedSettings: "phase4:getSettings",
+  updateAdvancedSettings: "phase4:updateSettings",
   // --- Installation gate (instruction branch) ---
   getInstallationStatus: "installation:getStatus",
   recheckDocker: "installation:recheckDocker",
@@ -277,8 +277,8 @@ export interface AgentApi {
   listFrozenSnapshots(args?: { modelId?: string }): Promise<IpcResult<FrozenSuiteSnapshot[]>>;
   listEvalRuns(args?: { taskId?: string; modelId?: string }): Promise<IpcResult<import("./evaluation-types.js").EvalRunResult[]>>;
   // --- Phase 4: settings ---
-  getPhase4Settings(): Promise<IpcResult<Phase4Settings>>;
-  updatePhase4Settings(args: { settings: Phase4Settings }): Promise<IpcResult<Phase4Settings>>;
+  getAdvancedSettings(): Promise<IpcResult<AdvancedSettings>>;
+  updateAdvancedSettings(args: { settings: AdvancedSettings }): Promise<IpcResult<AdvancedSettings>>;
   // --- Installation gate (instruction branch) ---
   /** Snapshot of Docker availability and the user's skip decision. */
   getInstallationStatus(): Promise<IpcResult<InstallationStatus>>;

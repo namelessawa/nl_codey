@@ -1,8 +1,8 @@
 export {
   AgentService,
   type AgentDeps,
-  type Phase4AugmentationFn,
-  type Phase3PortsFn,
+  type PromptAugmentationFn,
+  type ExtendedPortsFn,
   type DynamicToolBundle,
   type DynamicToolBundleFn,
 } from "./service.js";

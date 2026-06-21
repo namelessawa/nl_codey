@@ -27,7 +27,7 @@ import {
   validateSetWorkspaceContribution,
   validateSnoozeProposal,
   validateUpdateMemory,
-  validateUpdatePhase4Settings,
+  validateUpdateAdvancedSettings,
   validateUpsertStyleSpec,
   validateWorkspaceId,
 } from "./validators.js";
@@ -435,7 +435,7 @@ describe("IPC validators reject malformed payloads", () => {
       });
     });
 
-    describe("validateUpdatePhase4Settings", () => {
+    describe("validateUpdateAdvancedSettings", () => {
       const baseSettings = {
         globalMemoryEnabled: false,
         styleProfileEnabled: true,
@@ -449,39 +449,39 @@ describe("IPC validators reject malformed payloads", () => {
       };
       it("rejects non-boolean feature flags", () => {
         expect(() =>
-          validateUpdatePhase4Settings({
+          validateUpdateAdvancedSettings({
             settings: { ...baseSettings, globalMemoryEnabled: "yes" },
           }),
         ).toThrow(/globalMemoryEnabled must be a boolean/);
       });
       it("rejects out-of-range proactiveScanIntervalMin", () => {
         expect(() =>
-          validateUpdatePhase4Settings({
+          validateUpdateAdvancedSettings({
             settings: { ...baseSettings, proactiveScanIntervalMin: 0 },
           }),
         ).toThrow(/proactiveScanIntervalMin must be in/);
         expect(() =>
-          validateUpdatePhase4Settings({
+          validateUpdateAdvancedSettings({
             settings: { ...baseSettings, proactiveScanIntervalMin: 99999 },
           }),
         ).toThrow(/proactiveScanIntervalMin must be in/);
       });
       it("rejects non-integer proactiveScanIntervalMin", () => {
         expect(() =>
-          validateUpdatePhase4Settings({
+          validateUpdateAdvancedSettings({
             settings: { ...baseSettings, proactiveScanIntervalMin: 3.5 },
           }),
         ).toThrow(/must be an integer/);
       });
       it("rejects unknown contributionMode", () => {
         expect(() =>
-          validateUpdatePhase4Settings({
+          validateUpdateAdvancedSettings({
             settings: { ...baseSettings, contributionMode: "open_source" },
           }),
         ).toThrow(/contributionMode must be one of/);
       });
       it("accepts a well-formed payload", () => {
-        const out = validateUpdatePhase4Settings({ settings: baseSettings });
+        const out = validateUpdateAdvancedSettings({ settings: baseSettings });
         expect(out.settings.proactiveScanIntervalMin).toBe(30);
       });
     });

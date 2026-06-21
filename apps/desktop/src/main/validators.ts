@@ -28,7 +28,7 @@ import type {
   MemoryEntryPatch,
   MemoryKind,
   NodeStatus,
-  Phase4Settings,
+  AdvancedSettings,
   PluginManifest,
   PluginPermission,
   ReadFileArgs,
@@ -703,7 +703,7 @@ export function validateListEvalRuns(raw: unknown): { taskId?: string; modelId?:
   return out;
 }
 
-export function validateUpdatePhase4Settings(raw: unknown): { settings: Phase4Settings } {
+export function validateUpdateAdvancedSettings(raw: unknown): { settings: AdvancedSettings } {
   const r = requireRecord(raw, "args");
   const s = requireRecord(r.settings, "settings");
   return {

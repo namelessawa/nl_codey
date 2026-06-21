@@ -84,8 +84,8 @@ export function registerMemoryIpc(services: Services): void {
     }
     const filePath = result.filePaths[0]!;
     const text = fs.readFileSync(filePath, "utf8");
-    const data = JSON.parse(text) as MemoryExport;
-    return { imported: importMemoryEnvelope(storage, args.workspaceId, data), filePath };
+    const envelope = JSON.parse(text) as MemoryExport;
+    return { imported: importMemoryEnvelope(storage, args.workspaceId, envelope), filePath };
   });
 }
 

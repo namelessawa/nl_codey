@@ -4,7 +4,7 @@ import { App } from "./App.js";
 import "./styles.css";
 import "./settings-styles.css";
 import "./rightpanel-styles.css";
-import "./phase4-styles.css";
+import "./advanced-styles.css";
 import "./installation-styles.css";
 
 const container = document.getElementById("root");

@@ -2,7 +2,7 @@
  * Fine-tune job runner. Wires {@link FinetuneJobInput} → background training
  * process → job-status updates in `storage.phase4`.
  *
- * The trainer itself is opt-in (gated by `phase4Settings.finetuneEnabled`) and
+ * The trainer itself is opt-in (gated by `advancedSettings.finetuneEnabled`) and
  * requires the user to provide a Python training script at
  * `<userData>/finetune/train.py`. When the script is missing — the default for
  * most installs — the runner stamps the job as `failed` with a clear,
@@ -93,7 +93,7 @@ export class FinetuneRunner {
    * sitting forever. Safe to call when finetune is disabled — it short-circuits.
    */
   resumeQueued(): void {
-    if (!this.services.phase4Settings.get().finetuneEnabled) return;
+    if (!this.services.advancedSettings.get().finetuneEnabled) return;
     const jobs = this.services.storage.finetune.listFinetuneJobs();
     for (const job of jobs) {
       if (job.status === "queued") {

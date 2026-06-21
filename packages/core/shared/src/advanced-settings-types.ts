@@ -2,7 +2,7 @@
 
 import type { WorkspaceContributionMode } from "./kg-types.js";
 
-export type Phase4Settings = {
+export type AdvancedSettings = {
   globalMemoryEnabled: boolean;
   styleProfileEnabled: boolean;
   learningEnabled: boolean;
@@ -16,7 +16,7 @@ export type Phase4Settings = {
   proactiveScanIntervalMin: number;
 };
 
-export const DEFAULT_PHASE4_SETTINGS: Phase4Settings = {
+export const DEFAULT_ADVANCED_SETTINGS: AdvancedSettings = {
   globalMemoryEnabled: false,
   styleProfileEnabled: true,
   learningEnabled: true,
@@ -28,8 +28,8 @@ export const DEFAULT_PHASE4_SETTINGS: Phase4Settings = {
   proactiveScanIntervalMin: 30,
 };
 
-export function mergePhase4Settings(
-  partial: Partial<Phase4Settings> | null | undefined,
-): Phase4Settings {
-  return { ...DEFAULT_PHASE4_SETTINGS, ...(partial ?? {}) };
+export function mergeAdvancedSettings(
+  partial: Partial<AdvancedSettings> | null | undefined,
+): AdvancedSettings {
+  return { ...DEFAULT_ADVANCED_SETTINGS, ...(partial ?? {}) };
 }

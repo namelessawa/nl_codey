@@ -56,7 +56,7 @@ export type PluginBundle = {
  * disabled or when there are no enabled plugin tools to advertise.
  */
 export function buildPluginBundle(services: Services): PluginBundle | null {
-  const flags = services.phase4Settings.get();
+  const flags = services.advancedSettings.get();
   if (!flags.pluginsEnabled) return null;
 
   const installations = services.storage.plugins

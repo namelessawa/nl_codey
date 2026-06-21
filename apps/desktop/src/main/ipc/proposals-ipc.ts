@@ -19,7 +19,7 @@ import type { Services } from "../services.js";
 type RequireRoot = (workspaceId: string) => string;
 
 export function registerProposalsIpc(services: Services, requireRoot: RequireRoot): void {
-  const { storage, phase4Settings } = services;
+  const { storage, advancedSettings } = services;
   const proposalInbox = new ProposalInbox(storage.proposals);
 
   handle(IPC.listProposals, (raw) => {
@@ -66,7 +66,7 @@ export function registerProposalsIpc(services: Services, requireRoot: RequireRoo
   });
   handle(IPC.scanDebtNow, async (rawArgs) => {
     const { workspaceId } = validateWorkspaceId(rawArgs);
-    if (!phase4Settings.get().proactiveEnabled) {
+    if (!advancedSettings.get().proactiveEnabled) {
       throw new Error("Proactive mode is disabled in advanced settings");
     }
     const root = requireRoot(workspaceId);
@@ -105,7 +105,7 @@ function startProactiveScheduler(deps: SchedulerDeps): () => void {
   let running = false;
 
   const computeNextDelayMs = (): number => {
-    const flags = services.phase4Settings.get();
+    const flags = services.advancedSettings.get();
     // Clamp to [1, 1440] minutes to defend against settings-store drift; the
     // UI already enforces the same range, but a manually edited JSON file
     // could bypass it.
@@ -120,7 +120,7 @@ function startProactiveScheduler(deps: SchedulerDeps): () => void {
     }
     running = true;
     try {
-      const flags = services.phase4Settings.get();
+      const flags = services.advancedSettings.get();
       if (!flags.proactiveEnabled) return; // toggle off — skip scan, keep ticking
       // Scan up to 10 most-recently-opened workspaces per tick. A user with
       // dozens of historical workspaces shouldn't pay the full sweep cost

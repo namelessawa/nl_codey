@@ -1,6 +1,6 @@
-/* Phase 4 styling — lean defaults that fit the existing chat-centric shell. */
+/* Advanced-features styling — lean defaults that fit the existing chat-centric shell. */
 
-.phase4-panel {
+.advanced-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -9,7 +9,7 @@
   overflow: hidden;
 }
 
-.phase4-tabs {
+.advanced-tabs {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
@@ -17,7 +17,7 @@
   padding-bottom: 6px;
 }
 
-.phase4-tab {
+.advanced-tab {
   background: transparent;
   color: var(--text-color, #ccc);
   border: 1px solid transparent;
@@ -27,29 +27,29 @@
   font-size: 13px;
 }
 
-.phase4-tab:hover {
+.advanced-tab:hover {
   background: var(--surface-hover, #1f1f1f);
 }
 
-.phase4-tab--active {
+.advanced-tab--active {
   background: var(--accent-bg, #2d3a52);
   color: var(--accent-fg, #cee0ff);
   border-color: var(--accent-border, #3a4d70);
 }
 
-.phase4-tabbody {
+.advanced-tabbody {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 8px 4px;
 }
 
-.phase4-empty {
+.advanced-empty {
   color: var(--muted, #888);
   font-style: italic;
 }
 
-.phase4-error {
+.advanced-error {
   background: rgba(220, 60, 60, 0.1);
   color: #e58a8a;
   padding: 6px 10px;
@@ -57,22 +57,22 @@
   margin-bottom: 8px;
 }
 
-.phase4-help {
+.advanced-help {
   color: var(--muted, #888);
   font-size: 12px;
   margin: 4px 0 10px;
 }
 
-.phase4-settings ul {
+.advanced-settings ul {
   list-style: none;
   padding: 0;
 }
 
-.phase4-toggle {
+.advanced-toggle {
   margin: 6px 0;
 }
 
-.phase4-toggle label {
+.advanced-toggle label {
   display: flex;
   gap: 8px;
   align-items: center;

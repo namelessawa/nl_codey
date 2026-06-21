@@ -9,7 +9,7 @@ import { Storage } from "@nlc/storage";
 import { nlcRoot, type AgentEvent } from "@nlc/shared";
 import { SettingsStore } from "./settings/store.js";
 import { InstallationGate } from "./installation-gate.js";
-import { Phase4SettingsStore } from "./phase4-settings-store.js";
+import { AdvancedSettingsStore } from "./advanced-settings-store.js";
 import { buildExtendedPorts } from "./extended-ports.js";
 import { buildPluginBundle } from "./plugin-runtime.js";
 
@@ -24,7 +24,7 @@ export type Services = {
    * prompt augmentation and tool wiring) and the Phase 4 IPC handlers so the
    * UI and the runtime always agree on what's enabled.
    */
-  phase4Settings: Phase4SettingsStore;
+  advancedSettings: AdvancedSettingsStore;
   /**
    * Broadcast a live event to the renderer. Exposed on the Services bundle so
    * IPC handlers (e.g. the semantic-index rebuild) can publish Phase 3
@@ -59,7 +59,7 @@ export function buildServices(
   const storage = new Storage(dbPath);
   const settings = new SettingsStore(dataRoot);
   const installationGate = new InstallationGate(dataRoot, emit);
-  const phase4Settings = new Phase4SettingsStore(dataRoot);
+  const advancedSettings = new AdvancedSettingsStore(dataRoot);
 
   // Forward-declared so the dep callbacks can refer to the services bundle
   // after it's fully built. AgentService construction takes the closures by
@@ -94,9 +94,9 @@ export function buildServices(
     // base model). Failures are swallowed so an unhealthy Phase 4 surface
     // never blocks a normal run; the agent silently falls back to the
     // Phase 1/2 prompt.
-    getPhase4Augmentation: (workspaceId: string) => {
+    getPromptAugmentation: (workspaceId: string) => {
       try {
-        const flags = phase4Settings.get();
+        const flags = advancedSettings.get();
         const globalPatterns = flags.globalMemoryEnabled
           ? storage.kg.listGlobalPatterns(20).slice(0, 3)
           : undefined;
@@ -120,7 +120,7 @@ export function buildServices(
     // Built per-run so settings changes (API key, embedder backend) take
     // effect on the next task. Failure returns null and the agent silently
     // falls back to the Phase 1/2 tool surface.
-    getPhase3Ports: (workspaceId: string) => {
+    getExtendedPorts: (workspaceId: string) => {
       try {
         return buildExtendedPorts(bundle, workspaceId);
       } catch {
@@ -142,6 +142,6 @@ export function buildServices(
     emit,
   });
 
-  bundle = { storage, settings, agent, installationGate, phase4Settings, emit, dataRoot };
+  bundle = { storage, settings, agent, installationGate, advancedSettings, emit, dataRoot };
   return bundle;
 }

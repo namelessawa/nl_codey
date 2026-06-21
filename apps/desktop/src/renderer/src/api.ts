@@ -22,7 +22,7 @@ import type {
   MemoryFilter,
   ModelRegistryEntry,
   PRDescription,
-  Phase4Settings,
+  AdvancedSettings,
   PluginInstallation,
   PluginManifest,
   PluginPermission,
@@ -220,10 +220,10 @@ export const api = {
   listEvalRuns: (taskId?: string, modelId?: string): Promise<EvalRunResult[]> =>
     unwrap(window.agentApi.listEvalRuns({ taskId, modelId })),
   // --- Phase 4: settings ---
-  getPhase4Settings: (): Promise<Phase4Settings> =>
-    unwrap(window.agentApi.getPhase4Settings()),
-  updatePhase4Settings: (settings: Phase4Settings): Promise<Phase4Settings> =>
-    unwrap(window.agentApi.updatePhase4Settings({ settings })),
+  getAdvancedSettings: (): Promise<AdvancedSettings> =>
+    unwrap(window.agentApi.getAdvancedSettings()),
+  updateAdvancedSettings: (settings: AdvancedSettings): Promise<AdvancedSettings> =>
+    unwrap(window.agentApi.updateAdvancedSettings({ settings })),
   // --- Installation gate (instruction branch) ---
   getInstallationStatus: (): Promise<InstallationStatus> =>
     unwrap(window.agentApi.getInstallationStatus()),

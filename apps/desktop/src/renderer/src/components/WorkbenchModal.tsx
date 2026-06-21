@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { LanguagePreference } from "@nlc/shared";
 import { Icon } from "./Icons.js";
-import { Phase3Panel } from "./Phase3Panel.js";
-import { Phase4Panel } from "./Phase4Panel.js";
+import { IntelligencePanel } from "./IntelligencePanel.js";
+import { AdvancedPanel } from "./AdvancedPanel.js";
 import { t } from "../i18n.js";
 
 type WorkbenchTab = "phase3" | "phase4";
@@ -109,7 +109,7 @@ export function WorkbenchModal({
         >
           {tab === "phase3" ? (
             workspaceId ? (
-              <Phase3Panel workspaceId={workspaceId} runId={runId} />
+              <IntelligencePanel workspaceId={workspaceId} runId={runId} />
             ) : (
               <div
                 style={{
@@ -124,7 +124,7 @@ export function WorkbenchModal({
               </div>
             )
           ) : (
-            <Phase4Panel workspaceId={workspaceId} />
+            <AdvancedPanel workspaceId={workspaceId} />
           )}
         </section>
       </div>

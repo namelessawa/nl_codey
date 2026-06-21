@@ -1,6 +1,6 @@
 /**
  * Extended (port-backed) tool factory. Builds the live SemanticSearchPort /
- * MemoryPort / WebPort bundle that AgentService consumes via getPhase3Ports.
+ * MemoryPort / WebPort bundle that AgentService consumes via getExtendedPorts.
  * Each call is per-workspace so the user's API key, embedder choice, and
  * workspace memory are all resolved at run time — no cached state lives here.
  *

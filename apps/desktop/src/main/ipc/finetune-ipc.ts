@@ -13,7 +13,7 @@ import { FinetuneRunner, dispatchFinetuneJob } from "../finetune-runner.js";
 import type { Services } from "../services.js";
 
 export function registerFinetuneIpc(services: Services, userDataDir: string): void {
-  const { storage, phase4Settings } = services;
+  const { storage, advancedSettings } = services;
   const finetuneRunner = new FinetuneRunner(services, userDataDir);
   // Resume queued jobs that may have been interrupted by an app restart.
   // Cheap when finetune is disabled (the runner short-circuits).
@@ -23,7 +23,7 @@ export function registerFinetuneIpc(services: Services, userDataDir: string): vo
   handle(IPC.listFinetuneJobs, () => storage.finetune.listFinetuneJobs());
   handle(IPC.createFinetuneJob, (raw) => {
     const { input } = validateCreateFinetuneJob(raw);
-    if (!phase4Settings.get().finetuneEnabled) {
+    if (!advancedSettings.get().finetuneEnabled) {
       throw new Error("Fine-tune feature is disabled in advanced settings");
     }
     // Create the job AND kick off the background training process. The IPC
