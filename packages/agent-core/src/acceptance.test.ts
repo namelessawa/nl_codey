@@ -6,7 +6,7 @@ import type {
   LLMChunk,
   LLMCompleteOutput,
   LLMMessage,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { BudgetController } from "./budget.js";
 import { runToolLoop } from "./loop.js";
 import { AGENT_TOOL_SCHEMAS } from "./tools-registry.js";

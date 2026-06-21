@@ -2,7 +2,7 @@ import {
   type BranchCreateRequest,
   type GitWorkingTreeStatus,
   GIT_AGENT_BRANCH_PREFIX,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { runGit } from "./git-exec.js";
 
 /** Max length of a generated slug fragment. */

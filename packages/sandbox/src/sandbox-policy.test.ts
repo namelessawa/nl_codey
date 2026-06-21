@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { SandboxPolicy, SandboxRunRequest } from "@coding-agent/shared";
-import { DEFAULT_SANDBOX_POLICY } from "@coding-agent/shared";
+import type { SandboxPolicy, SandboxRunRequest } from "@nlc/shared";
+import { DEFAULT_SANDBOX_POLICY } from "@nlc/shared";
 import {
   assertNoSandboxEscape,
   describeMode,

@@ -1,10 +1,10 @@
-import { scanFiles } from "@coding-agent/project-indexer";
+import { scanFiles } from "@nlc/project-indexer";
 import {
   type AgentTool,
   type ListFilesInput,
   type ListFilesOutput,
   TOOL_LIMITS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export const listFilesTool: AgentTool<ListFilesInput, ListFilesOutput> = {
   name: "list_files",

@@ -15,7 +15,7 @@ import type {
   StyleScope,
   StyleSpec,
   StyleStrength,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export interface StyleStore {
   upsertStyleSpec(spec: StyleSpec): StyleSpec;

@@ -5,7 +5,7 @@ import type {
   GitDiffOutput,
   GitStatusOutput,
   ToolContext,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { TOOL_CODES, ToolError } from "./errors.js";
 
 const run = promisify(execFile);

@@ -3,7 +3,7 @@ import type {
   BudgetLimits,
   BudgetStatus,
   TokenUsage,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 /**
  * Tracks consumption against per-run limits and reports when any is exceeded.

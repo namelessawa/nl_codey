@@ -1,5 +1,5 @@
-import type { LanguagePreference, LLMMessage } from "@coding-agent/shared";
-import { estimateMessageTokens } from "@coding-agent/shared";
+import type { LanguagePreference, LLMMessage } from "@nlc/shared";
+import { estimateMessageTokens } from "@nlc/shared";
 
 /** Trigger compression when the estimate exceeds this fraction of the window. */
 const COMPRESS_TRIGGER_RATIO = 0.6;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { TaskBreakdown } from "@coding-agent/shared";
+import type { TaskBreakdown } from "@nlc/shared";
 
 import { materializeNodes, validateBreakdown } from "./task-tree.js";
 

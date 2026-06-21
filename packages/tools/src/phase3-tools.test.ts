@@ -5,7 +5,7 @@ import type {
   ToolContext,
   UpdateTaskStatusInput,
   WriteMemoryInput,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { createSemanticSearchTool } from "./semantic-search-tool.js";
 import { createUpdateTaskStatusTool } from "./task-tools.js";
 import { createReadMemoryTool, createWriteMemoryTool } from "./memory-tools.js";

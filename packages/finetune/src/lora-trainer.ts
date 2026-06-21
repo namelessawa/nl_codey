@@ -11,7 +11,7 @@ import type {
   FinetuneJobInput,
   FinetuneMethod,
   FinetuneStatus,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export interface FinetuneStore {
   createFinetuneJob(input: FinetuneJobInput): FinetuneJob;

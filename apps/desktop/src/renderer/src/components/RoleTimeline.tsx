@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AgentRole, RoleMessage, RoleMessageKind } from "@coding-agent/shared";
+import type { AgentRole, RoleMessage, RoleMessageKind } from "@nlc/shared";
 import { api } from "../api.js";
 
 interface RoleTimelineProps {

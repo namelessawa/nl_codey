@@ -1,14 +1,14 @@
 import fs from "node:fs";
-import { BrowserWindow, app, dialog } from "electron";
+import { BrowserWindow, dialog } from "electron";
 import {
   IPC,
   validateSettings,
   type AppSettings,
   type SettingsPayload,
-} from "@coding-agent/shared";
-import { scanFiles } from "@coding-agent/project-indexer";
-import { testLLMConnection } from "@coding-agent/llm";
-import { readFileTool } from "@coding-agent/tools";
+} from "@nlc/shared";
+import { scanFiles } from "@nlc/project-indexer";
+import { testLLMConnection } from "@nlc/llm";
+import { readFileTool } from "@nlc/tools";
 import type { Services } from "./services.js";
 import { handle } from "./ipc-handle.js";
 import { registerPhase3Ipc } from "./phase3-ipc.js";
@@ -53,7 +53,15 @@ export function registerIpc(services: Services): void {
     const ws = storage.getWorkspace(workspaceId);
     if (!ws) throw new Error("Workspace not found");
     if (!fs.existsSync(ws.rootPath)) {
-      throw new Error(`Folder no longer exists: ${ws.rootPath}`);
+      // L6: don't echo the full filesystem path back to the renderer. On
+      // Windows rootPath typically embeds the OS username (`C:\Users\<user>\
+      // ...`); the renderer error banner displayed it verbatim — readable by
+      // any code that observes the DOM (screen recorders, future plugin
+      // panes). The Topbar separately shows the workspace name only.
+      console.warn(
+        `[openRecentWorkspace] Workspace folder missing: ${ws.rootPath} (id=${workspaceId})`,
+      );
+      throw new Error("Workspace folder no longer exists. Please open it again.");
     }
     // Re-upsert by path to refresh opened_at so it sorts to the top of recents.
     return storage.upsertWorkspace(ws.rootPath);
@@ -137,7 +145,7 @@ export function registerIpc(services: Services): void {
   handle(IPC.startDocker, () => installationGate.startDocker());
 
   registerPhase3Ipc(services, requireWorkspaceRoot);
-  registerPhase4Ipc(services, requireWorkspaceRoot, app.getPath("userData"));
+  registerPhase4Ipc(services, requireWorkspaceRoot, services.dataRoot);
 }
 
 /** Broadcast an agent event to every open renderer window. */

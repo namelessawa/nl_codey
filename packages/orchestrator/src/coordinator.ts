@@ -7,14 +7,14 @@
  * It owns NO infrastructure: agent-core / storage access is injected via ports.
  */
 
-import { Scheduler, validateBreakdown, materializeNodes } from "@coding-agent/planner";
+import { Scheduler, validateBreakdown, materializeNodes } from "@nlc/planner";
 import type {
   ReviewComment,
   ReviewResult,
   TaskBreakdown,
   TaskNode,
   TaskNodeStatus,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 import type { MessageBus } from "./message-bus.js";
 import { runReviewLoop } from "./review-loop.js";

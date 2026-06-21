@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TestFailureReport } from "@coding-agent/shared";
+import type { TestFailureReport } from "@nlc/shared";
 import { analyzeRegressions, failureKey, regressionNote } from "./regression.js";
 
 function report(...failures: Array<{ file: string; testName?: string; message?: string; line?: number }>): TestFailureReport {

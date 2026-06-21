@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { AgentRun } from "@coding-agent/shared";
-import { DEFAULT_BUDGET_LIMITS, isRunActive } from "@coding-agent/shared";
+import type { AgentRun } from "@nlc/shared";
+import { DEFAULT_BUDGET_LIMITS, isRunActive } from "@nlc/shared";
 
 type Props = { run: AgentRun | null };
 

@@ -1,13 +1,13 @@
 import fs from "node:fs/promises";
-import { scanFiles } from "@coding-agent/project-indexer";
-import { assertInsideWorkspace } from "@coding-agent/sandbox";
+import { scanFiles } from "@nlc/project-indexer";
+import { assertInsideWorkspace } from "@nlc/sandbox";
 import type {
   AgentTool,
   FindSymbolInput,
   FindSymbolOutput,
   SymbolInfo,
   SymbolKind,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 /** A language matcher: a regex whose first group is the symbol name. */
 type Matcher = { re: RegExp; kind: SymbolKind };

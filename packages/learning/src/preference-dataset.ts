@@ -7,7 +7,7 @@ import type {
   FeedbackSignal,
   PreferenceDataset,
   PreferencePair,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export interface PreferenceStore {
   createPreferenceDataset(name: string, notes: string): PreferenceDataset;

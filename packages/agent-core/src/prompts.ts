@@ -1,4 +1,4 @@
-import type { LanguagePreference } from "@coding-agent/shared";
+import type { LanguagePreference } from "@nlc/shared";
 
 /**
  * Phase 2 agent system prompt. Tools are injected via the tool-calling API, so

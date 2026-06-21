@@ -16,7 +16,7 @@ import type {
   WebSearchToolInput,
   WebSearchToolOutput,
   WriteMemoryInput,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 /**
  * Port interfaces the Phase 3 tools depend on. Each tool is a factory that

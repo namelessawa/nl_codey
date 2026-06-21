@@ -4,7 +4,7 @@
  * project's contribution without nuking the pattern unless it would have no
  * sources left.
  */
-import type { GlobalPattern } from "@coding-agent/shared";
+import type { GlobalPattern } from "@nlc/shared";
 import type { KnowledgeGraph } from "./knowledge-graph.js";
 
 export type ProvenanceEntry = {

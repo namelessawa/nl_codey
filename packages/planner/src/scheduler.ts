@@ -1,6 +1,6 @@
 /** Runtime scheduler over a set of TaskNodes + a static wave computation. */
 
-import type { TaskNode, TaskSchedule } from "@coding-agent/shared";
+import type { TaskNode, TaskSchedule } from "@nlc/shared";
 
 import { scopesOverlap, topoOrder } from "./dependency-graph.js";
 

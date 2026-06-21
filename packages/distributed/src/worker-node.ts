@@ -3,7 +3,7 @@
  * submissions from the coordinator. This package only defines the contract;
  * the desktop main process implements transport (mTLS over HTTPS).
  */
-import type { TaskNode, TaskNodeStatus } from "@coding-agent/shared";
+import type { TaskNode, TaskNodeStatus } from "@nlc/shared";
 
 export type WorkerJob = {
   task: TaskNode;

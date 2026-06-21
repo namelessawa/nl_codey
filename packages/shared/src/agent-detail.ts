@@ -23,9 +23,13 @@ export function reduceAgentDetail(
     if (event.run.id === prev.run.id) {
       return { ...prev, run: event.run };
     }
-    // A different run: adopt it only if it is newer, so a second run streams
-    // live while a stale event for an older run is ignored.
-    if (event.run.createdAt >= prev.run.createdAt) {
+    // A different run: adopt it only if it is STRICTLY newer, so a stale
+    // event for an older or same-millisecond run is ignored. Storage timestamps
+    // come from Date.now() which has 1ms granularity and no monotonic guard;
+    // two runs created in the same millisecond (tests, fast retries) would
+    // otherwise let a re-arriving event overwrite the current run's detail
+    // with an empty steps array. See code-review M4.
+    if (event.run.createdAt > prev.run.createdAt) {
       return { run: event.run, steps: [], pendingPatch: null };
     }
     return prev;

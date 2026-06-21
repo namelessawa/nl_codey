@@ -3,7 +3,7 @@ import {
   type SandboxPolicy,
   type SandboxRunRequest,
   type SandboxRunResult,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { assertNoSandboxEscape } from "./sandbox-policy.js";
 import { runChild } from "./wsl-runner.js";
 
@@ -28,7 +28,7 @@ export class DockerRunner {
     const allowNetwork = req.allowNetwork ?? policy.allowNetwork;
     const argv = this.buildArgv(req, image, allowNetwork);
 
-    return runChild("docker", argv, req.command, timeoutMs, "docker");
+    return runChild("docker", argv, req.command, timeoutMs, "docker", req.signal);
   }
 
   /**

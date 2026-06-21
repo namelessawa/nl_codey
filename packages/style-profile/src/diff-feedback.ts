@@ -13,7 +13,7 @@ import type {
   StyleRule,
   StyleSpec,
   StyleStrength,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { addRule, makeRule, replaceRule } from "./style-spec.js";
 
 export const PROMOTE_THRESHOLD = 3;

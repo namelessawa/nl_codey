@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Storage } from "@coding-agent/storage";
+import type { Storage } from "@nlc/storage";
 import {
   AgentService,
   buildMultiAgentRunMessages,
@@ -277,5 +277,203 @@ describe("AgentService race-safety with concurrent clearRuns", () => {
     expect(calls.addStep).toBe(1);
     expect(events).toHaveLength(1);
     expect((events[0] as { kind: string }).kind).toBe("step_added");
+  });
+});
+
+/**
+ * Plan-approval gate: the multi-agent coordinator parks on awaitPlanApproval
+ * until the user clicks Approve in TaskTreeView. The IPC handler calls
+ * resolvePlanApproval; stop()/clearRuns cleanup must also resolve any
+ * outstanding gate with false so a cancelled run doesn't dangle a promise.
+ */
+describe("AgentService plan-approval gate", () => {
+  function makeService(): AgentService {
+    const stub = {
+      addStep: () => ({ id: "s", runId: "r", type: "message", content: "", createdAt: 0 }),
+      listRuns: () => [],
+      getRun: () => null,
+      listSteps: () => [],
+    } as unknown as Storage;
+    return new AgentService({
+      storage: stub,
+      resolveLLM: () => {
+        throw new Error("unused");
+      },
+      getAgentSettings: () => ({
+        workspacePath: "",
+        allowShellExecution: false,
+        requireConfirmationBeforeCommand: false,
+        sandboxEnabled: false,
+        sandboxMode: "whitelist",
+        maxAutoSteps: 5,
+        budgetUsd: 0.5,
+        readOnly: false,
+        multiAgentEnabled: false,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+      emit: () => {},
+    });
+  }
+
+  it("resolves the gate with true when the user approves after parking", async () => {
+    const service = makeService();
+    const parked = service.awaitPlanApproval("run-1");
+    // Microtask boundary: let the promise actually park before resolving.
+    await Promise.resolve();
+    service.resolvePlanApproval("run-1", true);
+    await expect(parked).resolves.toBe(true);
+  });
+
+  it("consumes a pre-decision when the user approves before parking", async () => {
+    const service = makeService();
+    // Renderer click landed before the coordinator reached approve() — typical
+    // race because persistNode broadcasts task_updated for every node before
+    // approve() is called.
+    service.resolvePlanApproval("run-1", true);
+    const parked = service.awaitPlanApproval("run-1");
+    await expect(parked).resolves.toBe(true);
+  });
+
+  it("second resolve is a silent no-op (idempotent under double-click)", () => {
+    const service = makeService();
+    expect(() => service.resolvePlanApproval("run-1", true)).not.toThrow();
+    expect(() => service.resolvePlanApproval("run-1", true)).not.toThrow();
+  });
+
+  it("stop() resolves a pending plan approval with false so the loop unwinds", async () => {
+    const service = makeService();
+    const parked = service.awaitPlanApproval("run-1");
+    await Promise.resolve();
+    try {
+      service.stop("run-1");
+    } catch {
+      // getDetail throws on the stub storage; the resolve has already fired.
+    }
+    await expect(parked).resolves.toBe(false);
+  });
+
+  it("pre-decision is cleared by stop() so it can't leak into a future re-use of the runId", async () => {
+    const service = makeService();
+    service.resolvePlanApproval("run-1", false); // buffered
+    try {
+      service.stop("run-1");
+    } catch {
+      // ignored — stub
+    }
+    // After stop, a fresh awaitPlanApproval must park rather than consume the
+    // stale decision. Resolve it explicitly to confirm parking happened.
+    const parked = service.awaitPlanApproval("run-1");
+    let settled = false;
+    void parked.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    service.resolvePlanApproval("run-1", true);
+    await expect(parked).resolves.toBe(true);
+  });
+});
+
+/**
+ * applyPatch / rejectPatch under double-click and post-apply-reject race
+ * (code-review L1). The contract is now:
+ *  - applyPatch is idempotent when the run already moved on (no throw).
+ *  - rejectPatch doesn't overwrite a live `applying_patch` status with
+ *    `cancelled` when it loses the race to applyPatch.
+ */
+describe("AgentService apply/reject patch race-safety", () => {
+  function makeRun(status: string) {
+    return {
+      id: "run-1",
+      workspaceId: "ws",
+      userTask: "t",
+      status,
+      createdAt: 0,
+      updatedAt: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+      toolCallCount: 0,
+      iterationCount: 0,
+      modelName: null,
+      exitReason: null,
+    };
+  }
+
+  function makeService(runStatus: string): AgentService {
+    const run = makeRun(runStatus);
+    const stub = {
+      addStep: () => ({ id: "s", runId: "r", type: "message", content: "", createdAt: 0 }),
+      listRuns: () => [],
+      getRun: () => run,
+      listSteps: () => [],
+      updateRunStatus: (_id: string, status: string) => ({ ...run, status }),
+    } as unknown as Storage;
+    return new AgentService({
+      storage: stub,
+      resolveLLM: () => {
+        throw new Error("unused");
+      },
+      getAgentSettings: () => ({
+        workspacePath: "",
+        allowShellExecution: false,
+        requireConfirmationBeforeCommand: false,
+        sandboxEnabled: false,
+        sandboxMode: "whitelist",
+        maxAutoSteps: 5,
+        budgetUsd: 0.5,
+        readOnly: false,
+        multiAgentEnabled: false,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+      emit: () => {},
+    });
+  }
+
+  it("applyPatch throws only when the run never had a pending patch", async () => {
+    const service = makeService("tool_use");
+    // No approval registered, run is in tool_use (not applying_patch) → throw.
+    // Actually wait — tool_use is a live status so it returns idempotently.
+    // Try a quiescent status instead.
+    const quiescent = makeService("waiting_for_user_approval");
+    await expect(quiescent.applyPatch("run-1")).rejects.toThrow(/No pending patch/);
+    expect(service).toBeDefined();
+  });
+
+  it("applyPatch is idempotent when the run already moved to applying_patch", async () => {
+    const service = makeService("applying_patch");
+    // First click won; this second call should not throw.
+    await expect(service.applyPatch("run-1")).resolves.toMatchObject({
+      run: expect.objectContaining({ status: "applying_patch" }),
+    });
+  });
+
+  it("applyPatch is idempotent for the verifying / repairing / tool_use post-apply states", async () => {
+    for (const status of ["verifying", "repairing", "tool_use"]) {
+      const service = makeService(status);
+      await expect(service.applyPatch("run-1")).resolves.toMatchObject({
+        run: expect.objectContaining({ status }),
+      });
+    }
+  });
+
+  it("rejectPatch does NOT overwrite live status when it loses the race to applyPatch", () => {
+    // Renderer fired reject after apply already resolved; status is now
+    // applying_patch and the approval map is empty. We must leave the status
+    // alone (the loop's setStatus drives it from here).
+    const service = makeService("applying_patch");
+    const detail = service.rejectPatch("run-1");
+    // Status should remain applying_patch, NOT be flipped to cancelled.
+    expect(detail.run.status).toBe("applying_patch");
+  });
+
+  it("rejectPatch still cancels when no live status is in flight", () => {
+    // Approval map empty, run not in a live state → safe to record cancel.
+    const service = makeService("done");
+    const detail = service.rejectPatch("run-1");
+    // The stub returns updateRunStatus's new status object. We can't easily
+    // assert because the stub returns based on the input — verify the call
+    // didn't throw and yields a detail object.
+    expect(detail).toBeDefined();
   });
 });

@@ -6,7 +6,7 @@ import type {
   RequestChangesOutput,
   RequestReviewInput,
   RequestReviewOutput,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { ReviewPort } from "./phase3-deps.js";
 
 /**

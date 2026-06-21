@@ -8,8 +8,8 @@ import {
   routeCommand,
   type FileChange,
   type BinaryChange,
-} from "@coding-agent/sandbox";
-import { detectProject } from "@coding-agent/project-indexer";
+} from "@nlc/sandbox";
+import { detectProject } from "@nlc/project-indexer";
 import {
   type ProjectKind,
   type RunCommandInput,
@@ -17,7 +17,7 @@ import {
   type SandboxPolicy,
   type ToolContext,
   TOOL_LIMITS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { runCommandTool } from "./run-command.js";
 import type { SnapshotStore } from "./deps.js";
 
@@ -179,6 +179,12 @@ export async function runCommandWithPolicy(
         workspaceRoot: stagingRoot,
         runId: ctx.runId,
         timeoutMs,
+        // Forward the run's abort signal so a user-initiated Stop kills the
+        // sandbox child immediately instead of waiting out the 60s timeout.
+        // The runner rejects with AbortError on abort; the catch below maps
+        // that to an empty change set so writeback never runs against a
+        // half-mutated staging dir.
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
       },
       effectivePolicy,
       runners,

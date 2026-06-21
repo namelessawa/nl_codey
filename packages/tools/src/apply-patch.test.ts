@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { createPatch } from "diff";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FileSnapshot } from "@coding-agent/shared";
+import type { FileSnapshot } from "@nlc/shared";
 import { applyPatchTool } from "./apply-patch.js";
 import type { SnapshotStore } from "./deps.js";
 import { ToolError } from "./errors.js";

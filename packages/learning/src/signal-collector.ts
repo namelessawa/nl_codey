@@ -10,7 +10,7 @@ import type {
   FeedbackSignal,
   FeedbackSignalInput,
   FeedbackSignalKind,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export interface SignalStore {
   createFeedbackSignal(input: FeedbackSignalInput): FeedbackSignal;

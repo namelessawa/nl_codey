@@ -1,5 +1,5 @@
 {
-  "name": "@coding-agent/tools",
+  "name": "@nlc/tools",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,9 +15,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@coding-agent/shared": "workspace:*",
-    "@coding-agent/sandbox": "workspace:*",
-    "@coding-agent/project-indexer": "workspace:*",
+    "@nlc/shared": "workspace:*",
+    "@nlc/sandbox": "workspace:*",
+    "@nlc/project-indexer": "workspace:*",
     "@vscode/ripgrep": "^1.15.9",
     "diff": "^7.0.0"
   },

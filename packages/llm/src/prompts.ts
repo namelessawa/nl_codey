@@ -1,4 +1,4 @@
-import type { AgentPlan, LanguagePreference } from "@coding-agent/shared";
+import type { AgentPlan, LanguagePreference } from "@nlc/shared";
 
 /**
  * Phase 1 plan + patch prompts, parameterised by user language. The Phase 2

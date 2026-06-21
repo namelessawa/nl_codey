@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
-import { assertInsideWorkspace } from "@coding-agent/sandbox";
+import { assertInsideWorkspace } from "@nlc/sandbox";
 import {
   type AgentTool,
   type ReadFileInput,
   type ReadFileOutput,
   TOOL_LIMITS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { TOOL_CODES, ToolError } from "./errors.js";
 
 export const readFileTool: AgentTool<ReadFileInput, ReadFileOutput> = {

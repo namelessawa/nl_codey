@@ -1,4 +1,4 @@
-import type { AgentApi } from "@coding-agent/shared";
+import type { AgentApi } from "@nlc/shared";
 
 declare global {
   interface Window {

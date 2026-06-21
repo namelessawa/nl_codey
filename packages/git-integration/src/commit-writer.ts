@@ -2,7 +2,7 @@ import {
   type CommitRequest,
   type CommitResult,
   GIT_COAUTHOR_TRAILER,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { runGit } from "./git-exec.js";
 import { parseChangedFiles } from "./diff-summarizer.js";
 
@@ -19,7 +19,7 @@ import { parseChangedFiles } from "./diff-summarizer.js";
  *
  *   Verified by: <verifiedBy>
  *
- *   Co-Authored-By: coding-agent <agent@local>
+ *   Co-Authored-By: nlc <agent@local>
  *
  * Scope and the body/verified lines are omitted when absent. Pure function.
  */

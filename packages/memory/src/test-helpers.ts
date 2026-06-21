@@ -6,7 +6,7 @@ import type {
   MemoryEntryInput,
   MemoryEntryPatch,
   MemoryFilter,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { MemoryStore } from "./project-memory.js";
 
 /** A minimal in-memory implementation of the MemoryStore port for tests. */

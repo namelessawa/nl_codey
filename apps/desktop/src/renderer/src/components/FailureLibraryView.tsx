@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MemoryEntry } from "@coding-agent/shared";
+import type { MemoryEntry } from "@nlc/shared";
 import { api } from "../api.js";
 
 interface FailureLibraryViewProps {

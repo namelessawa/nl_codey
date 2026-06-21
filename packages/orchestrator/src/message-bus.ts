@@ -13,7 +13,7 @@ import type {
   RoleMessageRow,
   ReviewComment,
   ReviewResult,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export type ValidationResult =
   | { ok: true }

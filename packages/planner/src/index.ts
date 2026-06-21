@@ -1,4 +1,4 @@
-/** Public API for the @coding-agent/planner package. */
+/** Public API for the @nlc/planner package. */
 
 export {
   detectCycles,

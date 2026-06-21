@@ -3,8 +3,8 @@ import type {
   SandboxPolicy,
   SandboxRunRequest,
   SandboxRunResult,
-} from "@coding-agent/shared";
-import { DEFAULT_SANDBOX_POLICY } from "@coding-agent/shared";
+} from "@nlc/shared";
+import { DEFAULT_SANDBOX_POLICY } from "@nlc/shared";
 import { routeCommand, type SandboxRunners } from "./command-router.js";
 import { SandboxError } from "./errors.js";
 

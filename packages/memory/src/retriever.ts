@@ -10,7 +10,7 @@ import type {
   MemoryHit,
   MemoryKind,
   MemoryRetrievalOptions,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { MemoryStore } from "./project-memory.js";
 
 const DEFAULT_MAX_ENTRIES = 8;

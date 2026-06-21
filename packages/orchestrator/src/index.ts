@@ -1,4 +1,4 @@
-/** Public API for the @coding-agent/orchestrator package (Phase 3 multi-agent). */
+/** Public API for the @nlc/orchestrator package (Phase 3 multi-agent). */
 
 export {
   ROLE_TOOLS,

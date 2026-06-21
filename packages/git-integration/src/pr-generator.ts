@@ -3,7 +3,7 @@ import {
   type PRDescriptionInput,
   type TaskChangeSummary,
   PR_DESCRIPTION_MAX_CHARS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 /** Marker appended when the body is truncated to the hard cap. */
 const TRUNCATION_MARKER = "\n\n_…description truncated…_";

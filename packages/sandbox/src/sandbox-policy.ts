@@ -2,7 +2,7 @@ import type {
   SandboxMode,
   SandboxPolicy,
   SandboxRunRequest,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { SANDBOX_CODES, SandboxError } from "./errors.js";
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { GlobalPattern, StyleSpec } from "@coding-agent/shared";
+import type { GlobalPattern, StyleSpec } from "@nlc/shared";
 import {
   buildPhase4PromptAugmentation,
   MODEL_IDENTITY_REMINDER,

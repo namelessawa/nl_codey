@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { InstallationStatus } from "@coding-agent/shared";
+import type { InstallationStatus } from "@nlc/shared";
 import { Icon } from "./Icons.js";
 import { useLang, useT } from "../lang-context.js";
 import { tf } from "../i18n.js";

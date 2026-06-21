@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import type { LLMConfig } from "@coding-agent/shared";
+import type { LLMConfig } from "@nlc/shared";
 import { testLLMConnection } from "./test-connection.js";
 import { createLLMProvider } from "./provider.js";
 

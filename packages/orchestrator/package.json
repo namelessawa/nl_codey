@@ -1,5 +1,5 @@
 {
-  "name": "@coding-agent/orchestrator",
+  "name": "@nlc/orchestrator",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,9 +15,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@coding-agent/shared": "workspace:*",
-    "@coding-agent/planner": "workspace:*",
-    "@coding-agent/memory": "workspace:*"
+    "@nlc/shared": "workspace:*",
+    "@nlc/planner": "workspace:*",
+    "@nlc/memory": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

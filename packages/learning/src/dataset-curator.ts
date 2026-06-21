@@ -8,7 +8,7 @@
  *   3. Dedupe near-identical (prompt, chosen) tuples.
  *   4. Optional: stratify by category so one bucket doesn't drown the rest.
  */
-import type { PreferencePair } from "@coding-agent/shared";
+import type { PreferencePair } from "@nlc/shared";
 
 export type CurationConfig = {
   /** 0..1; minimum normalized edit distance to keep a pair. */

@@ -4,8 +4,8 @@ import type {
   EmbeddingProvider,
   SemanticHit,
   SemanticSearchOptions,
-} from "@coding-agent/shared";
-import { SEMANTIC_INDEXED_EXTENSIONS } from "@coding-agent/shared";
+} from "@nlc/shared";
+import { SEMANTIC_INDEXED_EXTENSIONS } from "@nlc/shared";
 import { searchChunks, type ChunkStore } from "./vector-store.js";
 
 /** Run a semantic search over a workspace's indexed chunks. */

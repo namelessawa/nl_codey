@@ -4,7 +4,7 @@ import {
   parseCommitFields,
   generateCommitMessage,
 } from "./commit-writer.js";
-import { GIT_COAUTHOR_TRAILER, type CommitRequest } from "@coding-agent/shared";
+import { GIT_COAUTHOR_TRAILER, type CommitRequest } from "@nlc/shared";
 
 describe("buildCommitMessage", () => {
   it("builds a header with scope, body, changes, verified and trailer", () => {

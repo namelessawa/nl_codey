@@ -1,7 +1,7 @@
 /**
  * Project memory facade + the `MemoryStore` persistence port.
  *
- * This package never imports `@coding-agent/storage`. Instead it depends on the
+ * This package never imports `@nlc/storage`. Instead it depends on the
  * `MemoryStore` interface below, which lists exactly the persistence methods
  * the memory package calls. The main process injects the real Storage.
  */
@@ -11,7 +11,7 @@ import type {
   MemoryEntryPatch,
   MemoryExport,
   MemoryFilter,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 /** Persistence port. Implemented by the real Storage in the main process. */
 export interface MemoryStore {

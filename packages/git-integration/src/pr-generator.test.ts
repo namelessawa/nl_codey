@@ -4,7 +4,7 @@ import {
   type PRDescriptionInput,
   type TaskChangeSummary,
   PR_DESCRIPTION_MAX_CHARS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 const TASKS: TaskChangeSummary[] = [
   {

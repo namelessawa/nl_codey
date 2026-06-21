@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FeedbackSignal, PreferenceDataset, PreferencePair } from "@coding-agent/shared";
+import type { FeedbackSignal, PreferenceDataset, PreferencePair } from "@nlc/shared";
 import { SignalCollector, aggregateByKind } from "./signal-collector.js";
 import { buildDatasetFromSignals, isUsableForPreference } from "./preference-dataset.js";
 import { curatePairs, normalizedEditDistance } from "./dataset-curator.js";

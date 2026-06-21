@@ -9,7 +9,7 @@
  * Its sole output is a list of {@link ProposalInput}s. The caller decides
  * whether to surface them, snooze them, or convert them into tasks.
  */
-import type { ProposalInput } from "@coding-agent/shared";
+import type { ProposalInput } from "@nlc/shared";
 
 export type ScannerFile = {
   path: string;

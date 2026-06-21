@@ -2,7 +2,7 @@
  * Preference helpers: record `preference`-kind entries and extract preferences
  * from an LLM memory-extraction payload.
  */
-import type { MemoryEntryInput } from "@coding-agent/shared";
+import type { MemoryEntryInput } from "@nlc/shared";
 import { createEntry, type MemoryStore } from "./project-memory.js";
 import { parseMemoryExtraction } from "./decision-log.js";
 

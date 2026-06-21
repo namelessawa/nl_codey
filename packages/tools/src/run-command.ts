@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { assertCommandAllowed, filteredEnv, truncateOutput } from "@coding-agent/sandbox";
+import { assertCommandAllowed, filteredEnv, truncateOutput } from "@nlc/sandbox";
 import {
   type AgentTool,
   type RunCommandInput,
   type RunCommandOutput,
   TOOL_LIMITS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 /**
  * Run a whitelisted validation command in the workspace root. The command is

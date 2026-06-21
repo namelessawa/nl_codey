@@ -1,7 +1,7 @@
-import type { FileSnapshot } from "@coding-agent/shared";
+import type { FileSnapshot } from "@nlc/shared";
 
 /**
- * Minimal persistence surface the mutating tools need. @coding-agent/storage's
+ * Minimal persistence surface the mutating tools need. @nlc/storage's
  * Storage class satisfies this structurally, keeping tools decoupled from it.
  */
 export interface SnapshotStore {

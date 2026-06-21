@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import type { AgentStepType, FileSnapshot } from "@coding-agent/shared";
-import { assertInsideWorkspace } from "@coding-agent/sandbox";
+import type { AgentStepType, FileSnapshot } from "@nlc/shared";
+import { assertInsideWorkspace } from "@nlc/sandbox";
 
 export type RollbackArgs = {
   workspaceRoot: string;

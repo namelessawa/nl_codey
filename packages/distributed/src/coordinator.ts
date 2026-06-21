@@ -12,7 +12,7 @@ import type {
   TaskNode,
   TaskNodeStatus,
   WorkerNode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export interface DistributedStore {
   upsertWorkerNode(node: Omit<WorkerNode, "registeredAt">): WorkerNode;

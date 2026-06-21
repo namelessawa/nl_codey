@@ -4,7 +4,7 @@ import type {
   ReadMemoryOutput,
   WriteMemoryInput,
   WriteMemoryOutput,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { TOOL_CODES, ToolError } from "./errors.js";
 import type { MemoryPort } from "./phase3-deps.js";
 

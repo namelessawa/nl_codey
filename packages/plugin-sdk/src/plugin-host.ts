@@ -9,7 +9,7 @@
 import type {
   PluginInstallation,
   PluginPermission,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { authorize } from "./manifest-schema.js";
 
 export type SandboxHandle = {

@@ -5,7 +5,7 @@
  * Score time series: pass-rate per week per model. The LearningDashboard
  * displays this as the ground truth for "is the agent getting better?".
  */
-import type { EvalTask, FrozenSuiteSnapshot } from "@coding-agent/shared";
+import type { EvalTask, FrozenSuiteSnapshot } from "@nlc/shared";
 
 /** Initial frozen suite seed. Concrete-but-tiny so we can verify the plumbing. */
 export const INITIAL_FROZEN_TASKS: Omit<EvalTask, "createdAt">[] = [

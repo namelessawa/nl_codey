@@ -4,7 +4,7 @@ import type {
   TaskNode,
   TaskNodeStatus,
   WorkerNode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { Coordinator, type RemoteWorkerClient } from "./coordinator.js";
 import { planDistribution, readyTasks } from "./task-distributor.js";
 import { detectFailedNodes, planReassignments } from "./node-recovery.js";

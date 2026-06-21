@@ -4,8 +4,8 @@ import type {
   SandboxPolicy,
   ToolContext,
   ToolSchema,
-} from "@coding-agent/shared";
-import type { FileChange } from "@coding-agent/sandbox";
+} from "@nlc/shared";
+import type { FileChange } from "@nlc/sandbox";
 import {
   applyPatchTool,
   findSymbolTool,
@@ -17,7 +17,7 @@ import {
   runCommandWithPolicy,
   searchTextTool,
   type SnapshotStore,
-} from "@coding-agent/tools";
+} from "@nlc/tools";
 import {
   createPhase3Dispatcher,
   PHASE3_AGENT_TOOL_NAMES,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RunCommandOutput } from "@coding-agent/shared";
+import type { RunCommandOutput } from "@nlc/shared";
 import { evaluateVerification } from "./verifier.js";
 
 function out(overrides: Partial<RunCommandOutput>): RunCommandOutput {

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { assertInsideWorkspace } from "@coding-agent/sandbox";
-import type { ToolContext, WriteFileInput, WriteFileOutput } from "@coding-agent/shared";
+import { assertInsideWorkspace } from "@nlc/sandbox";
+import type { ToolContext, WriteFileInput, WriteFileOutput } from "@nlc/shared";
 import type { SnapshotStore } from "./deps.js";
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { IndexedChunk } from "@coding-agent/shared";
+import type { IndexedChunk } from "@nlc/shared";
 import { cosineSimilarity, searchChunks } from "./vector-store.js";
 import { FakeChunkStore } from "./fake-store.js";
 import { MockEmbeddingProvider } from "./embedder.js";

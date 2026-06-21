@@ -3,7 +3,7 @@ import {
   MEMORY_DECAY_DAYS,
   MEMORY_HIDDEN_THRESHOLD,
   type MemoryHit,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   decayFailures,
   formatPitfalls,

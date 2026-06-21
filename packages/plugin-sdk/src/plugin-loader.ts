@@ -9,7 +9,7 @@ import type {
   PluginInstallation,
   PluginManifest,
   PluginPermission,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { validateManifest } from "./manifest-schema.js";
 
 export interface PluginRepository {

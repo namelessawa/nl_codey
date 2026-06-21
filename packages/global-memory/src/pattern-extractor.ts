@@ -11,7 +11,7 @@ import type {
   GlobalPattern,
   GlobalPatternInput,
   MemoryEntry,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { KnowledgeGraph } from "./knowledge-graph.js";
 
 export type ProjectMemorySource = {

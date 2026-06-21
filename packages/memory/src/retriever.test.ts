@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EmbeddingProvider, MemoryEntry } from "@coding-agent/shared";
+import type { EmbeddingProvider, MemoryEntry } from "@nlc/shared";
 import { MemoryRetriever, cosineSimilarity } from "./retriever.js";
 import {
   FakeEmbeddingProvider,

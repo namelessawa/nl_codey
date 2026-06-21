@@ -6,7 +6,7 @@ import type {
   LanguagePreference,
   ThemePreference,
   UISettings as UISettingsValue,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "../api.js";
 import { applyAppearance } from "../appearance.js";
 import { Field, Segmented } from "./settings/fields.js";

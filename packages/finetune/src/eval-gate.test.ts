@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EvalRunResult, EvalTask } from "@coding-agent/shared";
+import type { EvalRunResult, EvalTask } from "@nlc/shared";
 import { decideStatus, evaluateGate, findPerTaskRegressions, scoreOf } from "./eval-gate.js";
 import { compareRecall, decidePromote } from "./embedding-adapter.js";
 

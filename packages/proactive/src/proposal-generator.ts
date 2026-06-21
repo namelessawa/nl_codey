@@ -3,7 +3,7 @@
  * with deduplication against the existing inbox. Same scan output should not
  * re-emit a proposal already in `new` or `snoozed` state.
  */
-import type { Proposal, ProposalInput } from "@coding-agent/shared";
+import type { Proposal, ProposalInput } from "@nlc/shared";
 
 export type GenerationContext = {
   workspaceId: string;

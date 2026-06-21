@@ -44,7 +44,7 @@ import type {
   WorkerNode,
   Workspace,
   WorkspaceContributionMode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 async function unwrap<T>(p: Promise<IpcResult<T>>): Promise<T> {
   const result = await p;

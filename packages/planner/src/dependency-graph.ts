@@ -1,6 +1,6 @@
 /** DAG primitives for the Planner: glob scope overlap, cycle detection, topo order. */
 
-import type { TaskNodeProposal } from "@coding-agent/shared";
+import type { TaskNodeProposal } from "@nlc/shared";
 
 /**
  * Compile a glob into a RegExp anchored to the whole path.

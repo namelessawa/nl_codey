@@ -65,7 +65,7 @@ jobs:
         run: pnpm rebuild:native
 
       - name: Package Windows installer
-        run: pnpm --filter @coding-agent/desktop exec electron-builder --win --publish never
+        run: pnpm --filter @nlc/desktop exec electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

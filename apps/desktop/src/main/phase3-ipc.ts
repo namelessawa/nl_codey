@@ -13,7 +13,7 @@ import {
   type SemanticSearchArgs,
   type TaskChangeSummary,
   type TaskNode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   validateCreateMemory,
   validateDeleteMemory,
@@ -25,7 +25,7 @@ import {
   validateUpdateMemory,
   validateWorkspaceId,
 } from "./validators.js";
-import { scanFiles } from "@coding-agent/project-indexer";
+import { scanFiles } from "@nlc/project-indexer";
 import {
   createEntry,
   deleteEntry,
@@ -33,14 +33,14 @@ import {
   importMemory as importMemoryEnvelope,
   listEntries,
   updateEntry,
-} from "@coding-agent/memory";
-import { isIndexableFile, searchChunks } from "@coding-agent/semantic-index";
+} from "@nlc/memory";
+import { isIndexableFile, searchChunks } from "@nlc/semantic-index";
 import {
   buildPRDescription,
   discardAgentBranch as gitDiscardBranch,
   getWorkingTreeStatus,
-} from "@coding-agent/git-integration";
-import { parseRow } from "@coding-agent/orchestrator";
+} from "@nlc/git-integration";
+import { parseRow } from "@nlc/orchestrator";
 import { handle } from "./ipc-handle.js";
 import { Phase3Services } from "./phase3-services.js";
 import type { Services } from "./services.js";
@@ -156,9 +156,13 @@ export function registerPhase3Ipc(services: Services, requireRoot: RequireRoot):
     return storage.listTaskNodes(args.runId);
   });
 
-  handle(IPC.approveTaskTree, (): { approved: boolean } => {
-    // Approval gating is consumed by the coordinator's injected approve() port;
-    // here we simply acknowledge the user's GUI approval.
+  handle(IPC.approveTaskTree, (raw): { approved: boolean } => {
+    const { runId } = validateRunId(raw);
+    // Resolve the multi-agent run's plan-approval gate (or buffer the
+    // decision if the coordinator hasn't reached approve() yet — see
+    // AgentService.resolvePlanApproval). Idempotent: a second click after
+    // the gate already cleared is a silent no-op.
+    services.agent.resolvePlanApproval(runId, true);
     return { approved: true };
   });
 

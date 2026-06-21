@@ -7,8 +7,8 @@ import type {
   LLMFinishReason,
   LLMMessage,
   ToolSchema,
-} from "@coding-agent/shared";
-import { computeCostUsd, contextWindowFor, estimateMessageTokens, estimateTokens } from "@coding-agent/shared";
+} from "@nlc/shared";
+import { computeCostUsd, contextWindowFor, estimateMessageTokens, estimateTokens } from "@nlc/shared";
 import { postWithRetries, redactError } from "./http.js";
 import { sseData } from "./stream.js";
 

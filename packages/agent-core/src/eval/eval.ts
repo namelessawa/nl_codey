@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
-import { assertInsideWorkspace } from "@coding-agent/sandbox";
-import { runCommandTool } from "@coding-agent/tools";
+import { assertInsideWorkspace } from "@nlc/sandbox";
+import { runCommandTool } from "@nlc/tools";
 
 /**
  * A single success criterion checked against the workspace after the agent

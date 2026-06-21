@@ -6,7 +6,7 @@
  * here.
  *
  * The web port uses a DuckDuckGo backend over the global fetch. Fetch-side
- * domain whitelisting is enforced in `@coding-agent/web-tools/webFetch` so we
+ * domain whitelisting is enforced in `@nlc/web-tools/webFetch` so we
  * don't repeat it here.
  */
 
@@ -15,9 +15,9 @@ import {
   webFetch,
   webSearch,
   type SearchBackend,
-} from "@coding-agent/web-tools";
-import { searchChunks } from "@coding-agent/semantic-index";
-import type { Phase3AgentPorts } from "@coding-agent/agent-core";
+} from "@nlc/web-tools";
+import { searchChunks } from "@nlc/semantic-index";
+import type { Phase3AgentPorts } from "@nlc/agent-core";
 import type {
   MemoryRetrievalOptions,
   ReadMemoryHit,
@@ -25,8 +25,8 @@ import type {
   WebFetchToolInput,
   WebSearchToolInput,
   WriteMemoryInput,
-} from "@coding-agent/shared";
-import { createEntry, MemoryRetriever } from "@coding-agent/memory";
+} from "@nlc/shared";
+import { createEntry, MemoryRetriever } from "@nlc/memory";
 import type { Services } from "./services.js";
 import { Phase3Services } from "./phase3-services.js";
 

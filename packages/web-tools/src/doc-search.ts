@@ -3,7 +3,7 @@ import {
   type WebSearchOutput,
   type WebSearchResult,
   WEB_SEARCH_DEFAULT_MAX_RESULTS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 /** A pluggable search backend. Returns raw results; clamping is done by webSearch. */
 export type SearchBackend = (

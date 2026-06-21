@@ -1,6 +1,6 @@
 /** In-memory ChunkStore used by tests (also a reference implementation). */
 
-import type { IndexedChunk } from "@coding-agent/shared";
+import type { IndexedChunk } from "@nlc/shared";
 import type { ChunkStore } from "./vector-store.js";
 
 export type ReplaceCall = {

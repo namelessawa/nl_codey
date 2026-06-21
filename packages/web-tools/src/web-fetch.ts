@@ -3,7 +3,7 @@ import {
   type WebFetchOutput,
   DEFAULT_WEB_WHITELIST,
   WEB_FETCH_MAX_CHARS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { assertFetchAllowed } from "./domain-whitelist.js";
 
 /** Tags whose entire content (incl. inner text) should be dropped. */

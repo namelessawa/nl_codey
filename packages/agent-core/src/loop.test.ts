@@ -6,8 +6,8 @@ import type {
   LLMChunk,
   LLMMessage,
   LLMToolCall,
-} from "@coding-agent/shared";
-import { MockLLMProvider } from "@coding-agent/llm";
+} from "@nlc/shared";
+import { MockLLMProvider } from "@nlc/llm";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopDeps } from "./loop.js";
 import { AGENT_TOOL_SCHEMAS } from "./tools-registry.js";

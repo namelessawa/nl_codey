@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppSettings, InstallationStatus, TestConnectionResult } from "@coding-agent/shared";
+import type { AppSettings, InstallationStatus, TestConnectionResult } from "@nlc/shared";
 import { useSettings } from "../hooks/useSettings.js";
 import { t } from "../i18n.js";
 import { Icon } from "./Icons.js";

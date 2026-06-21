@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BudgetLimits, TokenUsage } from "@coding-agent/shared";
+import type { BudgetLimits, TokenUsage } from "@nlc/shared";
 import { BudgetController } from "./budget.js";
 
 const LIMITS: BudgetLimits = {

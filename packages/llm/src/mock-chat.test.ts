@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LLMChunk, LLMMessage, ToolSchema } from "@coding-agent/shared";
+import type { LLMChunk, LLMMessage, ToolSchema } from "@nlc/shared";
 import { MockLLMProvider } from "./mock.js";
 
 const TOOLS: ToolSchema[] = [

@@ -1,5 +1,5 @@
-import type { RunCommandOutput } from "@coding-agent/shared";
-import { parseTestFailure } from "@coding-agent/tools";
+import type { RunCommandOutput } from "@nlc/shared";
+import { parseTestFailure } from "@nlc/tools";
 
 /** Outcome of an automatic post-patch verification run. */
 export type VerificationResult = {

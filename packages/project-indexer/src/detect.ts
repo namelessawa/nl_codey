@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ProjectInfo, ProjectKind } from "@coding-agent/shared";
+import type { ProjectInfo, ProjectKind } from "@nlc/shared";
 
 /**
  * Inspect the workspace root and suggest validation commands. Only commands on

@@ -6,8 +6,8 @@ import type {
   LLMCompleteOutput,
   LLMMessage,
   TokenUsage,
-} from "@coding-agent/shared";
-import { computeCostUsd, contextWindowFor } from "@coding-agent/shared";
+} from "@nlc/shared";
+import { computeCostUsd, contextWindowFor } from "@nlc/shared";
 import { MOCK_PROMPT_PREFIXES } from "./prompts.js";
 
 const MOCK_MODEL = "mock-model";

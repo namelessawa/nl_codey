@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import type { FileSnapshot, SandboxPolicy, ToolContext } from "@coding-agent/shared";
+import type { FileSnapshot, SandboxPolicy, ToolContext } from "@nlc/shared";
 import {
   applyPatchTool,
   findSymbolTool,

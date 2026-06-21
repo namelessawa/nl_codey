@@ -7,7 +7,7 @@
  * {@link ROLE_TOOLS} allowlists.
  *
  * The orchestration spine itself is the package
- * `@coding-agent/orchestrator` — Coordinator + Scheduler + MessageBus +
+ * `@nlc/orchestrator` — Coordinator + Scheduler + MessageBus +
  * review-loop. Here we only supply the LLM-driven role implementations and
  * the storage adapters those ports need.
  */
@@ -24,7 +24,7 @@ import type {
   TaskNodeStatus,
   ToolContext,
   ToolSchema,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   CODER_PROMPT,
   Coordinator,
@@ -34,7 +34,7 @@ import {
   ROLE_TOOLS,
   type CoordinatorResult,
   type ToolRole,
-} from "@coding-agent/orchestrator";
+} from "@nlc/orchestrator";
 import { BudgetController } from "./budget.js";
 import { runToolLoop } from "./loop.js";
 import type { ExecutedTool } from "./tools-registry.js";

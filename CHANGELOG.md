@@ -5,6 +5,228 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
 
 ## [Unreleased]
 
+### Fixed (IPC code-review remediation — 18 findings from full frontend↔backend review)
+Full review pass identified 18 confirmed issues across the IPC contract layer
+(46 candidates, 28 rejected after adversarial verification). All fixes are
+test-covered.
+
+#### Plan-approval gate now actually gates (M10)
+- `AgentService.awaitPlanApproval(runId)` and `resolvePlanApproval(runId, approved)`
+  park the multi-agent coordinator until the user clicks Approve in
+  TaskTreeView. Pre-click buffer handles the race where a fast user clicks
+  before `persistNode` finishes broadcasting nodes. `stop()`/`clearRuns()`
+  resolve any outstanding gate with false. Previously the `approve()` port
+  hardcoded `return true` — the GUI button was decorative.
+
+#### Phase 4 IPC runtime validation (M11/L7)
+- Every Phase 4 IPC handler now goes through hand-rolled validators in
+  `validators.ts` instead of `as` casts: enum checks for `WorkspaceContributionMode`/
+  `StyleScope`/`StyleCategory`/`FeedbackSignalKind`/`FinetuneMethod`/`NodeStatus`,
+  numeric range clamps (confidence ∈ [0,1], proactiveScanIntervalMin ∈ [1,1440]),
+  string-length caps (title 200, description 8000, before/after 200KB,
+  embedding ≤ 4096 dims), and an http(s)-only URL allowlist on `WorkerNode.endpoint`
+  to prevent file:// SSRF redirects.
+- 28 new validator tests covering rejection paths.
+
+#### Sandbox + verify cancellation (M1, M2)
+- `WslRunner` / `DockerRunner` / `runChild` accept an `AbortSignal`; on abort
+  they kill the child + close the Windows Job Object instead of dragging out
+  to the 60s timeout. `runChild` rejects with `AbortError`.
+  `SandboxRunRequest.signal` plumbs through `runCommandWithPolicy` from the
+  per-run `ctx.signal`.
+- `verifyPatch` / `captureBaseline` early-return on `ctx.signal.aborted` both
+  before spawn and after the await; abort errors are recognized via a new
+  `isAbortError()` helper so a cancelled run doesn't emit a noisy
+  "自动验证无法运行" error step.
+
+#### LLM stream abort classified as cancelled, not failed (M3)
+- `phase3ReactLoop` now checks `signal?.aborted` BEFORE the
+  `finishReason === 'error'` branch. The OpenAI-compat / Anthropic providers
+  catch their underlying `AbortError` and yield an in-band
+  `{ type: 'error', message: 'Request aborted' }` chunk; without the
+  ordering fix a user-clicked Stop during streaming surfaced as a "failed"
+  run with red banner instead of "cancelled".
+
+#### Apply/reject patch race-safety (L1)
+- `applyPatch` is idempotent under double-click: when the run already moved
+  to `applying_patch`/`verifying`/`repairing`/`tool_use`, the second call
+  returns the current detail instead of throwing "No pending patch to apply".
+- `rejectPatch` no longer overwrites a live `applying_patch` status with
+  `cancelled` when it loses the race to `applyPatch`.
+
+#### Per-run live-text buffers (M5/M6/L2)
+- `App.tsx` `liveText: string` → `liveBuffers: Record<runId, string>`.
+  Deltas accumulate per-run regardless of which run is active, fixing the
+  M6 race where the first model tokens after `submitComposer` were dropped
+  because `setActiveRunId` hadn't committed yet. Display reads
+  `liveBuffers[activeRunId] ?? ""`.
+- `setActiveRunId` is now a write-through wrapper: ref + state update at the
+  same synchronous call site, eliminating the render-frame lag (M5) that
+  let deltas for a stale run slip past the runId filter.
+- Per-run buffers cap at 1 MiB with a head-truncation marker; cleared on
+  terminal status or when `step_added(message)` commits the assistant text.
+
+#### Renderer error-handling cleanups (M7/M8/M9/L4/L5)
+- `FinetuneManager.refresh()` routes all four initial-load failures through
+  the existing `setError` banner (was `.catch(() => {})`).
+- `KnowledgeGraphView.delPattern` wrapped in try/catch — backend rejection
+  no longer drops as unhandled rejection while the UI pretends success.
+- `KnowledgeGraphView.getWorkspaceContribution` surfaces failures so the
+  contribution dropdown can't silently display a wrong mode.
+- `Phase4Panel` adds `settingsError` state; failed `getPhase4Settings` now
+  shows the error instead of an indefinite "Loading…" spinner.
+  `updatePhase4Settings` failures also surface.
+- `LearningDashboard.listFrozenSnapshots` routes through `setError`.
+
+#### Minor (L6, M4, L8)
+- `openRecentWorkspace` no longer echoes the full filesystem path into the
+  renderer error banner (Windows paths leak the OS username); a neutral
+  message goes to the UI, the full path stays in `console.warn` main-side.
+- `reduceAgentDetail` uses strict `>` (not `>=`) for `createdAt` comparison
+  so two runs created in the same millisecond can't overwrite each other's
+  live detail.
+- `Phase4SettingsStore.set` writes the JSON file with `mode: 0o600` matching
+  the main settings store; was world-readable under default POSIX umask.
+
+### Added (provider — `/provider` picker with one-api-style preset catalogue + 5 custom slots)
+- **New `@nlc/shared/providers` module.** Curated catalogue of 22 preset
+  providers grouped by region (International / China / Aggregator /
+  Self-hosted), inspired by the provider list in
+  github.com/songquanpeng/one-api: OpenAI, Anthropic, Google Gemini,
+  Groq, Mistral, xAI, Cohere; DeepSeek, 智谱 AI, 月之暗面 Kimi,
+  通义千问, 字节豆包, 零一万物, 百川, MiniMax, 阶跃星辰,
+  腾讯混元, 百度文心, 讯飞星火; OpenRouter, One API self-hosted,
+  Ollama, LM Studio. Each row carries `baseUrl` / `defaultModel` /
+  `protocol` / `envKey` so the picker pre-fills sane defaults.
+- **CLI provider store.** `apps/cli/src/lib/provider-store.ts` writes
+  `<dataRoot>/cli-providers.json` (mode `0o600` on POSIX) — kept
+  parallel to the GUI's `settings.json` + encrypted `apikey.bin` so the
+  GUI's secret store stays untouched. The file holds one entry per
+  configured preset id or `custom:N` slot plus an `active` pointer.
+- **`loadCliSettings` merges the active provider as an override.**
+  `settings.json` remains GUI-owned; if the CLI store has an active
+  provider, its `baseUrl` / `model` / `apiKey` override the GUI defaults
+  for the agent loop. Env-var fallback kicks in only when neither
+  surface produced a key.
+- **Opencode-style multi-step picker** (`provider-picker.tsx`). Mounts
+  in the same modal slot as `Approval` / `SkillInstallPicker`:
+  - **pick** — region-grouped row list with `>` cursor (no key chords);
+    each row shows `★` for the active provider, `●` for configured,
+    `○` for empty slots; ↑↓ to move, ↵ to pick, esc to cancel.
+  - **url** — text input pre-filled with the preset URL (or saved one).
+  - **key** — text input masked to `••••<last4>`.
+  - **name** — text input (skipped for presets, whose names are locked
+    to the catalogue).
+  - **confirm** — summary, ↵ saves, esc cancels.
+  Backspace, ctrl+w (word erase), ctrl+u (clear line) all work.
+- **New `/provider` slash command** in the prompt palette (aliases
+  `/providers`, `/p`). Opens the picker and, on save, writes a
+  `model_change` event into the active session so the timeline reflects
+  which provider was used for each turn.
+
+### Added (session — branchable JSONL conversation tree under `~/.nlc/agent.session/`)
+- **New workspace package `@nlc/session`.** Replaces nothing — runs in
+  parallel to the existing SQLite run history and captures the
+  conversation at a level above runs. Lives entirely on plain `fs`, no
+  SDK or DB. Provides:
+  - `SessionStore` — file-backed CRUD + branch under
+    `<root>/<encoded-cwd>/ses_<utc>_<rand>.json` (extension is `.json`
+    by spec, content is JSONL so writes are append-only and crash-safe).
+  - `SessionWriter` — append-only handle returned by `createSession` /
+    `resumeSession` / `branchSession`; `appendMessage` auto-pins
+    `parentId` to the chain head; `appendStateEvent` records
+    `model_change` / `thinking_level_change` / `theme_change` /
+    `workspace_change`.
+  - `buildProjectTree` / `renderProjectTree` — git-style lane allocator
+    that stitches every session in one project together via
+    intra-file `parentId` chains and inter-file `header.parent.messageId`
+    branch anchors. Output uses `*` for nodes, `|` for active lanes,
+    and `|/` for branch-collapse rows.
+  - `encodeProjectFolder` — Windows `E:\\proj\\foo` → `E--proj-foo`,
+    POSIX `/home/x/y` → `-home-x-y`. Slash-then-colon collapse so the
+    drive prefix stays a clean `--`.
+  - 24 unit tests across path-encoder, store, and tree (all green).
+- **Ink TUI is wired through `SessionBridge`.** `useLoop` now lazily
+  opens a session on first user submit, mirrors every emit-channel event
+  into the file (user message before the run starts so the prompt
+  survives a crash; assistant deltas accumulate and flush on tool calls
+  / run end; tool results land as `role:"tool"` messages with the
+  triggering step id as `toolCallId`), and closes cleanly on unmount.
+  The bridge fails open — a session-store error never blocks an agent
+  run.
+- **New slash commands** in the prompt palette:
+  - `/sessions` — list every session file in this project with title,
+    message count, and branch lineage.
+  - `/tree` — render the git-style conversation tree inline.
+  - `/branch <msg> [<session>]` — fork a new session from any prior
+    message id; defaults the source to the active session when only the
+    message id is passed.
+  - `/resume <session|path>` — switch the active writer to an existing
+    session file so further messages append there.
+  - `/model [<provider/model>]` — log a model change as a state event
+    (settings.json itself is still owned by the GUI).
+  - `/think [<level>]` — log a thinking-level change as a state event.
+  - `/theme <name>` now also logs a `theme_change` event so the timeline
+    is preserved across sessions.
+- **New `nlc sessions` shell subcommand** for inspecting the on-disk
+  tree without launching the TUI:
+  - `nlc sessions` / `nlc sessions list` — one row per session.
+  - `nlc sessions tree` — git-style ASCII tree of the project.
+  - `nlc sessions show <id|path>` — dump a session file as raw JSONL.
+  - All three accept `--workspace`, `--data-root`, and `--json`.
+
+### Fixed (TUI — opencode-style scrollback, fixed-height trace, bulletproof backspace)
+- **The `nlc` TUI now flows finished messages into the OS terminal's
+  native scrollback.** Previously every state change repainted the entire
+  Ink output tree, which meant the chat history scrolled off forever once
+  the live frame redrew — the user's mouse wheel could no longer reach
+  earlier messages. The rewrite splits the renderer into two regions:
+  - **Scrollback** (above the live frame): `MessageStream` is now wrapped
+    in Ink's `<Static>` component, so each finalised row is printed once
+    and never repainted. The terminal owns the history; the user's wheel
+    works as expected, even across hundreds of messages.
+  - **Live frame** (the part Ink repaints): header + in-progress agent
+    bubble + fixed-height trace panel + prompt + footer. The trace now
+    has a hard `height={LIVE_BODY_HEIGHT}` (14 rows) instead of sharing
+    `flexGrow` with the message column, so the prompt row no longer
+    drifts up and down as new trace items arrive — it stays anchored
+    on the same line as the trace's bottom rail.
+- **In-progress agent deltas are now tracked separately from finalised
+  rows.** `useLoop` keeps a `liveAgent` slot that mutates on every
+  `delta` event and a `stream` array that is strictly append-only.
+  When any non-delta event arrives (tool call, run-end, error), the
+  reducer "flushes" the live message into `stream` so the row falls
+  into Static scrollback and the live frame goes idle. This is required
+  because `<Static>` deliberately ignores mutations on already-rendered
+  rows — without the split, streamed text would appear once and then
+  freeze.
+- **Backspace is now bulletproof on Windows terminals.** The prompt's
+  `useInput` handler used to rely on Ink's parsed `key.backspace` /
+  `key.delete` flags, which is correct in theory but flaky in practice:
+  Windows Terminal can send the DEL byte (``), classic cmd.exe
+  sends BS (``), and conhost sometimes leaks the raw byte into
+  `input` even when Ink also sets `key.delete`. After re-entering `/`
+  to summon the command popup, the popup was eating the keystroke and
+  the `/` could not be deleted. The new handler:
+  - evaluates the erase branch **before** the popup's arrow/tab/escape
+    handling, so the popup can no longer swallow a backspace;
+  - accepts `key.backspace`, `key.delete`, raw ``, raw ``,
+    and `Ctrl+H` as erase triggers;
+  - also wires `Ctrl+W` (delete previous word) and `Ctrl+U` (clear
+    line) for parity with familiar shell editing;
+  - rejects stray control bytes (DEL/BS) from the printable-input
+    branch so they can never accumulate into the value.
+- **New component** `live-agent.tsx` renders the in-progress streaming
+  bubble in the live frame. It mounts only while `liveAgent` is
+  non-null and unmounts the instant the reducer flushes the row into
+  Static.
+- **Bumped buffers** so scrollback feels generous: `MAX_STREAM` 200 → 500,
+  `MAX_TRACE` 80 → 200.
+
+  Touched: `apps/cli/src/tui/{prompt,trace,message-stream,ink-tui,
+  use-loop}.{ts,tsx}` and new `apps/cli/src/tui/live-agent.tsx`.
+  `pnpm typecheck` green across the whole workspace.
+
 ### Added (first-run Docker bootstrap — "Start Docker & continue")
 - **DockerInstallModal can now launch Docker Desktop for the user.** Before
   this change, when Docker was installed but the daemon wasn't running, the
@@ -294,7 +516,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project is 
   wraps `MultiAgentStore` so every `createTaskNode` /
   `setTaskNodeStatus` / `addRoleMessage` write also broadcasts a typed
   event (task-node and role-message paths are stable; role payload is
-  parsed via `parseRow` from `@coding-agent/orchestrator` and
+  parsed via `parseRow` from `@nlc/orchestrator` and
   swallowed-on-error so an emit failure never unwinds a successful
   write). `phase3-ipc.ts:rebuildSemanticIndex` emits `index_status`
   with `building: true` before the indexer runs and a final status
@@ -398,7 +620,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
   keeps the augmentation gate and the IPC handlers reading from one cache.
 - **Phase 3 tools (`semantic_search` / `read_memory` / `write_memory` /
   `web_search` / `web_fetch`) now appear in the autonomous-loop tool surface.**
-  They were defined in `@coding-agent/tools` and tested in isolation, but
+  They were defined in `@nlc/tools` and tested in isolation, but
   `agentToolSchemas` only advertised the Phase 1/2 catalogue, so the model
   never saw them. New `PHASE3_AGENT_TOOL_SCHEMAS` + `createPhase3Dispatcher`
   in `agent-core`, an optional `Phase3AgentPorts` bundle on
@@ -450,7 +672,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
   runs through the Phase 3 Coordinator (Planner → Coder → Reviewer) instead
   of the single-agent loop. New `multi-agent.ts` in `agent-core` provides
   the role-specific tool loops (filtered by `ROLE_TOOLS` from
-  `@coding-agent/orchestrator`) and the strict-JSON `parseReviewResult` for
+  `@nlc/orchestrator`) and the strict-JSON `parseReviewResult` for
   the reviewer's verdict, plus orchestrator-only schemas
   (`propose_task_breakdown` / `update_task_status` / `request_review` /
   `approve_change` / `request_changes`). `AgentService.driveMultiAgentLoop`
@@ -771,7 +993,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
 - **Product renamed to NL_Codey.** `productName`, `appId`, `shortcutName`, window
   title, README heading, and the system / patch / plan / summarize prompts now
   use `NL_Codey` instead of `Coding Agent`. The repository name and npm package
-  ids (`@coding-agent/*`) stay unchanged.
+  ids (`@nlc/*`) stay unchanged.
 
 ### Fixed
 - **Packaged app crashed on launch with `Cannot find module 'bindings'`.**
@@ -944,7 +1166,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
   externalized the six Phase 3 packages (`semantic-index`, `memory`, `planner`, `orchestrator`,
   `git-integration`, `web-tools`). At runtime Electron's Node tried to load their raw `.ts` source
   and threw `ERR_UNKNOWN_FILE_EXTENSION` for `packages/semantic-index/src/index.ts`. Added all six
-  to the bundle list so every `@coding-agent/*` workspace package (13 total) is bundled. `pnpm build`
+  to the bundle list so every `@nlc/*` workspace package (13 total) is bundled. `pnpm build`
   green; `out/main/index.js` now transforms 118 modules.
 - **ReDoS on diff classifier (`packages/style-profile/src/diff-feedback.ts`)** — CodeQL flagged
   three polynomial-time regular expressions evaluated against unbounded LLM/user-controlled diff
@@ -960,15 +1182,15 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
 
 ### Added
 - **Phase 3 — long-term project entrustment (full module build, typecheck-green)**. New packages:
-  `@coding-agent/memory` (cross-session memory: decision/preference/failure/fact entries,
-  embedding+tag+recency retriever, decay, JSON export/import), `@coding-agent/semantic-index`
+  `@nlc/memory` (cross-session memory: decision/preference/failure/fact entries,
+  embedding+tag+recency retriever, decay, JSON export/import), `@nlc/semantic-index`
   (OpenAI + mock embedders, heuristic chunker, cosine vector search, incremental mtime reindex),
-  `@coding-agent/planner` (glob dependency graph, DAG validation, scheduler waves with
-  scope-overlap serialization, LLM decomposer), `@coding-agent/orchestrator` (Planner/Coder/Reviewer
+  `@nlc/planner` (glob dependency graph, DAG validation, scheduler waves with
+  scope-overlap serialization, LLM decomposer), `@nlc/orchestrator` (Planner/Coder/Reviewer
   roles + prompts, strict 4-kind message-bus with JSON validation, thread-safe BudgetController,
   LockManager with deadlock-timeout, bounded worker pool, Coordinator review loop),
-  `@coding-agent/git-integration` (branch manager, conventional commit writer, PR generator,
-  diff summarizer), `@coding-agent/web-tools` (domain whitelist, readability fetch, search backends).
+  `@nlc/git-integration` (branch manager, conventional commit writer, PR generator,
+  diff summarizer), `@nlc/web-tools` (domain whitelist, readability fetch, search backends).
   Extended packages: `sandbox` (WSL/Docker runners, escape guards, command router), `tools` (10 new
   port-injected LLM tools + role registry; git_create_branch/git_commit kept as orchestrator
   system-calls), `storage` (5 new tables: memory_entries, semantic_chunks, task_nodes, role_messages,

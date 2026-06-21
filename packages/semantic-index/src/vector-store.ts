@@ -6,14 +6,14 @@ import type {
   IndexedChunk,
   SemanticHit,
   SemanticSearchOptions,
-} from "@coding-agent/shared";
-import { SEMANTIC_DEFAULT_TOP_K } from "@coding-agent/shared";
+} from "@nlc/shared";
+import { SEMANTIC_DEFAULT_TOP_K } from "@nlc/shared";
 
 const SNIPPET_CHARS = 200;
 
 /**
  * Storage port for indexed chunks. The real implementation lives in
- * @coding-agent/storage; this package depends only on this interface so it
+ * @nlc/storage; this package depends only on this interface so it
  * stays storage-agnostic and easy to fake in tests.
  */
 export interface ChunkStore {

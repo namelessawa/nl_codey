@@ -14,7 +14,7 @@ import type {
   EvalTask,
   FinetuneEvalResult,
   FinetuneJob,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export type GateInputs = {
   frozenTasks: EvalTask[];

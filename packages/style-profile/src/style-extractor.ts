@@ -4,7 +4,7 @@
  * a human can verify and override; this is NOT a static analyzer that
  * "decides" the team style.
  */
-import type { StyleRule, StyleSpec, StyleStrength } from "@coding-agent/shared";
+import type { StyleRule, StyleSpec, StyleStrength } from "@nlc/shared";
 import { addRule, makeEmptySpec, makeRule } from "./style-spec.js";
 
 export type FileSample = {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { LLMMessage } from "@coding-agent/shared";
+import type { LLMMessage } from "@nlc/shared";
 import { compressConversation, serializeMessages, shouldCompress } from "./compressor.js";
 
 const SMALL_WINDOW = 100; // tokens — easy to exceed in tests

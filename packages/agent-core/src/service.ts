@@ -18,22 +18,23 @@ import type {
   TestFailureReport,
   ToolContext,
   ToolSchema,
-} from "@coding-agent/shared";
-import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@coding-agent/shared";
-import type { FileChange } from "@coding-agent/sandbox";
-import type { Storage } from "@coding-agent/storage";
-import { detectProject } from "@coding-agent/project-indexer";
-import { listFilesTool, parseTestFailure, runCommandWithPolicy } from "@coding-agent/tools";
+} from "@nlc/shared";
+import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@nlc/shared";
+import type { FileChange } from "@nlc/sandbox";
+import type { Storage } from "@nlc/storage";
+import { detectProject } from "@nlc/project-indexer";
+import { listFilesTool, parseTestFailure, runCommandWithPolicy } from "@nlc/tools";
 import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
 import { agentToolSchemas, createToolExecutor, type ExecutedTool } from "./tools-registry.js";
 import { getReadonlySystemPrompt, getSystemPrompt } from "./prompts.js";
+import { phase1InitContext } from "./nlc-loop/index.js";
 import { getSummarizePrompt } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
 import { analyzeRegressions, regressionNote } from "./regression.js";
 import { runMultiAgentTask } from "./multi-agent.js";
-import { parseRow as parseRoleMessageRow } from "@coding-agent/orchestrator";
+import { parseRow as parseRoleMessageRow } from "@nlc/orchestrator";
 
 /**
  * Optional Phase 4 prompt augmentation. Called once per new run with the
@@ -257,6 +258,23 @@ export class AgentService {
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly approvals = new Map<string, Approval>();
+  /**
+   * Plan-approval gate for multi-agent runs: parks the coordinator's
+   * `approve()` port until the user clicks Approve in TaskTreeView (resolves
+   * true) or Stop (resolves false). Separate from `approvals` because patch
+   * and plan approvals can both be in flight on the same run, even though
+   * today only one is wired.
+   */
+  private readonly planApprovals = new Map<string, Approval>();
+  /**
+   * Pre-decisions buffered when the user's approveTaskTree IPC arrives before
+   * the coordinator reaches its `approve()` port. Race window: the coordinator
+   * calls `persistNode` for every TaskNode (each broadcast a `task_updated`
+   * event) BEFORE calling `approve()`. A fast user can click Approve while
+   * persistNode is still running. Without this buffer the decision would be
+   * lost.
+   */
+  private readonly planDecisions = new Map<string, boolean>();
   /** Pristine test-failure baseline per run, for the regression guard. */
   private readonly baselines = new Map<string, TestFailureReport | null>();
 
@@ -300,6 +318,12 @@ export class AgentService {
         this.approvals.delete(run.id);
         approval.resolve(false);
       }
+      const planApproval = this.planApprovals.get(run.id);
+      if (planApproval) {
+        this.planApprovals.delete(run.id);
+        planApproval.resolve(false);
+      }
+      this.planDecisions.delete(run.id);
       this.controllers.delete(run.id);
       this.pending.delete(run.id);
       this.baselines.delete(run.id);
@@ -328,18 +352,43 @@ export class AgentService {
       this.approvals.delete(runId);
       approval.resolve(false);
     }
+    // Same for a multi-agent run parked on the plan-approval gate.
+    const planApproval = this.planApprovals.get(runId);
+    if (planApproval) {
+      this.planApprovals.delete(runId);
+      planApproval.resolve(false);
+    }
+    this.planDecisions.delete(runId);
     return this.getDetail(runId);
   }
 
   rejectPatch(runId: string): AgentRunDetail {
     const approval = this.approvals.get(runId);
     this.pending.delete(runId);
-    this.addStep(runId, "message", "Patch rejected by user");
     if (approval) {
+      this.addStep(runId, "message", "Patch rejected by user");
       this.approvals.delete(runId);
       approval.resolve(false); // loop ends as cancelled
     } else {
-      this.setStatus(runId, "cancelled");
+      // No pending approval. This is either (a) a stale reject after the
+      // user already clicked Apply (run is now in applying_patch / verifying
+      // / tool_use) or (b) a stale reject after the loop completed. In case
+      // (a) we MUST NOT overwrite the live status with "cancelled" — that
+      // would lie about the run state. In case (b) the run is already in a
+      // terminal state and there's nothing to cancel. Either way: silent
+      // idempotent no-op on status. See code-review L1.
+      const run = this.storage.getRun(runId);
+      const isLive =
+        !!run &&
+        (run.status === "applying_patch" ||
+          run.status === "verifying" ||
+          run.status === "repairing" ||
+          run.status === "tool_use");
+      if (!isLive) {
+        // Run is in a quiescent state — safe to record the cancel intent.
+        this.addStep(runId, "message", "Patch rejected by user (no pending approval)");
+        this.setStatus(runId, "cancelled");
+      }
     }
     return this.getDetail(runId);
   }
@@ -421,27 +470,36 @@ export class AgentService {
 
     this.setStatus(run.id, "tool_use");
     const ctx: ToolContext = { workspaceRoot: ws.rootPath, runId: run.id, signal: controller.signal };
-    const baseSystemPrompt = this.effectiveReadOnly()
-      ? getReadonlySystemPrompt(this.getLanguage())
-      : getSystemPrompt(this.getLanguage());
     // Phase 4 augmentation: cross-project pattern hints + style spec +
     // fine-tune identity reminder. The hook is responsible for honoring its
     // own feature flags; when disabled it returns an empty string and the
-    // system prompt is unchanged.
+    // system prompt is unchanged. Failures swallowed — augmentation is
+    // advisory; never let a Phase 4 lookup block a run.
     let augmentation = "";
     try {
       augmentation = this.getPhase4Augmentation?.(workspaceId) ?? "";
     } catch {
-      // Augmentation is advisory — never let a Phase 4 lookup failure block a run.
       augmentation = "";
     }
-    const systemPrompt = augmentation
-      ? `${baseSystemPrompt}\n\n${augmentation}`
-      : baseSystemPrompt;
-    const initialMessages: LLMMessage[] = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: await this.buildInitialUserMessage(task, ctx) },
-    ];
+    // Phase 1 (the nlc-loop entrypoint) now owns prompt assembly: it stacks
+    // the built-in zh/en base, ~/.nlc/system.md, <ws>/.nlc/system.md,
+    // ~/.nlc/agents.md, <ws>/.nlc/AGENTS.md, every *.md in ~/.nlc/skills +
+    // <ws>/.nlc/skills, and finally the Phase 4 augmentation. customBuiltinPrompt
+    // substitutes the read-only flavour without forking the loader.
+    const phase1 = await phase1InitContext(
+      {
+        currentMessage: await this.buildInitialUserMessage(task, ctx),
+        workspaceRoot: ws.rootPath,
+      },
+      {
+        language: this.getLanguage(),
+        ...(this.effectiveReadOnly()
+          ? { customBuiltinPrompt: getReadonlySystemPrompt(this.getLanguage()) }
+          : {}),
+        ...(augmentation ? { augmentation } : {}),
+      },
+    );
+    const initialMessages: LLMMessage[] = phase1.messages;
     // Route to the multi-agent driver when the user opted in; otherwise the
     // long-standing single-agent driveLoop. Multi-agent reuses the same
     // approval / sandbox / verify machinery via a thin adapter so safety
@@ -512,15 +570,84 @@ export class AgentService {
     return this.getDetail(runId);
   }
 
-  /** Approve the pending apply_patch, resuming the loop. */
+  /**
+   * Approve the pending apply_patch, resuming the loop. Idempotent under a
+   * double-click: if no approval is pending, treat the second call as a
+   * silent no-op when the run is already in an "applying" state (the first
+   * click won the race). Only throws when there's nothing remotely
+   * approvable — i.e. the run never had a pending patch in the first place.
+   * See code-review L1.
+   */
   async applyPatch(runId: string): Promise<AgentRunDetail> {
     const approval = this.approvals.get(runId);
-    if (!approval) throw new Error("No pending patch to apply");
+    if (!approval) {
+      const run = this.storage.getRun(runId);
+      if (
+        run &&
+        (run.status === "applying_patch" ||
+          run.status === "verifying" ||
+          run.status === "repairing" ||
+          run.status === "tool_use")
+      ) {
+        // Race: first click resolved the approval and the loop has moved on.
+        // The second click should not surface as a user-facing error.
+        return this.getDetail(runId);
+      }
+      throw new Error("No pending patch to apply");
+    }
     this.approvals.delete(runId);
     this.pending.delete(runId);
     this.setStatus(runId, "applying_patch");
     approval.resolve(true);
     return this.getDetail(runId);
+  }
+
+  /**
+   * Park the multi-agent coordinator until the user approves or rejects the
+   * proposed DAG via the GUI. The corresponding IPC (`approveTaskTree` /
+   * stop) resolves the promise. Buffered pre-decisions (user clicked before
+   * the coordinator parked) are consumed immediately so the gate works
+   * regardless of click timing.
+   */
+  awaitPlanApproval(runId: string): Promise<boolean> {
+    const pre = this.planDecisions.get(runId);
+    if (pre !== undefined) {
+      this.planDecisions.delete(runId);
+      this.addStep(
+        runId,
+        "message",
+        pre ? "Planner DAG approved by user." : "Planner DAG rejected by user.",
+      );
+      return Promise.resolve(pre);
+    }
+    this.addStep(runId, "message", "Waiting for user approval of the planner DAG…");
+    return new Promise<boolean>((resolve) => {
+      this.planApprovals.set(runId, { resolve });
+    });
+  }
+
+  /**
+   * Resolve a parked plan-approval, or buffer the decision when the
+   * coordinator hasn't reached its `approve()` port yet (race with
+   * `persistNode` broadcasts). Idempotent: a second call after the gate
+   * already cleared is a silent no-op — the decision was already consumed.
+   */
+  resolvePlanApproval(runId: string, approved: boolean): void {
+    const pending = this.planApprovals.get(runId);
+    if (pending) {
+      this.planApprovals.delete(runId);
+      this.addStep(
+        runId,
+        "message",
+        approved ? "Planner DAG approved by user." : "Planner DAG rejected by user.",
+      );
+      pending.resolve(approved);
+      return;
+    }
+    // No parker yet — buffer for awaitPlanApproval to consume. If the gate
+    // already cleared (this is a stale click), the buffer is harmless and
+    // gets purged in the multi-agent finally block.
+    this.planDecisions.set(runId, approved);
   }
 
   // --- internal: the tool-use loop ---
@@ -679,6 +806,8 @@ export class AgentService {
     } finally {
       this.controllers.delete(runId);
       this.approvals.delete(runId);
+      this.planApprovals.delete(runId);
+      this.planDecisions.delete(runId);
       this.pending.delete(runId);
       this.baselines.delete(runId);
     }
@@ -800,10 +929,7 @@ export class AgentService {
           signal: controller.signal,
           executor: execute,
           baseSchemas,
-          approve: async () => {
-            this.addStep(runId, "message", "Planner DAG auto-approved (configure approve() port to add an explicit gate).");
-            return true;
-          },
+          approve: () => this.awaitPlanApproval(runId),
           askHuman: async (node, reason) => {
             this.addStep(
               runId,
@@ -888,6 +1014,8 @@ export class AgentService {
     } finally {
       this.controllers.delete(runId);
       this.approvals.delete(runId);
+      this.planApprovals.delete(runId);
+      this.planDecisions.delete(runId);
       this.pending.delete(runId);
       this.baselines.delete(runId);
     }
@@ -924,6 +1052,12 @@ export class AgentService {
         writeback: { kind: "auto" },
         snapshotStore: this.storage,
       });
+      // Abort fired during the command: bail without writing a noisy "无法
+      // 建立回归基线" step — the user clicked Stop, that's the expected end.
+      if (ctx.signal?.aborted) {
+        this.baselines.set(runId, null);
+        return;
+      }
       const report = parseTestFailure({
         command: out.command,
         stdout: out.stdout,
@@ -939,6 +1073,9 @@ export class AgentService {
       );
     } catch (err) {
       this.baselines.set(runId, null);
+      // Abort thrown out of the sandbox runner (WSL/Docker AbortError): same
+      // treatment as a post-await abort — silent bail, not an error step.
+      if (ctx.signal?.aborted || isAbortError(err)) return;
       this.addStep(runId, "message", `无法建立回归基线（${asMessage(err)}），跳过回归检测。`);
     }
   }
@@ -968,6 +1105,9 @@ export class AgentService {
       return null;
     }
 
+    // If the run was already cancelled before we got here, skip the spawn
+    // entirely — no point starting a child the user can no longer observe.
+    if (ctx.signal?.aborted) return null;
     this.setStatus(runId, "verifying");
     this.addStep(runId, "tool_call", `verify $ ${command}`);
     let out;
@@ -980,9 +1120,19 @@ export class AgentService {
         snapshotStore: this.storage,
       });
     } catch (err) {
+      // Abort during the verify command: don't add a noisy error step — the
+      // run was cancelled, that's the user's intent. The outer loop returns
+      // a `cancelled` outcome on the next iteration check.
+      if (ctx.signal?.aborted || isAbortError(err)) return null;
       this.addStep(runId, "error", `自动验证无法运行：${asMessage(err)}`);
       return `自动验证命令无法运行（${asMessage(err)}）。请检查后继续。`;
     }
+
+    // Same guard after a clean resolve — captures the case where the verify
+    // command finished but the user pressed Stop while we were awaiting.
+    // Without this, the loop emits stale step_added / run_updated events for
+    // a run that's already on its way to `cancelled`.
+    if (ctx.signal?.aborted) return null;
 
     this.addStep(runId, "command", formatCommandOutput(out));
     const verdict = evaluateVerification(out);
@@ -1195,6 +1345,18 @@ export class AgentService {
 
 function asMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * True when an error indicates a user-initiated abort (vs. a real failure).
+ * The sandbox runner rejects with `AbortError` on signal.abort; fetch/SSE
+ * paths throw a DOMException with name "AbortError" too. We use this to
+ * suppress noisy error steps when the run was cancelled.
+ */
+export function isAbortError(err: unknown): boolean {
+  if (!err) return false;
+  const name = (err as { name?: unknown }).name;
+  return name === "AbortError";
 }
 
 /**

@@ -15,6 +15,13 @@ export type SandboxRunRequest = {
   timeoutMs?: number;
   /** Per-command opt-in to network egress (otherwise denied). */
   allowNetwork?: boolean;
+  /**
+   * Optional abort signal. When fired, the runner kills the spawned child (and
+   * its job object on Windows) so the sandbox process tree tears down
+   * immediately on a user-initiated Stop. Not serialised over IPC — the
+   * renderer never constructs a SandboxRunRequest directly.
+   */
+  signal?: AbortSignal;
 };
 
 export type SandboxRunResult = {

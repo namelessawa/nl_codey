@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { assertInsideWorkspace } from "@coding-agent/sandbox";
-import type { AgentTool, ReadFileRangeInput, ReadFileRangeOutput } from "@coding-agent/shared";
-import { TOOL_LIMITS } from "@coding-agent/shared";
+import { assertInsideWorkspace } from "@nlc/sandbox";
+import type { AgentTool, ReadFileRangeInput, ReadFileRangeOutput } from "@nlc/shared";
+import { TOOL_LIMITS } from "@nlc/shared";
 import { TOOL_CODES, ToolError } from "./errors.js";
 
 /**

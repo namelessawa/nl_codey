@@ -9,7 +9,7 @@ import type {
   PluginPermission,
   PluginToolManifest,
   PluginToolParameter,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export type ValidationIssue = { path: string; message: string };
 export type ManifestValidationResult =

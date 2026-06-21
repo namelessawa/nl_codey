@@ -97,5 +97,24 @@ describe("reduceAgentDetail", () => {
 
       expect(next).toBe(prev);
     });
+
+    it(
+      "M4: ignores a same-millisecond run_updated for a different run so a re-arriving stale event " +
+        "doesn't blank out the current detail (Date.now() has 1ms granularity and isn't monotonic)",
+      () => {
+        const prev = {
+          run: makeRun("r1", "tool_use", 1000),
+          steps: [makeStep("r1", "first step")],
+          pendingPatch: "diff-a",
+        };
+        // A separate run that landed on the same Date.now() value.
+        const sameMs = makeRun("r2", "tool_use", 1000);
+
+        const next = reduceAgentDetail(prev, { kind: "run_updated", run: sameMs });
+
+        // Must not have adopted r2 — that would have wiped r1's steps and patch.
+        expect(next).toBe(prev);
+      },
+    );
   });
 });

@@ -32,7 +32,7 @@ import type {
   StyleSpec,
   WorkerNode,
   WorkspaceContributionMode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   embeddingToBlob,
   embeddingFromBlob,

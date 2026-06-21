@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { Phase4Settings, WorkspaceContributionMode } from "@coding-agent/shared";
+import type { Phase4Settings, WorkspaceContributionMode } from "@nlc/shared";
 import { KnowledgeGraphView } from "./KnowledgeGraphView";
 import { StyleProfilePanel } from "./StyleProfilePanel";
 import { LearningDashboard } from "./LearningDashboard";
@@ -30,9 +30,19 @@ const TABS: { id: TabId; label: string }[] = [
 export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JSX.Element {
   const [tab, setTab] = useState<TabId>("kg");
   const [settings, setSettings] = useState<Phase4Settings | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getPhase4Settings().then(setSettings).catch(() => {});
+    // M9: a silent .catch left the settings view stuck on "Loading…" forever
+    // when the IPC failed. Track the error explicitly so the user sees what
+    // went wrong instead of an indefinite spinner.
+    api
+      .getPhase4Settings()
+      .then((next) => {
+        setSettings(next);
+        setSettingsError(null);
+      })
+      .catch((e) => setSettingsError(String(e)));
   }, []);
 
   return (
@@ -60,9 +70,16 @@ export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JS
         {tab === "settings" && (
           <Phase4SettingsView
             settings={settings}
+            error={settingsError}
             onChange={(next) => {
               setSettings(next);
-              api.updatePhase4Settings(next).catch(() => {});
+              // Surface update failures too — silently swallowing left the
+              // UI showing the new values while the backend still had the
+              // old ones.
+              api
+                .updatePhase4Settings(next)
+                .then(() => setSettingsError(null))
+                .catch((e) => setSettingsError(String(e)));
             }}
           />
         )}
@@ -73,11 +90,20 @@ export function Phase4Panel({ workspaceId }: { workspaceId: string | null }): JS
 
 function Phase4SettingsView({
   settings,
+  error,
   onChange,
 }: {
   settings: Phase4Settings | null;
+  error: string | null;
   onChange: (next: Phase4Settings) => void;
 }): JSX.Element {
+  if (error && !settings) {
+    return (
+      <div className="phase4-settings">
+        <div className="phase4-error">无法加载 Phase 4 设置:{error}</div>
+      </div>
+    );
+  }
   if (!settings) return <div>Loading…</div>;
   const toggle = (key: keyof Phase4Settings) => () => {
     const cur = settings[key];
@@ -94,6 +120,7 @@ function Phase4SettingsView({
   return (
     <div className="phase4-settings">
       <h2>Phase 4 功能开关</h2>
+      {error && <div className="phase4-error">设置同步失败:{error}</div>}
       <p className="phase4-help">每个模块独立可关。关闭后系统退回完整可用的第三阶段形态。</p>
       <ul>
         <Toggle label="跨项目记忆与知识图谱" on={settings.globalMemoryEnabled} onToggle={toggle("globalMemoryEnabled")} />

@@ -6,7 +6,7 @@ import type {
   IndexedChunk,
   RawChunk,
   SemanticIndexStatus,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { chunkFile } from "./chunker.js";
 import type { ChunkStore } from "./vector-store.js";
 

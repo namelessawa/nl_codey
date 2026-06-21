@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { LanguagePreference } from "@coding-agent/shared";
+import type { LanguagePreference } from "@nlc/shared";
 import { Icon } from "./Icons.js";
 import { Phase3Panel } from "./Phase3Panel.js";
 import { Phase4Panel } from "./Phase4Panel.js";

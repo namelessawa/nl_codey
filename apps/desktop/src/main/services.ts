@@ -1,12 +1,12 @@
+import fs from "node:fs";
 import path from "node:path";
-import { app } from "electron";
 import {
   AgentService,
   buildPhase4PromptAugmentation,
-} from "@coding-agent/agent-core";
-import { createLLMProvider, createLLMProviderFromEnv } from "@coding-agent/llm";
-import { Storage } from "@coding-agent/storage";
-import type { AgentEvent } from "@coding-agent/shared";
+} from "@nlc/agent-core";
+import { createLLMProvider, createLLMProviderFromEnv } from "@nlc/llm";
+import { Storage } from "@nlc/storage";
+import { nlcRoot, type AgentEvent } from "@nlc/shared";
 import { SettingsStore } from "./settings/store.js";
 import { InstallationGate } from "./installation-gate.js";
 import { Phase4SettingsStore } from "./phase4-settings-store.js";
@@ -31,17 +31,35 @@ export type Services = {
    * `index_status` updates without a back-channel reference.
    */
   emit: (event: AgentEvent) => void;
+  /**
+   * Absolute path to the resolved NL_Codey data root (`~/.nlc` or whatever
+   * `NLC_HOME` overrides to). Exposed so IPC handlers and the CLI surface can
+   * read/write peripheral state (Phase 4 datasets, plugin installs, etc.)
+   * without re-resolving the path themselves.
+   */
+  dataRoot: string;
 };
 
-/** Build the storage + settings + agent service. `emit` broadcasts live events. */
-export function buildServices(emit: (event: AgentEvent) => void): Services {
-  const userData = app.getPath("userData");
-  const dataDir = path.join(userData, "data");
+/**
+ * Build the storage + settings + agent service.
+ *
+ * The GUI is just a view of {@link nlcRoot} — both Electron and the `nlc` CLI
+ * go through the same factory so the on-disk state is single-sourced. `emit`
+ * broadcasts live events; the optional `dataRoot` override exists for tests
+ * and the CLI's `--data-root` flag.
+ */
+export function buildServices(
+  emit: (event: AgentEvent) => void,
+  opts: { dataRoot?: string } = {},
+): Services {
+  const dataRoot = opts.dataRoot ?? nlcRoot();
+  fs.mkdirSync(dataRoot, { recursive: true });
+  const dataDir = path.join(dataRoot, "data");
   const dbPath = path.join(dataDir, "workspace-state.db");
   const storage = new Storage(dbPath);
-  const settings = new SettingsStore(userData);
-  const installationGate = new InstallationGate(userData, emit);
-  const phase4Settings = new Phase4SettingsStore(userData);
+  const settings = new SettingsStore(dataRoot);
+  const installationGate = new InstallationGate(dataRoot, emit);
+  const phase4Settings = new Phase4SettingsStore(dataRoot);
 
   // Forward-declared so the dep callbacks can refer to the services bundle
   // after it's fully built. AgentService construction takes the closures by
@@ -124,6 +142,6 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
     emit,
   });
 
-  bundle = { storage, settings, agent, installationGate, phase4Settings, emit };
+  bundle = { storage, settings, agent, installationGate, phase4Settings, emit, dataRoot };
   return bundle;
 }

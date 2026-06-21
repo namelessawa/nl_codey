@@ -3,7 +3,7 @@ import type {
   PluginInstallation,
   PluginManifest,
   PluginPermission,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { authorize, validateManifest } from "./manifest-schema.js";
 import { PluginLoader, type PermissionPrompter, type PluginRepository } from "./plugin-loader.js";
 import { PluginHost, renderCommand } from "./plugin-host.js";

@@ -2,7 +2,7 @@ import type {
   AgentTool,
   SemanticSearchToolInput,
   SemanticSearchToolOutput,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { SemanticSearchPort } from "./phase3-deps.js";
 
 /**

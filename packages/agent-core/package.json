@@ -1,5 +1,5 @@
 {
-  "name": "@coding-agent/agent-core",
+  "name": "@nlc/agent-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,14 +15,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@coding-agent/shared": "workspace:*",
-    "@coding-agent/storage": "workspace:*",
-    "@coding-agent/llm": "workspace:*",
-    "@coding-agent/tools": "workspace:*",
-    "@coding-agent/sandbox": "workspace:*",
-    "@coding-agent/project-indexer": "workspace:*",
-    "@coding-agent/orchestrator": "workspace:*",
-    "@coding-agent/planner": "workspace:*"
+    "@nlc/shared": "workspace:*",
+    "@nlc/storage": "workspace:*",
+    "@nlc/llm": "workspace:*",
+    "@nlc/tools": "workspace:*",
+    "@nlc/sandbox": "workspace:*",
+    "@nlc/project-indexer": "workspace:*",
+    "@nlc/orchestrator": "workspace:*",
+    "@nlc/planner": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

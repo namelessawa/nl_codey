@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MemoryEntry } from "@coding-agent/shared";
+import type { MemoryEntry } from "@nlc/shared";
 import { KnowledgeGraph } from "./knowledge-graph.js";
 import {
   DEFAULT_EXTRACTION_CONFIG,

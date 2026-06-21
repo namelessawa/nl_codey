@@ -4,8 +4,8 @@ import type {
   AgentStep,
   GitWorkingTreeStatus,
   Workspace,
-} from "@coding-agent/shared";
-import { isRunActive } from "@coding-agent/shared";
+} from "@nlc/shared";
+import { isRunActive } from "@nlc/shared";
 import { api } from "../api.js";
 
 /** Canonical ops shown in the OpsPanel — order matches the design. */

@@ -2,7 +2,7 @@
  * Decision-log helpers: record `decision`-kind memory entries and parse the
  * JSON memory-extraction payload an LLM produces at the end of a run.
  */
-import type { MemoryEntryInput, MemoryKind } from "@coding-agent/shared";
+import type { MemoryEntryInput, MemoryKind } from "@nlc/shared";
 import { createEntry, type MemoryStore } from "./project-memory.js";
 
 const VALID_KINDS: ReadonlySet<MemoryKind> = new Set<MemoryKind>([

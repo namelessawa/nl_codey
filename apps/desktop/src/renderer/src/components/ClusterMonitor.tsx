@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { NodeStatus, WorkerNode } from "@coding-agent/shared";
+import type { NodeStatus, WorkerNode } from "@nlc/shared";
 import { api } from "../api";
 
 const STATUSES: NodeStatus[] = ["online", "busy", "offline", "degraded"];

@@ -13,7 +13,7 @@ import type {
   TaskNodeStatus,
   AgentRole,
   ChunkKind,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export type MemoryRow = {
   id: string;

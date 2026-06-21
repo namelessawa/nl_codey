@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { TaskNode } from "@coding-agent/shared";
+import type { TaskNode } from "@nlc/shared";
 
 import { computeSchedule, MAX_PARALLELISM, Scheduler } from "./scheduler.js";
 

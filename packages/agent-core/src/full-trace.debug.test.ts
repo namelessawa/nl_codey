@@ -55,12 +55,12 @@ import type {
   ChatLLMProvider,
   SandboxPolicy,
   ToolContext,
-} from "@coding-agent/shared";
-import { DEFAULT_SETTINGS } from "@coding-agent/shared";
-import { assertNoSandboxEscape } from "@coding-agent/sandbox";
-import { createLLMProvider } from "@coding-agent/llm";
-import { findSymbolTool, runCommandWithPolicy } from "@coding-agent/tools";
-import { Storage } from "@coding-agent/storage";
+} from "@nlc/shared";
+import { DEFAULT_SETTINGS } from "@nlc/shared";
+import { assertNoSandboxEscape } from "@nlc/sandbox";
+import { createLLMProvider } from "@nlc/llm";
+import { findSymbolTool, runCommandWithPolicy } from "@nlc/tools";
+import { Storage } from "@nlc/storage";
 
 import { AgentService } from "./service.js";
 

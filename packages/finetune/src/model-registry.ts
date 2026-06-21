@@ -3,7 +3,7 @@
  * "exactly one active model at a time". One-click rollback to base is the
  * paramount safety property: any user, any time, can revert.
  */
-import type { ModelRegistryEntry } from "@coding-agent/shared";
+import type { ModelRegistryEntry } from "@nlc/shared";
 
 export interface ModelRegistryStore {
   registerModel(entry: Omit<ModelRegistryEntry, "id" | "createdAt">): ModelRegistryEntry;

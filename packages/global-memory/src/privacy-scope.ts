@@ -7,7 +7,7 @@
 import type {
   MemoryEntry,
   WorkspaceContributionMode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export type WorkspaceContributionPolicy = {
   workspaceId: string;

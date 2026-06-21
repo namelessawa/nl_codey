@@ -75,7 +75,7 @@ export type PRDescription = {
 };
 
 /** Co-author trailer attached to every agent commit. */
-export const GIT_COAUTHOR_TRAILER = "Co-Authored-By: coding-agent <agent@local>";
+export const GIT_COAUTHOR_TRAILER = "Co-Authored-By: nlc <agent@local>";
 /** Agent branch name prefix. */
 export const GIT_AGENT_BRANCH_PREFIX = "agent/";
 /** PR description hard cap. */

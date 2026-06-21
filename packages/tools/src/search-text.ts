@@ -2,14 +2,14 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { rgPath } from "@vscode/ripgrep";
-import { IGNORED_DIRS } from "@coding-agent/project-indexer";
+import { IGNORED_DIRS } from "@nlc/project-indexer";
 import {
   type AgentTool,
   type SearchMatch,
   type SearchTextInput,
   type SearchTextOutput,
   TOOL_LIMITS,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { TOOL_CODES, ToolError } from "./errors.js";
 
 type RgJsonEvent = {

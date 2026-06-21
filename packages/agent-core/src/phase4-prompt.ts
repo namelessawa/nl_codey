@@ -7,7 +7,7 @@
  *
  * Style is subordinate to correctness. The augmentation makes this explicit.
  */
-import type { GlobalPattern, StyleSpec } from "@coding-agent/shared";
+import type { GlobalPattern, StyleSpec } from "@nlc/shared";
 
 export type Phase4PromptInputs = {
   globalPatterns?: GlobalPattern[];

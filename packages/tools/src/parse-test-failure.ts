@@ -3,8 +3,8 @@ import type {
   TestFailureItem,
   TestFailureReport,
   TestFramework,
-} from "@coding-agent/shared";
-import { MAX_FAILURE_SUMMARY_CHARS } from "@coding-agent/shared";
+} from "@nlc/shared";
+import { MAX_FAILURE_SUMMARY_CHARS } from "@nlc/shared";
 
 /**
  * Parse test/build command output into structured failures. Detects the

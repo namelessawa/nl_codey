@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileSnapshot, LLMToolCall } from "@coding-agent/shared";
+import type { FileSnapshot, LLMToolCall } from "@nlc/shared";
 import {
   AGENT_TOOL_SCHEMAS,
   FILE_MUTATING_TOOLS,

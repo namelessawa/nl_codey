@@ -1,5 +1,5 @@
 {
-  "name": "@coding-agent/git-integration",
+  "name": "@nlc/git-integration",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@coding-agent/shared": "workspace:*"
+    "@nlc/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

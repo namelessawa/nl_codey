@@ -1,5 +1,5 @@
 {
-  "name": "@coding-agent/memory",
+  "name": "@nlc/memory",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@coding-agent/shared": "workspace:*"
+    "@nlc/shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

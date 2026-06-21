@@ -43,10 +43,10 @@ import type {
   AgentRunDetail,
   AgentSettings,
   ChatLLMProvider,
-} from "@coding-agent/shared";
-import { DEFAULT_SETTINGS } from "@coding-agent/shared";
-import { createLLMProvider } from "@coding-agent/llm";
-import { Storage } from "@coding-agent/storage";
+} from "@nlc/shared";
+import { DEFAULT_SETTINGS } from "@nlc/shared";
+import { createLLMProvider } from "@nlc/llm";
+import { Storage } from "@nlc/storage";
 
 import { AgentService } from "./service.js";
 

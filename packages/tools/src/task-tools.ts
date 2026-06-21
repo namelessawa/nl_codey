@@ -4,7 +4,7 @@ import type {
   ProposeTaskBreakdownOutput,
   UpdateTaskStatusInput,
   UpdateTaskStatusOutput,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { TaskPort } from "./phase3-deps.js";
 
 /**

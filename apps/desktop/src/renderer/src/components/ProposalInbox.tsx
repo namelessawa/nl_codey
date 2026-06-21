@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Proposal } from "@coding-agent/shared";
+import type { Proposal } from "@nlc/shared";
 import { api } from "../api";
 
 export function ProposalInbox({ workspaceId }: { workspaceId: string | null }): JSX.Element {

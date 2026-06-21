@@ -7,7 +7,7 @@ import type {
   WebFetchToolInput,
   WebSearchToolInput,
   WriteMemoryInput,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   PHASE3_AGENT_TOOL_NAMES,
   PHASE3_AGENT_TOOL_SCHEMAS,

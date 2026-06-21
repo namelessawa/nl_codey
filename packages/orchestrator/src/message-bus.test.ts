@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
-import type { RoleMessageRow, ReviewResult } from "@coding-agent/shared";
+import type { RoleMessageRow, ReviewResult } from "@nlc/shared";
 
 import {
   MessageBus,

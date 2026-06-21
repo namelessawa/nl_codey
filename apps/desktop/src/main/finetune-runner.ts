@@ -21,7 +21,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import type { FinetuneJob, FinetuneJobInput } from "@coding-agent/shared";
+import type { FinetuneJob, FinetuneJobInput } from "@nlc/shared";
 import type { Services } from "./services.js";
 
 const ARTIFACT_LINE_PREFIX = "ARTIFACT:";

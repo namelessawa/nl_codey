@@ -23,8 +23,8 @@ import type {
   WebFetchToolInput,
   WebSearchToolInput,
   WriteMemoryInput,
-} from "@coding-agent/shared";
-import { createLLMProvider } from "@coding-agent/llm";
+} from "@nlc/shared";
+import { createLLMProvider } from "@nlc/llm";
 import { BudgetController } from "./budget.js";
 import { runToolLoop } from "./loop.js";
 import { agentToolSchemas, createToolExecutor } from "./tools-registry.js";

@@ -1,16 +1,16 @@
 {
-  "name": "coding-agent",
+  "name": "nlc-monorepo",
   "version": "0.1.0",
   "private": true,
   "description": "NL_Codey — local Windows GUI coding agent",
   "scripts": {
-    "dev": "pnpm --filter @coding-agent/desktop dev",
-    "build": "pnpm -r --filter ./packages/* build && pnpm --filter @coding-agent/desktop build",
+    "dev": "pnpm --filter @nlc/desktop dev",
+    "build": "pnpm -r --filter ./packages/* build && pnpm --filter @nlc/desktop build",
     "build:packages": "pnpm -r --filter ./packages/* build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "rebuild:native": "pnpm --filter @coding-agent/desktop exec electron-rebuild -f -w better-sqlite3"
+    "rebuild:native": "pnpm --filter @nlc/desktop exec electron-rebuild -f -w better-sqlite3"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

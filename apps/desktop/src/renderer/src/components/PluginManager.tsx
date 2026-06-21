@@ -5,7 +5,7 @@ import type {
   PluginPermission,
   PluginToolManifest,
   PluginToolParameter,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "../api";
 
 const FIXED_PERMISSIONS: PluginPermission[] = [

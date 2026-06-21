@@ -2,12 +2,12 @@
  * Failure library: record `failure`-kind entries ("steps on the rake"), decay
  * stale failures over time, and format a pitfall section for prompt injection.
  */
-import type { MemoryEntryInput, MemoryHit } from "@coding-agent/shared";
+import type { MemoryEntryInput, MemoryHit } from "@nlc/shared";
 import {
   MEMORY_DECAY_DAYS,
   MEMORY_HIDDEN_THRESHOLD,
   MEMORY_MAX_FAILURE_INJECTION,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { createEntry, type MemoryStore } from "./project-memory.js";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;

@@ -4,7 +4,7 @@ import type {
   GlobalPatternInput,
   KGEdge,
   WorkspaceContributionMode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { KnowledgeGraph, type KnowledgeGraphStore } from "./knowledge-graph.js";
 
 function makeStore(): KnowledgeGraphStore {

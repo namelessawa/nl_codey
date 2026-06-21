@@ -1,5 +1,5 @@
-import type { ChatLLMProvider, LLMConfig } from "@coding-agent/shared";
-import { OPENAI_COMPATIBLE_PROVIDERS } from "@coding-agent/shared";
+import type { ChatLLMProvider, LLMConfig } from "@nlc/shared";
+import { OPENAI_COMPATIBLE_PROVIDERS } from "@nlc/shared";
 import { MockLLMProvider } from "./mock.js";
 import { OpenAICompatibleProvider } from "./openai-compatible.js";
 import { AnthropicProvider } from "./anthropic.js";

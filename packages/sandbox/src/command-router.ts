@@ -2,7 +2,7 @@ import type {
   SandboxPolicy,
   SandboxRunRequest,
   SandboxRunResult,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { WslRunner } from "./wsl-runner.js";
 import type { DockerRunner } from "./docker-runner.js";
 import { assertNoSandboxEscape, routeMode } from "./sandbox-policy.js";

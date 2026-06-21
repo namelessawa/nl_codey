@@ -1,6 +1,6 @@
 /** Embedding providers: OpenAI-compatible (real) and a deterministic mock. */
 
-import type { EmbeddingProvider } from "@coding-agent/shared";
+import type { EmbeddingProvider } from "@nlc/shared";
 
 const DEFAULT_MODEL = "text-embedding-3-small";
 const DEFAULT_DIMENSIONS = 1536;

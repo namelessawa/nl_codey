@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LLMChunk } from "@coding-agent/shared";
+import type { LLMChunk } from "@nlc/shared";
 import { OpenAICompatibleProvider } from "./openai-compatible.js";
 
 /** Build a streaming Response from SSE event objects (one `data:` per event). */

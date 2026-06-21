@@ -1,8 +1,8 @@
 /** Phase 3 main-process services: embedder, memory retriever, semantic indexer. */
 
-import { createEmbeddingProvider, SemanticIndexer } from "@coding-agent/semantic-index";
-import { MemoryRetriever } from "@coding-agent/memory";
-import type { EmbeddingProvider, SandboxMode } from "@coding-agent/shared";
+import { createEmbeddingProvider, SemanticIndexer } from "@nlc/semantic-index";
+import { MemoryRetriever } from "@nlc/memory";
+import type { EmbeddingProvider, SandboxMode } from "@nlc/shared";
 import type { Services } from "./services.js";
 
 /**

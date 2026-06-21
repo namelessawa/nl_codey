@@ -4,7 +4,7 @@ import type {
   WebFetchToolOutput,
   WebSearchToolInput,
   WebSearchToolOutput,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { WebPort } from "./phase3-deps.js";
 
 /**

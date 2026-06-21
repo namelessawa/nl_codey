@@ -14,7 +14,7 @@ import {
   DEFAULT_PHASE4_SETTINGS,
   mergePhase4Settings,
   type Phase4Settings,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export class Phase4SettingsStore {
   private cache: Phase4Settings | null = null;
@@ -40,7 +40,14 @@ export class Phase4SettingsStore {
     this.cache = next;
     try {
       fs.mkdirSync(this.userDataDir, { recursive: true });
-      fs.writeFileSync(this.file(), JSON.stringify(next, null, 2), "utf-8");
+      // L8: write owner-only (0o600) to mirror the main settings/store.ts
+      // contract. Phase 4 settings don't carry secrets today, but the file
+      // does record feature flags and worker-node endpoints that have no
+      // business being world-readable on a multi-user POSIX system.
+      fs.writeFileSync(this.file(), JSON.stringify(next, null, 2), {
+        encoding: "utf-8",
+        mode: 0o600,
+      });
     } catch {
       // best-effort persistence; in-memory cache still reflects the update
     }

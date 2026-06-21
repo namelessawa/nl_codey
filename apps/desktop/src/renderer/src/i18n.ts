@@ -1,4 +1,4 @@
-import type { LanguagePreference } from "@coding-agent/shared";
+import type { LanguagePreference } from "@nlc/shared";
 
 /**
  * Lightweight translation dictionary for the Settings UI and key labels. Full

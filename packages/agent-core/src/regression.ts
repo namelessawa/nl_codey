@@ -1,4 +1,4 @@
-import type { TestFailureItem, TestFailureReport } from "@coding-agent/shared";
+import type { TestFailureItem, TestFailureReport } from "@nlc/shared";
 
 /**
  * Identity of a single failure for set comparison across runs. File + test

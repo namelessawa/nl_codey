@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ShortcutBindings } from "@coding-agent/shared";
+import type { ShortcutBindings } from "@nlc/shared";
 
 /**
  * Map of action id → handler. Any undefined handler means "currently disabled"

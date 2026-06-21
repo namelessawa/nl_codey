@@ -1,6 +1,6 @@
 /**
  * Knowledge graph port + facade. Same pattern as Phase 3 memory: this package
- * never imports `@coding-agent/storage`. It depends on a `KnowledgeGraphStore`
+ * never imports `@nlc/storage`. It depends on a `KnowledgeGraphStore`
  * interface; the main process injects the real implementation.
  */
 import type {
@@ -8,7 +8,7 @@ import type {
   GlobalPatternInput,
   KGEdge,
   WorkspaceContributionMode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 /** Persistence port. Implemented by Phase4Storage in the main process. */
 export interface KnowledgeGraphStore {

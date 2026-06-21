@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LLMChunk } from "@coding-agent/shared";
+import type { LLMChunk } from "@nlc/shared";
 import { AnthropicProvider } from "./anthropic.js";
 
 function sseResponse(events: unknown[]): Response {

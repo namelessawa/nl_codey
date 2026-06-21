@@ -3,7 +3,7 @@
  * any TaskNode that node was running back to the ready queue, so another
  * worker can pick it up. Idempotent and re-entrant: safe to call repeatedly.
  */
-import type { DistributedAssignment, WorkerNode } from "@coding-agent/shared";
+import type { DistributedAssignment, WorkerNode } from "@nlc/shared";
 
 export type ReassignmentDecision = {
   failedNodeId: string;

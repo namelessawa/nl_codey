@@ -3,7 +3,7 @@
  * workers. Round-robin with least-loaded preference; never overloads a single
  * node. Single-machine fallback is automatic when no workers are available.
  */
-import type { TaskNode, WorkerNode } from "@coding-agent/shared";
+import type { TaskNode, WorkerNode } from "@nlc/shared";
 
 export type DistributionPlan = {
   perNode: Map<string, TaskNode[]>;

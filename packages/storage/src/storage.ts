@@ -23,7 +23,7 @@ import type {
   TaskNodePatch,
   TaskNodeStatus,
   Workspace,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   COLUMN_MIGRATIONS,
   INDEX_SQL,

@@ -1,4 +1,4 @@
-import type { LLMConfig } from "@coding-agent/shared";
+import type { LLMConfig } from "@nlc/shared";
 import { createLLMProvider } from "./provider.js";
 
 export type TestConnectionResult = { ok: boolean; message: string };

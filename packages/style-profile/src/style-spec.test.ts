@@ -8,7 +8,7 @@ import {
   summarizeSignals,
 } from "./diff-feedback.js";
 import { addRule, makeEmptySpec, makeRule, renderStyleBlock, sortedRulesForPrompt } from "./style-spec.js";
-import type { FeedbackSignal, StyleRule } from "@coding-agent/shared";
+import type { FeedbackSignal, StyleRule } from "@nlc/shared";
 
 describe("style-extractor", () => {
   it("detects double quotes and tab indent", () => {

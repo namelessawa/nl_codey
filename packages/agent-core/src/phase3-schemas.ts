@@ -2,7 +2,7 @@
  * Phase 3 tool schemas + dispatchers exposed to the single-agent loop.
  *
  * In Phase 3 the wider tool catalogue lives in {@link createPhase3Tools}
- * (`@coding-agent/tools`), where every tool closes over an injected port.
+ * (`@nlc/tools`), where every tool closes over an injected port.
  * The single-agent loop sees a deliberately narrow subset that is useful
  * outside the multi-agent orchestrator:
  *
@@ -18,7 +18,7 @@
  * (Coordinator) advertises them under role-specific allowlists instead.
  */
 
-import type { LLMToolCall, ToolContext, ToolSchema } from "@coding-agent/shared";
+import type { LLMToolCall, ToolContext, ToolSchema } from "@nlc/shared";
 import {
   createReadMemoryTool,
   createSemanticSearchTool,
@@ -28,7 +28,7 @@ import {
   type MemoryPort,
   type SemanticSearchPort,
   type WebPort,
-} from "@coding-agent/tools";
+} from "@nlc/tools";
 import type { ExecutedTool } from "./tools-registry.js";
 
 /** Single-agent Phase 3 tools exposed to the model. */

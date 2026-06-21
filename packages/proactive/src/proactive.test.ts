@@ -3,7 +3,7 @@ import type {
   Proposal,
   ProposalInput,
   ProposalStatus,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { scanForDebt } from "./debt-scanner.js";
 import { dedupeAgainstInbox, normalizeTitle } from "./proposal-generator.js";
 import { ProposalInbox } from "./proposal-inbox.js";

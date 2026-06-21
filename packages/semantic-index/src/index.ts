@@ -1,4 +1,4 @@
-/** Public API for the @coding-agent/semantic-index package. */
+/** Public API for the @nlc/semantic-index package. */
 
 export {
   OpenAIEmbeddingProvider,

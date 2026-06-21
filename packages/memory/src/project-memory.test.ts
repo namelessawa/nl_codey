@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MemoryExport } from "@coding-agent/shared";
+import type { MemoryExport } from "@nlc/shared";
 import {
   createEntry,
   deleteEntry,

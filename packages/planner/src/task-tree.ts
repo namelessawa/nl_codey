@@ -6,7 +6,7 @@ import {
   type TaskBreakdown,
   type TaskNode,
   type TaskNodeProposal,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 import { detectCycles } from "./dependency-graph.js";
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { AgentRun } from "@coding-agent/shared";
+import type { AgentRun } from "@nlc/shared";
 import { Icon } from "./Icons.js";
 import { useLang, useT } from "../lang-context.js";
 import { tf, t as translate, type I18nKey } from "../i18n.js";

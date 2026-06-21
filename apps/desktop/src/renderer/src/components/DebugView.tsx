@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ReadFileOutput, RunCommandOutput } from "@coding-agent/shared";
+import type { ReadFileOutput, RunCommandOutput } from "@nlc/shared";
 import { api } from "../api.js";
 
 interface DebugViewProps {

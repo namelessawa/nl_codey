@@ -1,7 +1,7 @@
 /** Heuristic, language-agnostic file chunker (no tree-sitter). */
 
-import type { RawChunk } from "@coding-agent/shared";
-import { SEMANTIC_MAX_CHUNK_CHARS, SEMANTIC_MAX_CHUNK_LINES } from "@coding-agent/shared";
+import type { RawChunk } from "@nlc/shared";
+import { SEMANTIC_MAX_CHUNK_CHARS, SEMANTIC_MAX_CHUNK_LINES } from "@nlc/shared";
 
 const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs"]);
 const MARKDOWN_EXTENSIONS = new Set([".md", ".markdown"]);

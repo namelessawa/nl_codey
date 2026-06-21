@@ -6,9 +6,10 @@ import type {
   LLMToolCall,
   ToolSchema,
   TokenUsage,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import type { BudgetController } from "./budget.js";
-import { compressConversation } from "./compressor.js";
+import { phase3ReactLoop, DEFAULT_MAX_REPAIR_ATTEMPTS as NLC_DEFAULT_MAX_REPAIR } from "./nlc-loop/react.js";
+import type { NlcLoopDeps, Phase2Result } from "./nlc-loop/types.js";
 
 /** One consumed chat turn: streamed text, tool calls, finish reason, usage. */
 export type ConsumedTurn = {
@@ -21,12 +22,11 @@ export type ConsumedTurn = {
 
 const ZERO_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
-/** Default for {@link ToolLoopDeps.maxRepairAttempts}. See its docstring. */
-export const DEFAULT_MAX_REPAIR_ATTEMPTS = 3;
-
-/** Halt notice appended once when consecutive apply_patch crosses the cap. */
-const REPAIR_CAP_NOTICE_TEMPLATE =
-  "❗ 已达自动修复上限（连续 {n} 次 apply_patch 未通过验证）。请停止 apply_patch,改为向用户报告当前进展、或采取不同策略(如先 read_file 调查、或回退已写补丁)。";
+/**
+ * Default for {@link ToolLoopDeps.maxRepairAttempts}. Re-exported from the
+ * nlc-loop module so the two entrypoints can never drift.
+ */
+export const DEFAULT_MAX_REPAIR_ATTEMPTS = NLC_DEFAULT_MAX_REPAIR;
 
 /**
  * Drain one `chat()` stream into an aggregated turn, forwarding each chunk to
@@ -139,121 +139,85 @@ export type ToolLoopDeps = {
 };
 
 /**
- * The Phase 2 agent main loop: the model drives by selecting tools until it
- * stops, the budget trips, the user cancels, or an error occurs. The macro
- * state machine lives in the caller (AgentService); this owns the micro loop.
+ * The Phase 2 agent main loop — preserved as a thin shim over
+ * {@link phase3ReactLoop} after the nlc-loop merge. All existing callers
+ * (AgentService.driveLoop, loop.test.ts) keep working unchanged: the
+ * ToolLoopDeps shape is mapped onto the NlcLoopOptions surface and the
+ * Phase3Result is mapped back onto the {@link ToolLoopOutcome} discriminated
+ * union.
  *
- * `messages` is copied, not mutated. The conversation grows internally and is
- * surfaced via the callbacks so the caller can persist/stream it.
+ * The strengths of the original implementation — consecutive-apply_patch
+ * repair cap, in-loop compression, fail-open verifier — now live in
+ * {@link phase3ReactLoop} so the explicit-three-phase entrypoint
+ * ({@link runNlcLoop}) and this legacy entrypoint share one codepath.
  */
 export async function runToolLoop(
   initialMessages: LLMMessage[],
   deps: ToolLoopDeps,
 ): Promise<ToolLoopOutcome> {
-  let messages: LLMMessage[] = [...initialMessages];
-  /**
-   * Consecutive-apply_patch streak counter. Bumped on every apply_patch,
-   * reset on any other tool call. Drives the {@link ToolLoopDeps.maxRepairAttempts}
-   * cap.
-   */
-  let consecutiveRepairs = 0;
-  const repairCap = deps.maxRepairAttempts ?? DEFAULT_MAX_REPAIR_ATTEMPTS;
+  const phase2: Phase2Result = {
+    messages: [...initialMessages],
+    compressed: false,
+    compressedCount: 0,
+    tokensBefore: 0,
+    tokensAfter: 0,
+  };
 
-  while (true) {
-    const limit = deps.budget.exceeded();
-    if (limit.exceeded) {
-      return { state: "budget_exceeded", reason: limit.reason ?? "unknown", finalMessages: messages };
-    }
-    if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
-
-    deps.budget.incrementIteration();
-
-    if (deps.compression) {
-      const compressed = await compressConversation(
-        messages,
-        deps.compression.contextWindow,
-        deps.compression.summarize,
-      );
-      if (compressed) {
-        messages = compressed.messages;
-        deps.compression.onCompressed?.(compressed.compressedCount);
-      }
-      if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
-    }
-
-    const turn = await consumeStream(
-      deps.llm.chat({
-        messages,
-        tools: deps.tools,
-        ...(deps.temperature !== undefined ? { temperature: deps.temperature } : {}),
-        ...(deps.signal ? { signal: deps.signal } : {}),
-      }),
-      deps.onChunk,
-    );
-
-    deps.budget.addUsage(turn.usage);
-    messages.push({ role: "assistant", content: turn.text, toolCalls: turn.toolCalls });
-    deps.onAssistant?.(turn.text, turn.toolCalls, turn.usage);
-
-    if (turn.finishReason === "error") {
-      return { state: "failed", reason: turn.errorMessage ?? "LLM stream error", finalMessages: messages };
-    }
-    if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
-
-    if (turn.toolCalls.length === 0) {
-      // No tools requested: a stop is success; anything else is a dead end.
-      if (turn.finishReason === "stop") return { state: "done", finalText: turn.text, finalMessages: messages };
-      return { state: "failed", reason: `Model stopped without tools (reason: ${turn.finishReason})`, finalMessages: messages };
-    }
-
-    for (const call of turn.toolCalls) {
-      if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
-      deps.budget.recordToolCall();
-      deps.onToolCall?.(call);
-
-      if (deps.requiresApproval(call)) {
-        const approved = await deps.waitForApproval(call);
-        if (!approved) return { state: "cancelled", finalMessages: messages };
-        if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
-      }
-
-      const result = await deps.executeTool(call);
-      deps.onToolResult?.(call, result);
-      messages.push({ role: "tool", toolCallId: call.id, content: result });
-
-      // Maintain the consecutive-apply_patch streak: every other tool call
-      // resets it. Tracked unconditionally so the cap behaves the same
-      // whether or not a verifier is wired.
-      if (call.name === "apply_patch") {
-        consecutiveRepairs += 1;
-      } else {
-        consecutiveRepairs = 0;
-      }
-
-      if (deps.verifyAfterPatch && call.name === "apply_patch") {
-        if (consecutiveRepairs === repairCap + 1) {
-          // First crossing → halt notice once. Further over-cap patches stay
-          // silent so the model can't keep getting the same nudge.
-          messages.push({
-            role: "user",
-            content: REPAIR_CAP_NOTICE_TEMPLATE.replace("{n}", String(repairCap)),
-          });
-        } else if (consecutiveRepairs <= repairCap) {
-          // Fail-open: a verifier crash must NEVER fail the run. Logging
-          // is the caller's job — surface via onToolResult or the future
-          // tool-result envelope; here we just continue.
-          let feedback: string | null = null;
-          try {
-            feedback = await deps.verifyAfterPatch(call, result);
-          } catch {
-            feedback = null;
+  const nlcDeps: NlcLoopDeps = {
+    llm: deps.llm,
+    tools: deps.tools,
+    executeTool: deps.executeTool,
+    options: {
+      budget: deps.budget,
+      ...(deps.signal ? { signal: deps.signal } : {}),
+      ...(deps.temperature !== undefined ? { temperature: deps.temperature } : {}),
+      ...(deps.onChunk ? { onChunk: deps.onChunk } : {}),
+      ...(deps.onAssistant ? { onAssistant: deps.onAssistant } : {}),
+      ...(deps.onToolCall ? { onToolCall: deps.onToolCall } : {}),
+      ...(deps.onToolResult ? { onToolResult: deps.onToolResult } : {}),
+      requiresApproval: deps.requiresApproval,
+      waitForApproval: deps.waitForApproval,
+      ...(deps.verifyAfterPatch ? { verifyAfterPatch: deps.verifyAfterPatch } : {}),
+      ...(deps.maxRepairAttempts !== undefined ? { maxRepairAttempts: deps.maxRepairAttempts } : {}),
+      // Map the old `compression` block onto the new flat options. When
+      // the caller wired compression, turn on in-loop checks AND honour
+      // their custom summariser + onCompressed callback.
+      ...(deps.compression
+        ? {
+            compressInLoop: true,
+            contextWindow: deps.compression.contextWindow,
+            summarize: deps.compression.summarize,
+            ...(deps.compression.onCompressed
+              ? { onCompressed: deps.compression.onCompressed }
+              : {}),
           }
-          if (feedback) messages.push({ role: "user", content: feedback });
-        }
-        // consecutiveRepairs > repairCap + 1: silently suppress further
-        // verifier feedback until a non-apply_patch call resets the streak.
-        if (deps.signal?.aborted) return { state: "cancelled", finalMessages: messages };
-      }
-    }
+        : {}),
+    },
+  };
+
+  const phase3 = await phase3ReactLoop(phase2, nlcDeps);
+
+  // Map Phase3Result → ToolLoopOutcome discriminated union.
+  switch (phase3.state) {
+    case "done":
+      return {
+        state: "done",
+        finalText: phase3.finalText ?? "",
+        finalMessages: phase3.finalMessages,
+      };
+    case "failed":
+      return {
+        state: "failed",
+        reason: phase3.failureReason ?? "unknown",
+        finalMessages: phase3.finalMessages,
+      };
+    case "cancelled":
+      return { state: "cancelled", finalMessages: phase3.finalMessages };
+    case "budget_exceeded":
+      return {
+        state: "budget_exceeded",
+        reason: phase3.failureReason ?? "unknown",
+        finalMessages: phase3.finalMessages,
+      };
   }
 }

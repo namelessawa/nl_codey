@@ -6,7 +6,7 @@ import {
   toLLMConfig,
   type AppSettings,
   type LLMConfig,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { SecretStore } from "./secret.js";
 
 /**

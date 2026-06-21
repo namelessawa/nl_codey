@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractReadableText, truncate, webFetch } from "./web-fetch.js";
-import { WEB_FETCH_MAX_CHARS } from "@coding-agent/shared";
+import { WEB_FETCH_MAX_CHARS } from "@nlc/shared";
 
 describe("extractReadableText", () => {
   it("strips a script tag and returns clean text", () => {

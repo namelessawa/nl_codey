@@ -5,7 +5,7 @@ import {
   TASK_MIN_NODES,
   type TaskBreakdown,
   type TaskNodeProposal,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 import { validateBreakdown } from "./task-tree.js";
 

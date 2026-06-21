@@ -5,44 +5,55 @@ import path from "node:path";
 import { app, dialog } from "electron";
 import {
   IPC,
-  type FeedbackSignalInput,
-  type FinetuneJobInput,
-  type GlobalPatternInput,
-  type Phase4Settings,
   type PluginInstallation,
-  type StyleScope,
-  type StyleSpec,
-  type WorkerNode,
-  type WorkspaceContributionMode,
-  type WorkspaceIdArgs,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   buildDatasetFromSignals,
   curatePairs,
-} from "@coding-agent/learning";
+} from "@nlc/learning";
 import {
   KnowledgeGraph,
-} from "@coding-agent/global-memory";
+} from "@nlc/global-memory";
 import {
   extractStyleSpec,
   type FileSample,
-} from "@coding-agent/style-profile";
+} from "@nlc/style-profile";
 import {
   ModelRegistry,
-} from "@coding-agent/finetune";
+} from "@nlc/finetune";
 import {
   ProposalInbox,
   scanForDebt,
   dedupeAgainstInbox,
-} from "@coding-agent/proactive";
+} from "@nlc/proactive";
 import {
   PluginLoader,
   type PermissionPrompter,
   type PluginRepository,
-} from "@coding-agent/plugin-sdk";
+} from "@nlc/plugin-sdk";
 import { handle } from "./ipc-handle.js";
 import type { Services } from "./services.js";
-import { validateInstallPlugin } from "./validators.js";
+import {
+  validateBuildPreferenceDataset,
+  validateContributeGlobalPattern,
+  validateCreateFinetuneJob,
+  validateDeleteGlobalPattern,
+  validateGetStyleSpec,
+  validateInstallPlugin,
+  validateListEvalRuns,
+  validateListFrozenSnapshots,
+  validatePluginId,
+  validateProposalId,
+  validatePromoteModel,
+  validateRecordFeedbackSignal,
+  validateRegisterWorkerNode,
+  validateSetPluginEnabled,
+  validateSetWorkspaceContribution,
+  validateSnoozeProposal,
+  validateUpdatePhase4Settings,
+  validateUpsertStyleSpec,
+  validateWorkspaceId,
+} from "./validators.js";
 import { FinetuneRunner, dispatchFinetuneJob } from "./finetune-runner.js";
 
 type RequireRoot = (workspaceId: string) => string;
@@ -62,24 +73,24 @@ export function registerPhase4Ipc(
   const kg = new KnowledgeGraph(storage.phase4);
 
   handle(IPC.listGlobalPatterns, () => storage.phase4.listGlobalPatterns());
-  handle(IPC.contributeGlobalPattern, (args) => {
-    const { input } = args as { input: GlobalPatternInput };
+  handle(IPC.contributeGlobalPattern, (raw) => {
+    const { input } = validateContributeGlobalPattern(raw);
     return kg.contribute(input);
   });
-  handle(IPC.retractWorkspaceContribution, (args) => {
-    const { workspaceId } = args as WorkspaceIdArgs;
+  handle(IPC.retractWorkspaceContribution, (raw) => {
+    const { workspaceId } = validateWorkspaceId(raw);
     return kg.retractProject(workspaceId);
   });
-  handle(IPC.deleteGlobalPattern, (args) => {
-    const { id } = args as { id: string };
+  handle(IPC.deleteGlobalPattern, (raw) => {
+    const { id } = validateDeleteGlobalPattern(raw);
     return { deleted: storage.phase4.deleteGlobalPattern(id) };
   });
-  handle(IPC.getWorkspaceContribution, (args) => {
-    const { workspaceId } = args as WorkspaceIdArgs;
+  handle(IPC.getWorkspaceContribution, (raw) => {
+    const { workspaceId } = validateWorkspaceId(raw);
     return storage.phase4.getWorkspaceContribution(workspaceId);
   });
-  handle(IPC.setWorkspaceContribution, (args) => {
-    const { workspaceId, mode } = args as { workspaceId: string; mode: WorkspaceContributionMode };
+  handle(IPC.setWorkspaceContribution, (raw) => {
+    const { workspaceId, mode } = validateSetWorkspaceContribution(raw);
     storage.phase4.setWorkspaceContribution(workspaceId, mode);
     if (mode === "isolated") {
       // Retracting opt-in cascades: drop this workspace's contributions.
@@ -89,16 +100,16 @@ export function registerPhase4Ipc(
   });
 
   // ----- Style profile -----
-  handle(IPC.getStyleSpec, (args) => {
-    const { scope, workspaceId } = args as { scope: StyleScope; workspaceId: string | null };
+  handle(IPC.getStyleSpec, (raw) => {
+    const { scope, workspaceId } = validateGetStyleSpec(raw);
     return storage.phase4.getStyleSpec(scope, workspaceId);
   });
-  handle(IPC.upsertStyleSpec, (args) => {
-    const { spec } = args as { spec: StyleSpec };
+  handle(IPC.upsertStyleSpec, (raw) => {
+    const { spec } = validateUpsertStyleSpec(raw);
     return storage.phase4.upsertStyleSpec(spec);
   });
-  handle(IPC.extractStyleSpecFromCodebase, async (args) => {
-    const { workspaceId } = args as WorkspaceIdArgs;
+  handle(IPC.extractStyleSpecFromCodebase, async (raw) => {
+    const { workspaceId } = validateWorkspaceId(raw);
     const root = requireRoot(workspaceId);
     const files = await readSampleFiles(root, 50);
     const spec = extractStyleSpec(files, { scope: "project", workspaceId });
@@ -106,16 +117,16 @@ export function registerPhase4Ipc(
   });
 
   // ----- Learning -----
-  handle(IPC.listFeedbackSignals, (args) => {
-    const { workspaceId } = args as WorkspaceIdArgs;
+  handle(IPC.listFeedbackSignals, (raw) => {
+    const { workspaceId } = validateWorkspaceId(raw);
     return storage.phase4.listFeedbackSignals(workspaceId);
   });
-  handle(IPC.recordFeedbackSignal, (args) => {
-    const { signal } = args as { signal: FeedbackSignalInput };
+  handle(IPC.recordFeedbackSignal, (raw) => {
+    const { signal } = validateRecordFeedbackSignal(raw);
     return storage.phase4.createFeedbackSignal(signal);
   });
-  handle(IPC.buildPreferenceDataset, (args) => {
-    const { workspaceId, name } = args as { workspaceId: string; name?: string };
+  handle(IPC.buildPreferenceDataset, (raw) => {
+    const { workspaceId, name } = validateBuildPreferenceDataset(raw);
     const signals = storage.phase4.listFeedbackSignals(workspaceId);
     const result = buildDatasetFromSignals(storage.phase4, signals, { name });
     const dataset = storage.phase4.getPreferenceDataset(result.dataset.id);
@@ -136,8 +147,8 @@ export function registerPhase4Ipc(
   // ----- Finetune -----
   const registry = new ModelRegistry(storage.phase4);
   handle(IPC.listFinetuneJobs, () => storage.phase4.listFinetuneJobs());
-  handle(IPC.createFinetuneJob, (args) => {
-    const { input } = args as { input: FinetuneJobInput };
+  handle(IPC.createFinetuneJob, (raw) => {
+    const { input } = validateCreateFinetuneJob(raw);
     if (!phase4Settings.get().finetuneEnabled) {
       throw new Error("Fine-tune feature is disabled in Phase 4 settings");
     }
@@ -149,31 +160,28 @@ export function registerPhase4Ipc(
   });
   handle(IPC.listModels, () => registry.list());
   handle(IPC.getActiveModel, () => registry.getActive());
-  handle(IPC.promoteModel, (args) => {
-    const { modelId } = args as { modelId: string };
+  handle(IPC.promoteModel, (raw) => {
+    const { modelId } = validatePromoteModel(raw);
     return registry.promote(modelId);
   });
   handle(IPC.rollbackToBaseModel, () => registry.rollbackToBase());
 
   // ----- Proposals -----
   const proposalInbox = new ProposalInbox(storage.phase4);
-  handle(IPC.listProposals, (args) => {
-    const { workspaceId } = args as WorkspaceIdArgs;
+  handle(IPC.listProposals, (raw) => {
+    const { workspaceId } = validateWorkspaceId(raw);
     return proposalInbox.list(workspaceId);
   });
-  handle(IPC.snoozeProposal, (args) => {
-    const { id, untilTs } = args as { id: string; untilTs: number };
+  handle(IPC.snoozeProposal, (raw) => {
+    const { id, untilTs } = validateSnoozeProposal(raw);
     return proposalInbox.snooze(id, untilTs);
   });
-  handle(IPC.dismissProposal, (args) => {
-    const { id } = args as { id: string };
+  handle(IPC.dismissProposal, (raw) => {
+    const { id } = validateProposalId(raw);
     return proposalInbox.dismiss(id);
   });
-  handle(IPC.convertProposal, async (args) => {
-    const { id } = args as { id: string };
-    if (typeof id !== "string" || id.length === 0) {
-      throw new Error("IPC payload rejected: id must be a non-empty string");
-    }
+  handle(IPC.convertProposal, async (raw) => {
+    const { id } = validateProposalId(raw);
     const proposal = storage.phase4.getProposal(id);
     if (!proposal) throw new Error(`Proposal not found: ${id}`);
     if (proposal.status === "converted_to_task") {
@@ -204,24 +212,24 @@ export function registerPhase4Ipc(
     // reads `convertedRunId` to navigate to the live run.
     return proposalInbox.convert(id, detail.run.id);
   });
-  handle(IPC.scanDebtNow, async (args) => {
-    const { workspaceId } = args as WorkspaceIdArgs;
+  handle(IPC.scanDebtNow, async (rawArgs) => {
+    const { workspaceId } = validateWorkspaceId(rawArgs);
     if (!phase4Settings.get().proactiveEnabled) {
       throw new Error("Proactive mode is disabled in Phase 4 settings");
     }
     const root = requireRoot(workspaceId);
     const files = await readSampleFiles(root, 200);
-    const raw = scanForDebt(workspaceId, files);
+    const rawProposals = scanForDebt(workspaceId, files);
     const existing = proposalInbox.list(workspaceId);
-    const deduped = dedupeAgainstInbox(raw, { workspaceId, existing });
+    const deduped = dedupeAgainstInbox(rawProposals, { workspaceId, existing });
     const created = proposalInbox.ingestMany(deduped);
     return { created };
   });
 
   // ----- Distributed -----
   handle(IPC.listWorkerNodes, () => storage.phase4.listWorkerNodes());
-  handle(IPC.registerWorkerNode, (args) => {
-    const { node } = args as { node: Omit<WorkerNode, "registeredAt"> };
+  handle(IPC.registerWorkerNode, (raw) => {
+    const { node } = validateRegisterWorkerNode(raw);
     if (!phase4Settings.get().distributedEnabled) {
       throw new Error("Distributed mode is disabled in Phase 4 settings");
     }
@@ -283,38 +291,29 @@ export function registerPhase4Ipc(
     if (!result.ok) throw new Error(result.reason);
     return result.installation;
   });
-  handle(IPC.setPluginEnabled, (args) => {
-    const a = args as { id: string; enabled: boolean };
-    if (typeof a.id !== "string" || a.id.length === 0) {
-      throw new Error("IPC payload rejected: id must be a non-empty string");
-    }
-    if (typeof a.enabled !== "boolean") {
-      throw new Error("IPC payload rejected: enabled must be a boolean");
-    }
-    return storage.phase4.setPluginEnabled(a.id, a.enabled);
+  handle(IPC.setPluginEnabled, (raw) => {
+    const { id, enabled } = validateSetPluginEnabled(raw);
+    return storage.phase4.setPluginEnabled(id, enabled);
   });
-  handle(IPC.uninstallPlugin, (args) => {
-    const a = args as { id: string };
-    if (typeof a.id !== "string" || a.id.length === 0) {
-      throw new Error("IPC payload rejected: id must be a non-empty string");
-    }
-    return { uninstalled: storage.phase4.uninstallPlugin(a.id) };
+  handle(IPC.uninstallPlugin, (raw) => {
+    const { id } = validatePluginId(raw);
+    return { uninstalled: storage.phase4.uninstallPlugin(id) };
   });
 
   // ----- Evals -----
-  handle(IPC.listFrozenSnapshots, (args) => {
-    const a = (args as { modelId?: string } | undefined) ?? {};
+  handle(IPC.listFrozenSnapshots, (raw) => {
+    const a = validateListFrozenSnapshots(raw);
     return storage.phase4.listFrozenSuiteSnapshots(a.modelId);
   });
-  handle(IPC.listEvalRuns, (args) => {
-    const a = (args as { taskId?: string; modelId?: string } | undefined) ?? {};
+  handle(IPC.listEvalRuns, (raw) => {
+    const a = validateListEvalRuns(raw);
     return storage.phase4.listEvalRuns(a.taskId, a.modelId);
   });
 
   // ----- Settings -----
   handle(IPC.getPhase4Settings, () => phase4Settings.get());
-  handle(IPC.updatePhase4Settings, (args) => {
-    const { settings: next } = args as { settings: Phase4Settings };
+  handle(IPC.updatePhase4Settings, (raw) => {
+    const { settings: next } = validateUpdatePhase4Settings(raw);
     return phase4Settings.set(next);
   });
 

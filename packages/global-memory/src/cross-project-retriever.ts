@@ -5,7 +5,7 @@
  *  - Every returned pattern includes its provenance (source projects).
  *  - Caller decides whether to inject; this module only ranks.
  */
-import type { GlobalPattern } from "@coding-agent/shared";
+import type { GlobalPattern } from "@nlc/shared";
 
 export type RetrievalContext = {
   taskText: string;

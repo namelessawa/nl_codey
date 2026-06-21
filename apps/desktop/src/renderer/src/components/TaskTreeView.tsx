@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { TaskNode, TaskNodeStatus } from "@coding-agent/shared";
+import type { TaskNode, TaskNodeStatus } from "@nlc/shared";
 import { api } from "../api.js";
 
 interface TaskTreeViewProps {

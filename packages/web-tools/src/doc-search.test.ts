@@ -5,7 +5,7 @@ import {
   createDuckDuckGoBackend,
   type SearchBackend,
 } from "./doc-search.js";
-import type { WebSearchResult } from "@coding-agent/shared";
+import type { WebSearchResult } from "@nlc/shared";
 
 function makeResults(n: number): WebSearchResult[] {
   return Array.from({ length: n }, (_, i) => ({

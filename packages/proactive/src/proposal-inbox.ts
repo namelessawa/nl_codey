@@ -8,7 +8,7 @@ import type {
   Proposal,
   ProposalInput,
   ProposalStatus,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 export interface ProposalStore {
   createProposal(input: ProposalInput): Proposal;

@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { applyPatch, parsePatch } from "diff";
-import { assertInsideWorkspace } from "@coding-agent/sandbox";
-import type { ApplyPatchInput, ApplyPatchOutput, ToolContext } from "@coding-agent/shared";
+import { assertInsideWorkspace } from "@nlc/sandbox";
+import type { ApplyPatchInput, ApplyPatchOutput, ToolContext } from "@nlc/shared";
 import { TOOL_CODES, ToolError } from "./errors.js";
 import type { SnapshotStore } from "./deps.js";
 import { applyV4AHunks, isV4APatch, parseV4A } from "./v4a.js";

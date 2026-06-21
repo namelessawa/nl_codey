@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { TaskNodeProposal } from "@coding-agent/shared";
+import type { TaskNodeProposal } from "@nlc/shared";
 
 import {
   detectCycles,

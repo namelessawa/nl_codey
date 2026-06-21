@@ -9,7 +9,7 @@ import {
   type ReviewComment,
   type ReviewResult,
   type TaskNode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 import type { MessageBus } from "./message-bus.js";
 

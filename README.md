@@ -30,7 +30,7 @@
 
 pnpm monorepo 结构（`apps/*`、`packages/*`）。Workspace 包以原始
 TypeScript 源码方式发布，由 `electron-vite` **打包**；跨包引用使用
-`@coding-agent/*` 别名 + `.js` 后缀（NodeNext/Bundler ESM 约定）。
+`@nlc/*` 别名 + `.js` 后缀（NodeNext/Bundler ESM 约定）。
 
 ```
 apps/desktop              Electron 应用（main / preload / React 渲染层）

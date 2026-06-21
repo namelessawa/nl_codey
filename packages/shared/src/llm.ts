@@ -1,4 +1,4 @@
-/** LLM provider abstraction. Implementations live in @coding-agent/llm. */
+/** LLM provider abstraction. Implementations live in @nlc/llm. */
 
 /**
  * Roles in a conversation. "tool" carries a tool result back to the model and

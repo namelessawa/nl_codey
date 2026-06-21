@@ -3,11 +3,11 @@ import type {
   AgentEvent,
   DockerStartResult,
   InstallationStatus,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   DEFAULT_DOCKER_STATUS,
   DEFAULT_INSTALLATION_GATE,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "../api.js";
 
 /**
