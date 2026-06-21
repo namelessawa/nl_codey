@@ -248,7 +248,7 @@ pub fn spawn_in_app_container(req: SpawnRequest) -> napi::Result<SpawnResult> {
 import { createReadStream } from 'node:fs';
 import type {
   SandboxPolicy, SandboxRunRequest, SandboxRunResult,
-} from '@coding-agent/shared';
+} from '@nlc/shared';
 import { assertNoSandboxEscape } from './sandbox-policy.js';
 import { truncateOutput } from './output.js';
 

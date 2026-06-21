@@ -4,7 +4,7 @@ import type {
   LanguagePreference,
   ThemePreference,
   UISettings as UISettingsValue,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { Field, Segmented, ToggleRow } from "./fields.js";
 import { t } from "../../i18n.js";
 

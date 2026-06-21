@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { AgentStep } from "@coding-agent/shared";
+import type { AgentStep } from "@nlc/shared";
 import { DiffView } from "./DiffView.js";
 import { Markdown } from "./Markdown.js";
 

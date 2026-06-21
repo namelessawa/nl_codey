@@ -6,7 +6,7 @@ import type {
   FinetuneMethod,
   ModelRegistryEntry,
   PreferenceDataset,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "../api";
 
 const METHODS: FinetuneMethod[] = ["lora", "qlora"];
@@ -31,10 +31,15 @@ export function FinetuneManager(): JSX.Element {
   const [evalTaskFilter, setEvalTaskFilter] = useState<string>("");
 
   const refresh = (): void => {
-    api.listFinetuneJobs().then(setJobs).catch(() => {});
-    api.listModels().then(setModels).catch(() => {});
-    api.getActiveModel().then(setActive).catch(() => {});
-    api.listPreferenceDatasets().then(setDatasets).catch(() => {});
+    // Surface initial-load failures through the existing error banner instead
+    // of swallowing them. A failed list call left the table blank with no
+    // signal to the user — for Phase 4 surfaces that depend on optional DB
+    // tables / feature flags being enabled, that read as "no data" when the
+    // real issue was "feature unhealthy". See code-review M7.
+    api.listFinetuneJobs().then(setJobs).catch((e) => setError(String(e)));
+    api.listModels().then(setModels).catch((e) => setError(String(e)));
+    api.getActiveModel().then(setActive).catch((e) => setError(String(e)));
+    api.listPreferenceDatasets().then(setDatasets).catch((e) => setError(String(e)));
   };
   useEffect(refresh, []);
 

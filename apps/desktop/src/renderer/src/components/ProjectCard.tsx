@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { deriveProjectCard } from "@coding-agent/shared";
+import { deriveProjectCard } from "@nlc/shared";
 
 type Props = { files: string[] };
 

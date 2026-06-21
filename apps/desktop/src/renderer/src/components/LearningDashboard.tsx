@@ -4,7 +4,7 @@ import type {
   FeedbackSignalInput,
   FeedbackSignalKind,
   FrozenSuiteSnapshot,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "../api";
 
 const KINDS: FeedbackSignalKind[] = [
@@ -58,7 +58,10 @@ export function LearningDashboard({ workspaceId }: { workspaceId: string | null 
 
   useEffect(() => {
     refreshSignals();
-    api.listFrozenSnapshots().then(setSnapshots).catch(() => {});
+    // L5: route through the existing error banner instead of swallowing —
+    // the weekly trend table previously rendered as empty with no signal
+    // that the underlying fetch had failed.
+    api.listFrozenSnapshots().then(setSnapshots).catch((e) => setError(String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 

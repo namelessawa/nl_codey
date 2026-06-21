@@ -1,0 +1,28 @@
+# Derivable artifacts — re-buildable from scripts + pinned git_rev.
+corpora/
+results/
+plots/
+
+# Python cruft.
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Local environment.
+.venv/
+venv/
+
+# Generated JSONL queries are reproducible from corpora + scripts, but
+# committing them gives downstream reviewers something they can inspect
+# without re-running the pipeline. Keep the small ones, ignore the giant
+# cpython one.
+queries/cpython-lib.queries.jsonl
+
+# Transient diagnostics + remote run artifacts (re-creatable per-deployment).
+shipment/*.tar.gz
+shipment/*.log
+shipment/*.err
+shipment/*.txt
+
+# Transient: GPU result tarball extraction.
+results_remote/

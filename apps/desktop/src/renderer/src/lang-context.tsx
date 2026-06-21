@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import type { LanguagePreference } from "@coding-agent/shared";
+import type { LanguagePreference } from "@nlc/shared";
 import { t as translate, type I18nKey } from "./i18n.js";
 
 /**

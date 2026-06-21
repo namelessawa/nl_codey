@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { StyleRule, StyleSpec, StyleStrength } from "@coding-agent/shared";
+import type { StyleRule, StyleSpec, StyleStrength } from "@nlc/shared";
 import { api } from "../api";
 
 export function StyleProfilePanel({ workspaceId }: { workspaceId: string | null }): JSX.Element {

@@ -4,8 +4,8 @@ import type {
   AgentRunState,
   AgentStep,
   Workspace,
-} from "@coding-agent/shared";
-import { isRunActive } from "@coding-agent/shared";
+} from "@nlc/shared";
+import { isRunActive } from "@nlc/shared";
 import { Markdown } from "./Markdown.js";
 import { Icon } from "./Icons.js";
 import { useT } from "../lang-context.js";

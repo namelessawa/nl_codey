@@ -3,7 +3,7 @@ import type {
   ChunkKind,
   SemanticHit,
   SemanticIndexStatus,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "../api.js";
 
 const ALL_KINDS: ChunkKind[] = ["code", "doc", "comment"];

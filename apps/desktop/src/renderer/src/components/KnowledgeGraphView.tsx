@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type {
   GlobalPattern,
   WorkspaceContributionMode,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "../api";
 
 export function KnowledgeGraphView({ workspaceId }: { workspaceId: string | null }): JSX.Element {
@@ -13,7 +13,14 @@ export function KnowledgeGraphView({ workspaceId }: { workspaceId: string | null
   const refresh = (): void => {
     api.listGlobalPatterns().then(setPatterns).catch((e) => setError(String(e)));
     if (workspaceId) {
-      api.getWorkspaceContribution(workspaceId).then(setMode).catch(() => {});
+      // L4: a failed getWorkspaceContribution silently left the dropdown at
+      // its default ('isolated') while the backend may have been in another
+      // mode. Route through the existing setError so the user can see when
+      // the displayed mode is unreliable.
+      api
+        .getWorkspaceContribution(workspaceId)
+        .then(setMode)
+        .catch((e) => setError(String(e)));
     }
   };
 
@@ -32,8 +39,15 @@ export function KnowledgeGraphView({ workspaceId }: { workspaceId: string | null
 
   const delPattern = async (id: string): Promise<void> => {
     if (!confirm("确认删除此模式?")) return;
-    await api.deleteGlobalPattern(id);
-    refresh();
+    // M8: previously this fired without a try/catch, so a backend rejection
+    // (DB error, pattern already gone) was silently dropped by the unhandled-
+    // rejection path and the pattern card stayed visible with no feedback.
+    try {
+      await api.deleteGlobalPattern(id);
+      refresh();
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   return (

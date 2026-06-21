@@ -1,4 +1,4 @@
-import type { Workspace } from "@coding-agent/shared";
+import type { Workspace } from "@nlc/shared";
 
 type Props = {
   workspaces: Workspace[];

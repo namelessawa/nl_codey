@@ -27,9 +27,9 @@ import type {
   PluginToolParameter,
   ToolContext,
   ToolSchema,
-} from "@coding-agent/shared";
-import { PluginHost, type SandboxHandle } from "@coding-agent/plugin-sdk";
-import type { ExecutedTool } from "@coding-agent/agent-core";
+} from "@nlc/shared";
+import { PluginHost, type SandboxHandle } from "@nlc/plugin-sdk";
+import type { ExecutedTool } from "@nlc/agent-core";
 import type { Services } from "./services.js";
 
 const PLUGIN_TOOL_PREFIX = "plugin__";
@@ -56,10 +56,10 @@ export type PluginBundle = {
  * disabled or when there are no enabled plugin tools to advertise.
  */
 export function buildPluginBundle(services: Services): PluginBundle | null {
-  const flags = services.phase4Settings.get();
+  const flags = services.advancedSettings.get();
   if (!flags.pluginsEnabled) return null;
 
-  const installations = services.storage.phase4
+  const installations = services.storage.plugins
     .listPlugins()
     .filter((inst) => inst.enabled);
   if (installations.length === 0) return null;
@@ -94,7 +94,7 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
   if (schemas.length === 0) return null;
 
   const host = new PluginHost(
-    () => services.storage.phase4.listPlugins(),
+    () => services.storage.plugins.listPlugins(),
     (mode) => makeSandboxHandle(mode),
   );
 
@@ -178,7 +178,7 @@ function makeSandboxHandle(mode: PluginInstallation["manifest"]["sandbox"]): San
 /**
  * Execute the plugin's rendered command. Every plugin tool resolves to a
  * `node "<installPath>/tools/<name>.js" --k v ...` invocation (see
- * {@link renderCommand} in `@coding-agent/plugin-sdk`); we split the command
+ * {@link renderCommand} in `@nlc/plugin-sdk`); we split the command
  * into argv and spawn `process.execPath` directly with `ELECTRON_RUN_AS_NODE=1`
  * so the same binary works in development (where execPath is Node) AND in a
  * packaged Electron build (where execPath is the Electron exe — without the

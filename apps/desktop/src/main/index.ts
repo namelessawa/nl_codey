@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow, app } from "electron";
-import { IPC_EVENT, type AgentEvent } from "@coding-agent/shared";
+import { IPC_EVENT, type AgentEvent } from "@nlc/shared";
 import { loadEnv } from "./env.js";
 import { buildServices } from "./services.js";
 import { broadcast, registerIpc } from "./ipc.js";

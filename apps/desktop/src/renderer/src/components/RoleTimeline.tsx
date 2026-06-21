@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AgentRole, RoleMessage, RoleMessageKind } from "@coding-agent/shared";
+import type { AgentRole, RoleMessage, RoleMessageKind } from "@nlc/shared";
 import { api } from "../api.js";
 
 interface RoleTimelineProps {
@@ -8,7 +8,7 @@ interface RoleTimelineProps {
    * per-task-node, but the UI shows them grouped per-run; the renderer
    * aggregates them via {@link api.listRoleMessagesForRun} which joins
    * task_nodes server-side. Passing a task-node id here used to be the
-   * contract — the join fixes the historical mismatch where Phase3Panel
+   * contract — the join fixes the historical mismatch where IntelligencePanel
    * passed a run id that returned an empty list.
    */
   runId: string;

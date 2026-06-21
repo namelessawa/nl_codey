@@ -4,7 +4,7 @@ import type {
   LanguagePreference,
   SandboxMode,
   ValidationIssue,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { Field, NumInput, ToggleRow } from "./fields.js";
 import { Icon } from "../Icons.js";
 import { t } from "../../i18n.js";

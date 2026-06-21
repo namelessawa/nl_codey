@@ -3,10 +3,29 @@
 一个本地桌面端的编码代理。打开一个项目，输入一项任务，代理会驱动一个
 **自主工具调用循环**：它读取代码、搜索、规划、并修改 —— 每一次修改都
 以补丁的形式提出。**未经你批准，任何文件都不会被写入。** 每一步都会
-被记录到 SQLite，每一次改动都会被快照,任何一次运行都可以 **回滚**。
+被记录到 SQLite，每一次改动都会被快照，任何一次运行都可以 **回滚**。
 文件和命令访问严格限制在工作区根目录之内。
 
-项目分四个阶段演进，全部已合入 `main`：
+## 目录
+
+- [演进阶段](#演进阶段)
+- [架构](#架构)
+- [环境要求](#环境要求)
+- [安装 Docker（强烈推荐）](#安装-docker强烈推荐)
+- [安装](#安装)
+- [启动](#启动)
+- [工作区 UI](#工作区-ui)
+- [配置 LLM（设置面板）](#配置-llm设置面板)
+- [代理的工具](#代理的工具)
+- [沙箱模式](#沙箱模式)
+- [测试](#测试)
+- [安全模型](#安全模型)
+- [更新历史](CHANGELOG.md)
+
+## 演进阶段
+
+项目分四个阶段演进，全部已合入 `main`，并在 0.1.0 之后追加了一个
+独立 CLI 入口与会话树存储：
 
 - **Phase 1 — 安全的单轮 MVP。** 路径隔离、命令白名单、超时控制、
   输出截断，写入前必须显式批准。
@@ -25,20 +44,28 @@
   可选的 LoRA 微调管道（带三规则评估门）、分布式协调器、只读式
   技术债扫描提案箱、插件 SDK。每项能力都有独立的功能开关，
   即使全部禁用，系统也能优雅退化为完整的 Phase 3。
+- **CLI + 会话树（0.1.0 之后追加）。** `apps/cli` 提供 opencode 风格
+  的 Ink TUI（带 `/provider`、`/sessions`、`/tree`、`/branch`、
+  `/resume`、`/model`、`/think`、`/theme` 等斜杠命令）；
+  `packages/session` 在 `~/.nlc/agent.session/` 下以 git 风格的可分支
+  JSONL 会话树持久化对话，与现有 SQLite 运行历史并行。两者均与桌面
+  GUI 共享同一套 `@nlc/agent-core` 工具循环和 settings 存储。
 
 ## 架构
 
 pnpm monorepo 结构（`apps/*`、`packages/*`）。Workspace 包以原始
 TypeScript 源码方式发布，由 `electron-vite` **打包**；跨包引用使用
-`@coding-agent/*` 别名 + `.js` 后缀（NodeNext/Bundler ESM 约定）。
+`@nlc/*` 别名 + `.js` 后缀（NodeNext/Bundler ESM 约定）。
 
 ```
 apps/desktop              Electron 应用（main / preload / React 渲染层）
-packages/shared           类型定义 + IPC 契约 —— 所有包都依赖它,是依赖中枢
+apps/cli                  Ink TUI（nlc 命令），与 desktop 共享 agent-core 工具循环
+packages/shared           类型定义 + IPC 契约 —— 所有包都依赖它，是依赖中枢
 packages/sandbox          路径隔离、命令白名单/路由、WSL + Docker 运行器
 packages/storage          SQLite（better-sqlite3）：workspaces/runs/steps/snapshots + Phase 3/4 表
+packages/session          可分支 JSONL 会话树（~/.nlc/agent.session/），与 SQLite 运行历史并行
 packages/project-indexer  文件扫描、忽略规则、项目类型检测
-packages/llm              Provider 抽象：流式 chat() + complete(),OpenAI 兼容 + Anthropic
+packages/llm              Provider 抽象：流式 chat() + complete()，OpenAI 兼容 + Anthropic
 packages/tools            代理的工具集（list/read/search/patch/run/git/symbol/web/memory/task）
 packages/agent-core       工具调用循环、预算、verifier、回归守卫、压缩器、eval、rollback
 packages/memory           跨会话记忆：decision/preference/failure/fact 条目 + 检索器

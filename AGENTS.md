@@ -56,7 +56,7 @@ packages/git-integration  Branch manager, conventional commit writer, PR generat
 packages/web-tools    Domain whitelist, readability fetch, search backends
 ```
 
-Workspace packages ship **raw `.ts` source** (`main`/`module`/`types` all point at `src/index.ts`) — there is no per-package build output. `electron.vite.config.ts` therefore **bundles** them (via `externalizeDepsPlugin({ exclude: workspacePackages })`) instead of externalizing. Cross-package imports use the `@coding-agent/*` alias and **`.js` extension specifiers** even though the files are `.ts` (NodeNext/Bundler ESM convention — keep this when adding imports).
+Workspace packages ship **raw `.ts` source** (`main`/`module`/`types` all point at `src/index.ts`) — there is no per-package build output. `electron.vite.config.ts` therefore **bundles** them (via `externalizeDepsPlugin({ exclude: workspacePackages })`) instead of externalizing. Cross-package imports use the `@nlc/*` alias and **`.js` extension specifiers** even though the files are `.ts` (NodeNext/Bundler ESM convention — keep this when adding imports).
 
 ### The process boundary (read this before touching IPC)
 

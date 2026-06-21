@@ -1,4 +1,4 @@
-import type { Workspace } from "@coding-agent/shared";
+import type { Workspace } from "@nlc/shared";
 import { Icon } from "./Icons.js";
 import { useLang, useT } from "../lang-context.js";
 import { tf } from "../i18n.js";

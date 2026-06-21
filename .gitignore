@@ -34,3 +34,16 @@ bash.exe.stackdump
 
 # TypeScript incremental compilation cache — should never have been tracked.
 *.tsbuildinfo
+
+# Local provider credentials kept out of the repo. Use .env (already ignored)
+# in normal flows; custom.txt is a legacy scratchpad for the active dev key.
+custom.txt
+**/custom.txt
+
+# Research / experiment outputs. These directories can grow to multiple GB
+# (retrieval sweeps, benchmark artifacts) and must never enter the main
+# history. Keep on disk for local reproduction; ship summaries in docs/ instead.
+experiments/
+artifacts/
+nightly/
+

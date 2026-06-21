@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { LLMProviderId } from "@coding-agent/shared";
-import { PROVIDER_PRESETS } from "@coding-agent/shared";
+import type { LLMProviderId } from "@nlc/shared";
+import { PROVIDER_PRESETS } from "@nlc/shared";
 import { Icon } from "./Icons.js";
 
 type Tier = "max" | "pref" | "fast" | "local";

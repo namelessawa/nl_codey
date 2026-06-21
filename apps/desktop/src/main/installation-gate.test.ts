@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentEvent } from "@coding-agent/shared";
-import type { DockerProbeResult } from "@coding-agent/sandbox";
+import type { AgentEvent } from "@nlc/shared";
+import type { DockerProbeResult } from "@nlc/sandbox";
 
 // Electron isn't available under vitest. The gate consults `shell.openExternal`
 // inside `openInstallPage`, but the constructor only references `shell` via a

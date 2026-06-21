@@ -28,11 +28,11 @@ import {
   type DockerStatus,
   type InstallationGateState,
   type InstallationStatus,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   probeDockerStatus,
   type DockerProbeResult,
-} from "@coding-agent/sandbox";
+} from "@nlc/sandbox";
 
 const STATE_FILE = "installation-gate.json";
 

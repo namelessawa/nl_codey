@@ -1,4 +1,4 @@
-import type { UISettings } from "@coding-agent/shared";
+import type { UISettings } from "@nlc/shared";
 
 /**
  * Apply UI preferences to the document root via data attributes. CSS keys off

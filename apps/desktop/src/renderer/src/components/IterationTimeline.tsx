@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import type { AgentRunDetail, IterationStatus } from "@coding-agent/shared";
-import { deriveIterations } from "@coding-agent/shared";
+import type { AgentRunDetail, IterationStatus } from "@nlc/shared";
+import { deriveIterations } from "@nlc/shared";
 
 type Props = { detail: AgentRunDetail | null };
 

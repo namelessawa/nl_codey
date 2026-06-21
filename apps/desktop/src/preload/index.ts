@@ -21,7 +21,7 @@ import {
   type TestLLMConnectionArgs,
   type UpdateMemoryArgs,
   type WorkspaceIdArgs,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 
 const api: AgentApi = {
   openWorkspace: () => ipcRenderer.invoke(IPC.openWorkspace),
@@ -118,8 +118,8 @@ const api: AgentApi = {
   listFrozenSnapshots: (args) => ipcRenderer.invoke(IPC.listFrozenSnapshots, args),
   listEvalRuns: (args) => ipcRenderer.invoke(IPC.listEvalRuns, args),
   // --- Phase 4: settings ---
-  getPhase4Settings: () => ipcRenderer.invoke(IPC.getPhase4Settings),
-  updatePhase4Settings: (args) => ipcRenderer.invoke(IPC.updatePhase4Settings, args),
+  getAdvancedSettings: () => ipcRenderer.invoke(IPC.getAdvancedSettings),
+  updateAdvancedSettings: (args) => ipcRenderer.invoke(IPC.updateAdvancedSettings, args),
   // --- Installation gate (instruction branch) ---
   getInstallationStatus: () => ipcRenderer.invoke(IPC.getInstallationStatus),
   recheckDocker: () => ipcRenderer.invoke(IPC.recheckDocker),

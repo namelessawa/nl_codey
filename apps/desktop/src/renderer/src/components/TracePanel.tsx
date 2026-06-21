@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { AgentRunDetail, AgentStep, AgentStepType } from "@coding-agent/shared";
+import type { AgentRunDetail, AgentStep, AgentStepType } from "@nlc/shared";
 
 type Props = { detail: AgentRunDetail | null };
 

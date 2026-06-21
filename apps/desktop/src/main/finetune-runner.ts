@@ -2,7 +2,7 @@
  * Fine-tune job runner. Wires {@link FinetuneJobInput} → background training
  * process → job-status updates in `storage.phase4`.
  *
- * The trainer itself is opt-in (gated by `phase4Settings.finetuneEnabled`) and
+ * The trainer itself is opt-in (gated by `advancedSettings.finetuneEnabled`) and
  * requires the user to provide a Python training script at
  * `<userData>/finetune/train.py`. When the script is missing — the default for
  * most installs — the runner stamps the job as `failed` with a clear,
@@ -21,7 +21,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import type { FinetuneJob, FinetuneJobInput } from "@coding-agent/shared";
+import type { FinetuneJob, FinetuneJobInput } from "@nlc/shared";
 import type { Services } from "./services.js";
 
 const ARTIFACT_LINE_PREFIX = "ARTIFACT:";
@@ -61,7 +61,7 @@ export class FinetuneRunner {
       return;
     }
 
-    this.services.storage.phase4.updateFinetuneJob(job.id, { status: "training" });
+    this.services.storage.finetune.updateFinetuneJob(job.id, { status: "training" });
 
     const outputDir = path.join(this.userDataDir, "finetune", "artifacts", job.id);
     try {
@@ -78,7 +78,7 @@ export class FinetuneRunner {
         method: job.method,
         outputDir,
       });
-      this.services.storage.phase4.updateFinetuneJob(job.id, {
+      this.services.storage.finetune.updateFinetuneJob(job.id, {
         status: "evaluating",
         artifactPath,
       });
@@ -93,8 +93,8 @@ export class FinetuneRunner {
    * sitting forever. Safe to call when finetune is disabled — it short-circuits.
    */
   resumeQueued(): void {
-    if (!this.services.phase4Settings.get().finetuneEnabled) return;
-    const jobs = this.services.storage.phase4.listFinetuneJobs();
+    if (!this.services.advancedSettings.get().finetuneEnabled) return;
+    const jobs = this.services.storage.finetune.listFinetuneJobs();
     for (const job of jobs) {
       if (job.status === "queued") {
         void this.run(job);
@@ -103,7 +103,7 @@ export class FinetuneRunner {
   }
 
   private fail(jobId: string, reason: string): void {
-    this.services.storage.phase4.updateFinetuneJob(jobId, {
+    this.services.storage.finetune.updateFinetuneJob(jobId, {
       status: "failed",
       evalResult: {
         baselineScore: 0,
@@ -125,7 +125,7 @@ export function dispatchFinetuneJob(
   services: Services,
   input: FinetuneJobInput,
 ): FinetuneJob {
-  const job = services.storage.phase4.createFinetuneJob(input);
+  const job = services.storage.finetune.createFinetuneJob(input);
   // Fire-and-forget. Errors inside `run` are translated to status="failed",
   // so we don't need to surface them to the caller — the UI subscribes to the
   // job list and will see the status transition.

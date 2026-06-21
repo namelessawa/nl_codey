@@ -1,4 +1,4 @@
-import type { InstallationStatus } from "@coding-agent/shared";
+import type { InstallationStatus } from "@nlc/shared";
 import { useLang, useT } from "../lang-context.js";
 import { tf } from "../i18n.js";
 

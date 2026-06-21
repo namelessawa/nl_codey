@@ -1,16 +1,16 @@
+import fs from "node:fs";
 import path from "node:path";
-import { app } from "electron";
 import {
   AgentService,
-  buildPhase4PromptAugmentation,
-} from "@coding-agent/agent-core";
-import { createLLMProvider, createLLMProviderFromEnv } from "@coding-agent/llm";
-import { Storage } from "@coding-agent/storage";
-import type { AgentEvent } from "@coding-agent/shared";
+  buildPromptAugmentation,
+} from "@nlc/agent-core";
+import { createLLMProvider, createLLMProviderFromEnv } from "@nlc/llm";
+import { Storage } from "@nlc/storage";
+import { nlcRoot, type AgentEvent } from "@nlc/shared";
 import { SettingsStore } from "./settings/store.js";
 import { InstallationGate } from "./installation-gate.js";
-import { Phase4SettingsStore } from "./phase4-settings-store.js";
-import { buildPhase3Ports } from "./phase3-ports.js";
+import { AdvancedSettingsStore } from "./advanced-settings-store.js";
+import { buildExtendedPorts } from "./extended-ports.js";
 import { buildPluginBundle } from "./plugin-runtime.js";
 
 export type Services = {
@@ -24,24 +24,42 @@ export type Services = {
    * prompt augmentation and tool wiring) and the Phase 4 IPC handlers so the
    * UI and the runtime always agree on what's enabled.
    */
-  phase4Settings: Phase4SettingsStore;
+  advancedSettings: AdvancedSettingsStore;
   /**
    * Broadcast a live event to the renderer. Exposed on the Services bundle so
    * IPC handlers (e.g. the semantic-index rebuild) can publish Phase 3
    * `index_status` updates without a back-channel reference.
    */
   emit: (event: AgentEvent) => void;
+  /**
+   * Absolute path to the resolved NL_Codey data root (`~/.nlc` or whatever
+   * `NLC_HOME` overrides to). Exposed so IPC handlers and the CLI surface can
+   * read/write peripheral state (Phase 4 datasets, plugin installs, etc.)
+   * without re-resolving the path themselves.
+   */
+  dataRoot: string;
 };
 
-/** Build the storage + settings + agent service. `emit` broadcasts live events. */
-export function buildServices(emit: (event: AgentEvent) => void): Services {
-  const userData = app.getPath("userData");
-  const dataDir = path.join(userData, "data");
+/**
+ * Build the storage + settings + agent service.
+ *
+ * The GUI is just a view of {@link nlcRoot} — both Electron and the `nlc` CLI
+ * go through the same factory so the on-disk state is single-sourced. `emit`
+ * broadcasts live events; the optional `dataRoot` override exists for tests
+ * and the CLI's `--data-root` flag.
+ */
+export function buildServices(
+  emit: (event: AgentEvent) => void,
+  opts: { dataRoot?: string } = {},
+): Services {
+  const dataRoot = opts.dataRoot ?? nlcRoot();
+  fs.mkdirSync(dataRoot, { recursive: true });
+  const dataDir = path.join(dataRoot, "data");
   const dbPath = path.join(dataDir, "workspace-state.db");
   const storage = new Storage(dbPath);
-  const settings = new SettingsStore(userData);
-  const installationGate = new InstallationGate(userData, emit);
-  const phase4Settings = new Phase4SettingsStore(userData);
+  const settings = new SettingsStore(dataRoot);
+  const installationGate = new InstallationGate(dataRoot, emit);
+  const advancedSettings = new AdvancedSettingsStore(dataRoot);
 
   // Forward-declared so the dep callbacks can refer to the services bundle
   // after it's fully built. AgentService construction takes the closures by
@@ -76,19 +94,19 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
     // base model). Failures are swallowed so an unhealthy Phase 4 surface
     // never blocks a normal run; the agent silently falls back to the
     // Phase 1/2 prompt.
-    getPhase4Augmentation: (workspaceId: string) => {
+    getPromptAugmentation: (workspaceId: string) => {
       try {
-        const flags = phase4Settings.get();
+        const flags = advancedSettings.get();
         const globalPatterns = flags.globalMemoryEnabled
-          ? storage.phase4.listGlobalPatterns(20).slice(0, 3)
+          ? storage.kg.listGlobalPatterns(20).slice(0, 3)
           : undefined;
         const styleSpec = flags.styleProfileEnabled
-          ? storage.phase4.getStyleSpec("project", workspaceId) ??
-            storage.phase4.getStyleSpec("global", null)
+          ? storage.style.getStyleSpec("project", workspaceId) ??
+            storage.style.getStyleSpec("global", null)
           : null;
-        const activeModel = storage.phase4.getActiveModel();
+        const activeModel = storage.finetune.getActiveModel();
         const includeModelIdentityReminder = !!activeModel && activeModel.kind !== "base";
-        return buildPhase4PromptAugmentation({
+        return buildPromptAugmentation({
           ...(globalPatterns ? { globalPatterns } : {}),
           styleSpec,
           includeModelIdentityReminder,
@@ -102,9 +120,9 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
     // Built per-run so settings changes (API key, embedder backend) take
     // effect on the next task. Failure returns null and the agent silently
     // falls back to the Phase 1/2 tool surface.
-    getPhase3Ports: (workspaceId: string) => {
+    getExtendedPorts: (workspaceId: string) => {
       try {
-        return buildPhase3Ports(bundle, workspaceId);
+        return buildExtendedPorts(bundle, workspaceId);
       } catch {
         return null;
       }
@@ -124,6 +142,6 @@ export function buildServices(emit: (event: AgentEvent) => void): Services {
     emit,
   });
 
-  bundle = { storage, settings, agent, installationGate, phase4Settings, emit };
+  bundle = { storage, settings, agent, installationGate, advancedSettings, emit, dataRoot };
   return bundle;
 }

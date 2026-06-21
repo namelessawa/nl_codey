@@ -1,6 +1,6 @@
 import type { ForwardedRef } from "react";
 import { forwardRef } from "react";
-import type { AgentRun, InstallationStatus, Workspace } from "@coding-agent/shared";
+import type { AgentRun, InstallationStatus, Workspace } from "@nlc/shared";
 import { Icon } from "./Icons.js";
 import { DockerStatusBadge } from "./DockerStatusBadge.js";
 import { useT } from "../lang-context.js";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { SandboxMode } from "@coding-agent/shared";
+import type { SandboxMode } from "@nlc/shared";
 import { api } from "../api.js";
 
 interface SandboxIndicatorProps {

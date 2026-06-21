@@ -3,7 +3,7 @@ import {
   DEFAULT_SHORTCUTS,
   type LanguagePreference,
   type ShortcutBindings,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { Icon } from "../Icons.js";
 import { t } from "../../i18n.js";
 

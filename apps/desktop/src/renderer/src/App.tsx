@@ -7,14 +7,14 @@ import type {
   AppSettings,
   LLMProviderId,
   Workspace,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import {
   DEFAULT_SHORTCUTS,
   PROVIDER_PRESETS,
   isRunActive,
   reduceAgentDetail,
   runPreconditionError,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "./api.js";
 import { useShortcuts } from "./hooks/useShortcuts.js";
 import { useInstallationGate } from "./hooks/useInstallationGate.js";
@@ -39,9 +39,18 @@ export function App(): JSX.Element {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [recents, setRecents] = useState<Workspace[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunIdState] = useState<string | null>(null);
   const [detail, setDetail] = useState<AgentRunDetail | null>(null);
-  const [liveText, setLiveText] = useState<string>("");
+  /**
+   * Per-run streaming text buffers. Keyed by runId so a delta arriving
+   * BEFORE `setActiveRunId` lands (the M6 race in submitComposer) still gets
+   * buffered against the correct run instead of being dropped. Cleared per
+   * runId when its run reaches a terminal status, or when a non-streaming
+   * step_added(message) commits the assistant text into the step log.
+   * Each buffer is capped at LIVE_BUFFER_BYTE_CAP to defend against an
+   * unbounded stream filling the renderer heap.
+   */
+  const [liveBuffers, setLiveBuffers] = useState<Record<string, string>>({});
   const [composer, setComposer] = useState<string>("");
   const [isComposingNew, setIsComposingNew] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
@@ -125,8 +134,51 @@ export function App(): JSX.Element {
   }, [installation]);
 
   const activeRunIdRef = useRef<string | null>(null);
-  activeRunIdRef.current = activeRunId;
+  // Write-through wrapper: keep ref + state in lockstep so the live event
+  // handler's runId filter never lags React's render phase. Without this the
+  // ref was updated during render (`activeRunIdRef.current = activeRunId`),
+  // which means deltas arriving between setActiveRunIdState and the next
+  // commit could be filtered against the stale ref (M5).
+  const setActiveRunId = useCallback((id: string | null) => {
+    activeRunIdRef.current = id;
+    setActiveRunIdState(id);
+  }, []);
   const modelChipRef = useRef<HTMLButtonElement | null>(null);
+
+  /**
+   * Mutate a single run's live buffer. Caps the buffer at 1 MiB and prefixes
+   * a truncation marker when overflow occurs — protects the renderer heap
+   * against an unbounded stream. Returns a new state object to keep React
+   * happy on shallow compare.
+   */
+  const appendLive = useCallback((runId: string, text: string): void => {
+    if (!runId || !text) return;
+    setLiveBuffers((prev) => {
+      const current = prev[runId] ?? "";
+      let next = current + text;
+      if (next.length > LIVE_BUFFER_BYTE_CAP) {
+        next = LIVE_BUFFER_TRUNCATED_MARKER + next.slice(-LIVE_BUFFER_BYTE_CAP);
+      }
+      return { ...prev, [runId]: next };
+    });
+  }, []);
+
+  const clearLive = useCallback((runId: string): void => {
+    setLiveBuffers((prev) => {
+      if (!(runId in prev)) return prev;
+      const next = { ...prev };
+      delete next[runId];
+      return next;
+    });
+  }, []);
+
+  const clearAllLive = useCallback((): void => {
+    setLiveBuffers({});
+  }, []);
+
+  // Display string for the currently-active run only. Other runs' buffers
+  // sit dormant — they may catch up the user when they switch threads.
+  const liveText = activeRunId ? (liveBuffers[activeRunId] ?? "") : "";
 
   // Initial setup: apply persisted appearance + LLM-configured flag, list recents.
   useEffect(() => {
@@ -162,19 +214,26 @@ export function App(): JSX.Element {
     setToast({ kind, text });
   }, []);
 
-  // Live event handler — keeps detail + threads + liveText in sync.
+  // Live event handler — keeps detail + threads + per-run live buffers in
+  // sync. Deltas are buffered by event.runId (NOT activeRunIdRef) so a fast
+  // stream that lands before the IPC `runAgentTask` resolves still gets
+  // captured for its true run (the M6 race). The display layer reads only
+  // the active run's buffer, so background runs accumulate silently.
   useEffect(() => {
     return api.onAgentEvent((event: AgentEvent) => {
       if (event.kind === "delta") {
-        if (event.runId === activeRunIdRef.current) {
-          setLiveText((prev) => prev + event.text);
-        }
+        appendLive(event.runId, event.text);
         return;
       }
+      // A non-streaming message step (the assistant turn that the loop just
+      // committed) supersedes the streamed buffer — clear it so the UI
+      // doesn't render the same text twice (live stream + step entry).
       if (event.kind === "step_added" && event.step.type === "message") {
-        if (event.step.runId === activeRunIdRef.current) setLiveText("");
+        clearLive(event.step.runId);
       } else if (event.kind === "run_updated" && isTerminalStatus(event.run.status)) {
-        if (event.run.id === activeRunIdRef.current) setLiveText("");
+        // Terminal status: buffer is no longer being added to. Drop it so the
+        // map doesn't accumulate dead runs across a long session.
+        clearLive(event.run.id);
       }
       // Refresh detail for the active run only.
       if (
@@ -197,7 +256,7 @@ export function App(): JSX.Element {
         }
       }
     });
-  }, []);
+  }, [appendLive, clearLive]);
 
   // Open the approval sheet automatically when the active run enters
   // waiting_for_user_approval (and a patch is present).
@@ -227,13 +286,13 @@ export function App(): JSX.Element {
     setWorkspace(ws);
     setActiveRunId(null);
     setDetail(null);
-    setLiveText("");
+    clearAllLive();
     setIsComposingNew(false);
     setError(null);
     setUserLabel(`local · ${shortName(ws.rootPath)}`);
     await refreshRuns(ws.id);
     setRecents(await api.listWorkspaces());
-  }, [refreshRuns]);
+  }, [refreshRuns, clearAllLive, setActiveRunId]);
 
   const guard = useCallback(async (fn: () => Promise<void>) => {
     setError(null);
@@ -262,9 +321,12 @@ export function App(): JSX.Element {
 
   const selectRun = (runId: string): Promise<void> =>
     guard(async () => {
+      // Switch the active run; setActiveRunId is write-through so the ref
+      // is correct before any await yields. The selected run's buffer
+      // survives across switches so the user sees an in-flight stream if
+      // they revisit a run while it's still emitting.
       setActiveRunId(runId);
       setIsComposingNew(false);
-      setLiveText("");
       const next = await api.getAgentRun(runId);
       setDetail(next);
     });
@@ -273,7 +335,6 @@ export function App(): JSX.Element {
     setIsComposingNew(true);
     setActiveRunId(null);
     setDetail(null);
-    setLiveText("");
     setComposer("");
     setApprovalOpen(false);
   };
@@ -291,9 +352,13 @@ export function App(): JSX.Element {
       const next = continuing
         ? await api.continueAgentTask(detail!.run.id, text)
         : await api.runAgentTask(workspace!.id, text);
+      // setActiveRunId is write-through (M5): the ref updates synchronously
+      // so the next delta event filter sees the correct run. The buffer for
+      // this run may already contain deltas that landed during the IPC
+      // round-trip (M6 — driveLoop fires before IPC returns) — those are
+      // kept, not zeroed, so the user sees the in-flight output.
       setActiveRunId(next.run.id);
       setDetail(next);
-      setLiveText("");
       setComposer("");
       setIsComposingNew(false);
       setRuns((prev) => upsertRun(prev, next.run));
@@ -339,7 +404,7 @@ export function App(): JSX.Element {
       setRuns([]);
       setActiveRunId(null);
       setDetail(null);
-      setLiveText("");
+      clearAllLive();
       setApprovalOpen(false);
       setIsComposingNew(false);
       const msg =
@@ -756,6 +821,16 @@ function isTerminalStatus(status: AgentRunState): boolean {
 
 const LEFT_COLLAPSED_KEY = "ui.leftCollapsed";
 const RIGHT_COLLAPSED_KEY = "ui.rightCollapsed";
+
+/**
+ * Hard cap on a single run's live-stream buffer (renderer side). 1 MiB is
+ * generous for any reasonable model turn (assistant text alone, deltas
+ * before they commit to a step). Beyond this the buffer self-truncates
+ * from the head so the renderer heap stays bounded even if a runaway
+ * stream comes in (e.g. a model stuck repeating tokens).
+ */
+const LIVE_BUFFER_BYTE_CAP = 1_048_576;
+const LIVE_BUFFER_TRUNCATED_MARKER = "[…earlier output truncated…]\n";
 
 function readBoolLocal(key: string): boolean {
   try {

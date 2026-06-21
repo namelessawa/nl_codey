@@ -6,7 +6,7 @@ import {
   type AppSettings,
   type TestConnectionResult,
   type ValidationIssue,
-} from "@coding-agent/shared";
+} from "@nlc/shared";
 import { api } from "../api.js";
 
 export type UseSettings = {

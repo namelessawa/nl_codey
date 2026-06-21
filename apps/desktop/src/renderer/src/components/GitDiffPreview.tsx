@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { GitWorkingTreeStatus } from "@coding-agent/shared";
+import type { GitWorkingTreeStatus } from "@nlc/shared";
 import { api } from "../api.js";
 
 interface GitDiffPreviewProps {
