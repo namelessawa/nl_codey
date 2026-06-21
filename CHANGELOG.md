@@ -1,11 +1,17 @@
 # Changelog
 
 All notable changes to this project are documented here.
-Format follows [Keep a Changelog](https://keepachangelog.com/); this project is pre-1.0 (`0.1.0`).
+Format follows [Keep a Changelog](https://keepachangelog.com/); the project is
+pre-1.0 — version numbers are illustrative, not yet semver-stable.
+
+Section conventions (Keep a Changelog):
+`Added` · `Changed` · `Deprecated` · `Removed` · `Fixed` · `Security`.
 
 ## [Unreleased]
 
-### Fixed (IPC code-review remediation — 18 findings from full frontend↔backend review)
+### Fixed
+
+**IPC code-review remediation — 18 findings from full frontend↔backend review.**
 Full review pass identified 18 confirmed issues across the IPC contract layer
 (46 candidates, 28 rejected after adversarial verification). All fixes are
 test-covered.
@@ -88,7 +94,17 @@ test-covered.
 - `Phase4SettingsStore.set` writes the JSON file with `mode: 0o600` matching
   the main settings store; was world-readable under default POSIX umask.
 
-### Added (provider — `/provider` picker with one-api-style preset catalogue + 5 custom slots)
+---
+
+## [0.1.0]
+
+Everything below this line represents the foundational build-up of the project
+(Phase 1 → Phase 4 → CLI + session split-out). Entry bodies are preserved
+verbatim from their original sprint/PR notes; section headers are
+lightly normalised from `### Section (subtitle)` to `### Section — subtitle`
+for grep/scan consistency, but the wording within is untouched.
+
+### Added — `/provider` picker with one-api-style preset catalogue + 5 custom slots
 - **New `@nlc/shared/providers` module.** Curated catalogue of 22 preset
   providers grouped by region (International / China / Aggregator /
   Self-hosted), inspired by the provider list in
@@ -124,7 +140,7 @@ test-covered.
   `model_change` event into the active session so the timeline reflects
   which provider was used for each turn.
 
-### Added (session — branchable JSONL conversation tree under `~/.nlc/agent.session/`)
+### Added — session — branchable JSONL conversation tree under `~/.nlc/agent.session/`
 - **New workspace package `@nlc/session`.** Replaces nothing — runs in
   parallel to the existing SQLite run history and captures the
   conversation at a level above runs. Lives entirely on plain `fs`, no
@@ -175,7 +191,7 @@ test-covered.
   - `nlc sessions show <id|path>` — dump a session file as raw JSONL.
   - All three accept `--workspace`, `--data-root`, and `--json`.
 
-### Fixed (TUI — opencode-style scrollback, fixed-height trace, bulletproof backspace)
+### Fixed — TUI — opencode-style scrollback, fixed-height trace, bulletproof backspace
 - **The `nlc` TUI now flows finished messages into the OS terminal's
   native scrollback.** Previously every state change repainted the entire
   Ink output tree, which meant the chat history scrolled off forever once
@@ -227,7 +243,7 @@ test-covered.
   use-loop}.{ts,tsx}` and new `apps/cli/src/tui/live-agent.tsx`.
   `pnpm typecheck` green across the whole workspace.
 
-### Added (first-run Docker bootstrap — "Start Docker & continue")
+### Added — first-run Docker bootstrap — "Start Docker & continue"
 - **DockerInstallModal can now launch Docker Desktop for the user.** Before
   this change, when Docker was installed but the daemon wasn't running, the
   first-run modal told the user to start it manually and click *Re-check*.
@@ -260,7 +276,7 @@ test-covered.
   already-running short-circuit (no wasted spawn). `pnpm typecheck` green;
   18/18 InstallationGate tests pass.
 
-### Fixed (CI — windows-latest docker e2e skip probe)
+### Fixed — CI — windows-latest docker e2e skip probe
 - **build-windows job failed on main** because
   `packages/tools/src/e2e-docker.test.ts` only checked `docker version`
   before deciding whether to skip the docker-bound suite. GitHub's
@@ -274,7 +290,7 @@ test-covered.
   engine (Docker Desktop / Linux CI) still run the full suite. Verified
   locally: 13 pass + 7 skip on a host with no daemon; `pnpm typecheck`
   green.
-### Fixed (bug audit follow-up — multi-agent + plugin install + Phase 4 plumbing)
+### Fixed — bug audit follow-up — multi-agent + plugin install + Phase 4 plumbing
 - **P1.1 (security): multi-agent reviewer no longer bypasses command
   approval.** `runPlanner` and `runReviewer` in
   `packages/agent-core/src/multi-agent.ts` hard-wired
@@ -383,7 +399,7 @@ test-covered.
   `*.debug.test.ts` real-LLM gates, `real-llm.integration.test.ts`
   preflight, `e2e-docker.test.ts` partials).
 
-### Added (Phase 3 / Phase 4 surface reachable from main UI)
+### Added — Phase 3 / Phase 4 surface reachable from main UI
 - **`AgentSettings` panel now exposes `multiAgentEnabled` and a standalone
   `sandboxEnabled` toggle.** `service.ts:355` has been reading
   `multiAgentEnabled` since Phase 3 landed, but the renderer had no toggle
@@ -459,7 +475,7 @@ test-covered.
   bypass agent reasoning by design and are clearly labelled as a debug
   channel that writes no snapshot and produces no run history.
 
-### Security (audit follow-up — plugin gates + debug-test hygiene + live events + renderer sandbox)
+### Security — audit follow-up — plugin gates + debug-test hygiene + live events + renderer sandbox
 - **P1 fix: plugin tools now respect read-only AND degraded gates.**
   `DynamicToolBundle` now carries `mutatingNames: readonly string[]`
   listing the qualified plugin-tool names whose declared permissions
@@ -537,7 +553,7 @@ test-covered.
   `storage.test.ts` remains excluded by the known environment
   caveat documented in `CLAUDE.md`.
 
-### Fixed (follow-up after PR #16 merge to `main`)
+### Fixed — follow-up after PR #16 merge to `main`
 - **`build-windows` CI typecheck unblocked.** Two debug trace harnesses
   (`packages/agent-core/src/complex-multiagent.debug.test.ts:382`,
   `packages/agent-core/src/full-trace.debug.test.ts:263`) called
@@ -586,7 +602,7 @@ Tests covering the above: 15 new in `service-race.test.ts`, 2 new in
 packages/agent-core packages/tools` reports 158 passed + 1 skipped
 (real-LLM preflight, no API key).
 
-### Security (CodeQL clearance on PR #16)
+### Security — CodeQL clearance on PR #16
 - **Cleared all 16 open code-scanning alerts** on `feat/phase4-multiagent-bugfixes`
   so the CodeQL ruleset gate can pass:
   - `js/second-order-command-line-injection` in
@@ -605,7 +621,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
     non-backtracking character classes, literal single spaces, and
     hand-rolled scans. All 107 affected-package tests still pass.
 
-### Changed (Sprint 4 — Phase 3/4 wired into the live agent loop)
+### Changed — Sprint 4 — Phase 3/4 wired into the live agent loop
 - **Phase 4 prompt augmentation is now actually injected into the system
   prompt.** Previously `buildPhase4PromptAugmentation` was defined and
   unit-tested but no production code called it; `getSystemPrompt` / the read-
@@ -687,7 +703,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
   passes without API credentials. To run: set `DEEPSEEK_API_KEY` and execute
   `pnpm exec vitest run packages/agent-core/src/real-llm.integration.test.ts`.
 
-### Changed (Sprint 3 — storage integrity + apply_patch hardening + Phase 4 cleanup)
+### Changed — Sprint 3 — storage integrity + apply_patch hardening + Phase 4 cleanup
 - **Storage gains foreign keys, unique constraints, cascade deletes, and a
   proper version-tracked migration path.** The Phase 1 tables (`agent_runs`,
   `agent_steps`, `agent_run_messages`, `file_snapshots`) used to declare
@@ -729,7 +745,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
   tooltip explaining the status. Snooze and dismiss still work and the
   proposal scan is unchanged.
 
-### Security (Sprint 2 — IPC validation + privileged-entry lockdown)
+### Security — Sprint 2 — IPC validation + privileged-entry lockdown
 - **P1: every IPC handler now runtime-validates its payload before touching
   the storage / filesystem / agent.** Previously each handler did
   `args as XYZArgs` and trusted that the renderer sent the right shape. A
@@ -771,7 +787,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
   "Approve all" in an OS dialog) before anything reaches the database.
   `setPluginEnabled` / `uninstallPlugin` gained inline shape checks too.
 
-### Security (Sprint 1 — unified security model)
+### Security — Sprint 1 — unified security model
 - **P0: docker/wsl `run_command` bypassed the approval/snapshot/rollback gate
   and wrote straight through the bind-mounted host workspace.** Previously,
   `runCommandWithPolicy` only enforced the host whitelist on the
@@ -812,7 +828,7 @@ packages/agent-core packages/tools` reports 158 passed + 1 skipped
   current effective behaviour — users who want the safer instruction-only
   mode opt in via the toggle.
 
-### Changed (Sprint 1 — unified configuration sources)
+### Changed — Sprint 1 — unified configuration sources
 - **Budget limits now come from `AppSettings.agent`.** `service.ts`
   previously called `clampBudgetLimits(DEFAULT_BUDGET_LIMITS)` with no
   reference to the GUI's "Max auto steps" or "Budget cap (USD)" sliders —
