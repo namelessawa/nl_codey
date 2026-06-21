@@ -10,7 +10,7 @@ import { nlcRoot, type AgentEvent } from "@nlc/shared";
 import { SettingsStore } from "./settings/store.js";
 import { InstallationGate } from "./installation-gate.js";
 import { Phase4SettingsStore } from "./phase4-settings-store.js";
-import { buildPhase3Ports } from "./phase3-ports.js";
+import { buildExtendedPorts } from "./extended-ports.js";
 import { buildPluginBundle } from "./plugin-runtime.js";
 
 export type Services = {
@@ -122,7 +122,7 @@ export function buildServices(
     // falls back to the Phase 1/2 tool surface.
     getPhase3Ports: (workspaceId: string) => {
       try {
-        return buildPhase3Ports(bundle, workspaceId);
+        return buildExtendedPorts(bundle, workspaceId);
       } catch {
         return null;
       }

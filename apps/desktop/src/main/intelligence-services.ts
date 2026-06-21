@@ -1,4 +1,4 @@
-/** Phase 3 main-process services: embedder, memory retriever, semantic indexer. */
+/** Intelligence main-process services: embedder, memory retriever, semantic indexer. */
 
 import { createEmbeddingProvider, SemanticIndexer } from "@nlc/semantic-index";
 import { MemoryRetriever } from "@nlc/memory";
@@ -6,9 +6,10 @@ import type { EmbeddingProvider, SandboxMode } from "@nlc/shared";
 import type { Services } from "./services.js";
 
 /**
- * Lazily-built Phase 3 helpers. The embedder is resolved from current settings
- * each time so an added/changed API key takes effect without restart; when no
- * key is configured a deterministic mock embedder is used (offline-friendly).
+ * Lazily-built intelligence helpers (embedder, memory retriever, semantic
+ * indexer). The embedder is resolved from current settings each time so an
+ * added/changed API key takes effect without restart; when no key is
+ * configured a deterministic mock embedder is used (offline-friendly).
  *
  * Sandbox mode is intentionally NOT stored here. It lives in
  * `AppSettings.agent.sandboxMode` so the GUI selector, the AgentService
@@ -16,7 +17,7 @@ import type { Services } from "./services.js";
  * source. The methods below are thin compatibility shims for the legacy
  * per-workspace IPC signatures.
  */
-export class Phase3Services {
+export class IntelligenceServices {
   constructor(private readonly services: Services) {}
 
   embedder(): EmbeddingProvider {

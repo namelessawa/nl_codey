@@ -11,8 +11,20 @@ import { testLLMConnection } from "@nlc/llm";
 import { readFileTool } from "@nlc/tools";
 import type { Services } from "./services.js";
 import { handle } from "./ipc-handle.js";
-import { registerPhase3Ipc } from "./phase3-ipc.js";
-import { registerPhase4Ipc } from "./phase4-ipc.js";
+import { registerMemoryIpc } from "./ipc/memory-ipc.js";
+import { registerSemanticIpc } from "./ipc/semantic-ipc.js";
+import { registerTaskIpc } from "./ipc/task-ipc.js";
+import { registerRoleIpc } from "./ipc/role-ipc.js";
+import { registerGitIpc } from "./ipc/git-ipc.js";
+import { registerSandboxIpc } from "./ipc/sandbox-ipc.js";
+import { registerKgIpc } from "./ipc/kg-ipc.js";
+import { registerStyleIpc } from "./ipc/style-ipc.js";
+import { registerLearningIpc } from "./ipc/learning-ipc.js";
+import { registerFinetuneIpc } from "./ipc/finetune-ipc.js";
+import { registerProposalsIpc } from "./ipc/proposals-ipc.js";
+import { registerClusterIpc } from "./ipc/cluster-ipc.js";
+import { registerPluginIpc } from "./ipc/plugin-ipc.js";
+import { registerAdvancedSettingsIpc } from "./ipc/advanced-settings-ipc.js";
 import {
   validateContinueAgentTask,
   validateReadFile,
@@ -144,8 +156,20 @@ export function registerIpc(services: Services): void {
   handle(IPC.openDockerInstallPage, () => installationGate.openInstallPage());
   handle(IPC.startDocker, () => installationGate.startDocker());
 
-  registerPhase3Ipc(services, requireWorkspaceRoot);
-  registerPhase4Ipc(services, requireWorkspaceRoot, services.dataRoot);
+  registerMemoryIpc(services);
+  registerSemanticIpc(services, requireWorkspaceRoot);
+  registerTaskIpc(services);
+  registerRoleIpc(services);
+  registerGitIpc(services, requireWorkspaceRoot);
+  registerSandboxIpc(services);
+  registerKgIpc(services);
+  registerStyleIpc(services, requireWorkspaceRoot);
+  registerLearningIpc(services);
+  registerFinetuneIpc(services, services.dataRoot);
+  registerProposalsIpc(services, requireWorkspaceRoot);
+  registerClusterIpc(services);
+  registerPluginIpc(services);
+  registerAdvancedSettingsIpc(services);
 }
 
 /** Broadcast an agent event to every open renderer window. */

@@ -1,9 +1,8 @@
 /**
- * Phase 3 single-agent port factory. Builds the live SemanticSearchPort /
- * MemoryPort / WebPort bundle that {@link AgentService.getPhase3Ports}
- * returns. Each call is per-workspace so the user's API key, embedder choice,
- * and workspace memory are all resolved at run time — no cached state lives
- * here.
+ * Extended (port-backed) tool factory. Builds the live SemanticSearchPort /
+ * MemoryPort / WebPort bundle that AgentService consumes via getPhase3Ports.
+ * Each call is per-workspace so the user's API key, embedder choice, and
+ * workspace memory are all resolved at run time — no cached state lives here.
  *
  * The web port uses a DuckDuckGo backend over the global fetch. Fetch-side
  * domain whitelisting is enforced in `@nlc/web-tools/webFetch` so we
@@ -28,21 +27,21 @@ import type {
 } from "@nlc/shared";
 import { createEntry, MemoryRetriever } from "@nlc/memory";
 import type { Services } from "./services.js";
-import { Phase3Services } from "./phase3-services.js";
+import { IntelligenceServices } from "./intelligence-services.js";
 
 /**
- * Build the Phase 3 port bundle for a specific workspace. Returns null when
- * the workspace is unknown (defensive: keeps the agent on the Phase 1/2
+ * Build the extended port bundle for a specific workspace. Returns null when
+ * the workspace is unknown (defensive: keeps the agent on the basic tool
  * surface instead of crashing on a stale id).
  */
-export function buildPhase3Ports(
+export function buildExtendedPorts(
   services: Services,
   workspaceId: string,
 ): ExtendedAgentPorts | null {
   const ws = services.storage.getWorkspace(workspaceId);
   if (!ws) return null;
-  const phase3 = new Phase3Services(services);
-  const embedder = phase3.embedder();
+  const intelligence = new IntelligenceServices(services);
+  const embedder = intelligence.embedder();
   const retriever = new MemoryRetriever(services.storage, embedder);
   const searchBackend: SearchBackend = createDuckDuckGoBackend();
 
