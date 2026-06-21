@@ -51,7 +51,14 @@ export function encodeProjectFolder(cwd: string): string {
   s = s.replace(ILLEGAL_CHARS, "_");
   // 6) Tidy trailing whitespace and stray trailing dashes — leading
   //    dashes are preserved (POSIX absolute path marker).
-  s = s.replace(/\s+$/g, "").replace(/-+$/g, "");
+  //    Note: avoid `\s+$` / `-+$` regexes here. CodeQL flags those as
+  //    js/polynomial-redos because a pathological cwd ending in many
+  //    spaces (or dashes) would force O(N²) backtracking. `String.trimEnd`
+  //    is O(N), and the manual char-index loop matches that.
+  s = s.trimEnd();
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 45 /* '-' */) end--;
+  if (end < s.length) s = s.slice(0, end);
   if (s.length === 0) {
     throw new Error("encodeProjectFolder: result is empty after encoding");
   }
