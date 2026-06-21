@@ -25,28 +25,28 @@ importers:
     dependencies:
       '@nlc/agent-core':
         specifier: workspace:*
-        version: link:../../packages/agent-core
+        version: link:../../packages/runtime/agent-core
       '@nlc/llm':
         specifier: workspace:*
-        version: link:../../packages/llm
+        version: link:../../packages/runtime/llm
       '@nlc/project-indexer':
         specifier: workspace:*
-        version: link:../../packages/project-indexer
+        version: link:../../packages/intelligence/project-indexer
       '@nlc/sandbox':
         specifier: workspace:*
-        version: link:../../packages/sandbox
+        version: link:../../packages/core/sandbox
       '@nlc/session':
         specifier: workspace:*
-        version: link:../../packages/session
+        version: link:../../packages/core/session
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../packages/core/shared
       '@nlc/storage':
         specifier: workspace:*
-        version: link:../../packages/storage
+        version: link:../../packages/core/storage
       '@nlc/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../../packages/runtime/tools
       '@vscode/ripgrep':
         specifier: ^1.15.9
         version: 1.18.0
@@ -86,64 +86,64 @@ importers:
     dependencies:
       '@nlc/agent-core':
         specifier: workspace:*
-        version: link:../../packages/agent-core
+        version: link:../../packages/runtime/agent-core
       '@nlc/distributed':
         specifier: workspace:*
-        version: link:../../packages/distributed
+        version: link:../../packages/advanced/distributed
       '@nlc/finetune':
         specifier: workspace:*
-        version: link:../../packages/finetune
+        version: link:../../packages/advanced/finetune
       '@nlc/git-integration':
         specifier: workspace:*
-        version: link:../../packages/git-integration
+        version: link:../../packages/integration/git-integration
       '@nlc/global-memory':
         specifier: workspace:*
-        version: link:../../packages/global-memory
+        version: link:../../packages/advanced/global-memory
       '@nlc/learning':
         specifier: workspace:*
-        version: link:../../packages/learning
+        version: link:../../packages/advanced/learning
       '@nlc/llm':
         specifier: workspace:*
-        version: link:../../packages/llm
+        version: link:../../packages/runtime/llm
       '@nlc/memory':
         specifier: workspace:*
-        version: link:../../packages/memory
+        version: link:../../packages/intelligence/memory
       '@nlc/orchestrator':
         specifier: workspace:*
-        version: link:../../packages/orchestrator
+        version: link:../../packages/intelligence/orchestrator
       '@nlc/planner':
         specifier: workspace:*
-        version: link:../../packages/planner
+        version: link:../../packages/intelligence/planner
       '@nlc/plugin-sdk':
         specifier: workspace:*
-        version: link:../../packages/plugin-sdk
+        version: link:../../packages/advanced/plugin-sdk
       '@nlc/proactive':
         specifier: workspace:*
-        version: link:../../packages/proactive
+        version: link:../../packages/advanced/proactive
       '@nlc/project-indexer':
         specifier: workspace:*
-        version: link:../../packages/project-indexer
+        version: link:../../packages/intelligence/project-indexer
       '@nlc/sandbox':
         specifier: workspace:*
-        version: link:../../packages/sandbox
+        version: link:../../packages/core/sandbox
       '@nlc/semantic-index':
         specifier: workspace:*
-        version: link:../../packages/semantic-index
+        version: link:../../packages/intelligence/semantic-index
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../../packages/core/shared
       '@nlc/storage':
         specifier: workspace:*
-        version: link:../../packages/storage
+        version: link:../../packages/core/storage
       '@nlc/style-profile':
         specifier: workspace:*
-        version: link:../../packages/style-profile
+        version: link:../../packages/advanced/style-profile
       '@nlc/tools':
         specifier: workspace:*
-        version: link:../../packages/tools
+        version: link:../../packages/runtime/tools
       '@nlc/web-tools':
         specifier: workspace:*
-        version: link:../../packages/web-tools
+        version: link:../../packages/integration/web-tools
       '@vscode/ripgrep':
         specifier: ^1.15.9
         version: 1.18.0
@@ -195,32 +195,11 @@ importers:
         specifier: 1.18.0
         version: 1.18.0
 
-  packages/agent-core:
+  packages/advanced/distributed:
     dependencies:
-      '@nlc/llm':
-        specifier: workspace:*
-        version: link:../llm
-      '@nlc/orchestrator':
-        specifier: workspace:*
-        version: link:../orchestrator
-      '@nlc/planner':
-        specifier: workspace:*
-        version: link:../planner
-      '@nlc/project-indexer':
-        specifier: workspace:*
-        version: link:../project-indexer
-      '@nlc/sandbox':
-        specifier: workspace:*
-        version: link:../sandbox
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../shared
-      '@nlc/storage':
-        specifier: workspace:*
-        version: link:../storage
-      '@nlc/tools':
-        specifier: workspace:*
-        version: link:../tools
+        version: link:../../core/shared
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -229,11 +208,11 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/distributed:
+  packages/advanced/finetune:
     dependencies:
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../core/shared
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -242,11 +221,11 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/finetune:
+  packages/advanced/global-memory:
     dependencies:
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../core/shared
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -255,27 +234,11 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/git-integration:
+  packages/advanced/learning:
     dependencies:
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.0
-        version: 22.19.19
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/global-memory:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
+        version: link:../../core/shared
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -284,11 +247,11 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/learning:
+  packages/advanced/plugin-sdk:
     dependencies:
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../core/shared
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -297,7 +260,33 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/llm:
+  packages/advanced/proactive:
+    dependencies:
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/advanced/style-profile:
+    dependencies:
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/core/sandbox:
     dependencies:
       '@nlc/shared':
         specifier: workspace:*
@@ -310,7 +299,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/memory:
+  packages/core/session:
     dependencies:
       '@nlc/shared':
         specifier: workspace:*
@@ -323,132 +312,13 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/orchestrator:
-    dependencies:
-      '@nlc/memory':
-        specifier: workspace:*
-        version: link:../memory
-      '@nlc/planner':
-        specifier: workspace:*
-        version: link:../planner
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.0
-        version: 22.19.19
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/planner:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.0
-        version: 22.19.19
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/plugin-sdk:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/proactive:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/project-indexer:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/sandbox:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/semantic-index:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.0
-        version: 22.19.19
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/session:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/shared:
+  packages/core/shared:
     devDependencies:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
 
-  packages/storage:
+  packages/core/storage:
     dependencies:
       '@nlc/shared':
         specifier: workspace:*
@@ -467,11 +337,43 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/style-profile:
+  packages/integration/git-integration:
     dependencies:
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../core/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/integration/web-tools:
+    dependencies:
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/intelligence/memory:
+    dependencies:
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
     devDependencies:
       typescript:
         specifier: ^5.7.2
@@ -480,17 +382,131 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.19)
 
-  packages/tools:
+  packages/intelligence/orchestrator:
+    dependencies:
+      '@nlc/memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@nlc/planner':
+        specifier: workspace:*
+        version: link:../planner
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/intelligence/planner:
+    dependencies:
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/intelligence/project-indexer:
+    dependencies:
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/intelligence/semantic-index:
+    dependencies:
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.19
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/runtime/agent-core:
+    dependencies:
+      '@nlc/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@nlc/orchestrator':
+        specifier: workspace:*
+        version: link:../../intelligence/orchestrator
+      '@nlc/planner':
+        specifier: workspace:*
+        version: link:../../intelligence/planner
+      '@nlc/project-indexer':
+        specifier: workspace:*
+        version: link:../../intelligence/project-indexer
+      '@nlc/sandbox':
+        specifier: workspace:*
+        version: link:../../core/sandbox
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+      '@nlc/storage':
+        specifier: workspace:*
+        version: link:../../core/storage
+      '@nlc/tools':
+        specifier: workspace:*
+        version: link:../tools
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/runtime/llm:
+    dependencies:
+      '@nlc/shared':
+        specifier: workspace:*
+        version: link:../../core/shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/runtime/tools:
     dependencies:
       '@nlc/project-indexer':
         specifier: workspace:*
-        version: link:../project-indexer
+        version: link:../../intelligence/project-indexer
       '@nlc/sandbox':
         specifier: workspace:*
-        version: link:../sandbox
+        version: link:../../core/sandbox
       '@nlc/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../core/shared
       '@vscode/ripgrep':
         specifier: ^1.15.9
         version: 1.18.0
@@ -501,22 +517,6 @@ importers:
       '@types/diff':
         specifier: ^6.0.0
         version: 6.0.0
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.19.19)
-
-  packages/web-tools:
-    dependencies:
-      '@nlc/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.0
-        version: 22.19.19
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
