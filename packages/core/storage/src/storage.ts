@@ -32,21 +32,23 @@ import {
   STRUCTURAL_MIGRATIONS,
 } from "./schema.js";
 import {
-  chunkFromRow,
-  chunkToBlob,
   embeddingToBlob,
   memoryEmbedding,
-  type ChunkRow,
-  type GitActionRow,
-  type MemoryRow,
-  type RoleMessageDbRow,
-  type TaskNodeRow,
-  toGitAction,
   toMemoryEntry,
-  toRoleMessageRow,
-  toTaskNode,
-} from "./phase3-rows.js";
-import { Phase4Storage } from "./phase4-store.js";
+  type MemoryRow,
+} from "./rows/memory-rows.js";
+import { chunkFromRow, chunkToBlob, type ChunkRow } from "./rows/chunk-rows.js";
+import { toTaskNode, type TaskNodeRow } from "./rows/task-rows.js";
+import { toRoleMessageRow, type RoleMessageDbRow } from "./rows/role-rows.js";
+import { toGitAction, type GitActionRow } from "./rows/git-action-rows.js";
+import { KgStore } from "./stores/kg-store.js";
+import { StyleStore } from "./stores/style-store.js";
+import { LearningStore } from "./stores/learning-store.js";
+import { FinetuneStore } from "./stores/finetune-store.js";
+import { ProposalsStore } from "./stores/proposals-store.js";
+import { ClusterStore } from "./stores/cluster-store.js";
+import { PluginStore } from "./stores/plugin-store.js";
+import { EvaluationStore } from "./stores/evaluation-store.js";
 
 type WorkspaceRow = { id: string; root_path: string; opened_at: number };
 type RunRow = {
@@ -88,8 +90,16 @@ export type RunUsageDelta = {
 /** Thin synchronous persistence layer over SQLite. Construction runs the schema. */
 export class Storage {
   private readonly db: Database.Database;
-  /** Phase 4 sub-facade. Lazily created on first access. */
-  private phase4Cache: Phase4Storage | null = null;
+
+  /** Advanced-feature sub-stores, all sharing this Storage instance's DB. */
+  readonly kg: KgStore;
+  readonly style: StyleStore;
+  readonly learning: LearningStore;
+  readonly finetune: FinetuneStore;
+  readonly proposals: ProposalsStore;
+  readonly cluster: ClusterStore;
+  readonly plugins: PluginStore;
+  readonly evaluation: EvaluationStore;
 
   constructor(dbPath: string) {
     if (dbPath !== ":memory:") {
@@ -113,12 +123,14 @@ export class Storage {
     this.migrate();
     this.applyStructuralMigrations(isFreshDb);
     this.db.exec(INDEX_SQL);
-  }
-
-  /** Phase 4 storage facade. Same underlying DB; safe to use freely. */
-  get phase4(): Phase4Storage {
-    if (!this.phase4Cache) this.phase4Cache = new Phase4Storage(this.db);
-    return this.phase4Cache;
+    this.kg = new KgStore(this.db);
+    this.style = new StyleStore(this.db);
+    this.learning = new LearningStore(this.db);
+    this.finetune = new FinetuneStore(this.db);
+    this.proposals = new ProposalsStore(this.db);
+    this.cluster = new ClusterStore(this.db);
+    this.plugins = new PluginStore(this.db);
+    this.evaluation = new EvaluationStore(this.db);
   }
 
   /** Apply additive column migrations, ignoring already-present columns. */

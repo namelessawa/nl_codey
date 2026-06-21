@@ -18,17 +18,17 @@ export function registerStyleIpc(services: Services, requireRoot: RequireRoot): 
 
   handle(IPC.getStyleSpec, (raw) => {
     const { scope, workspaceId } = validateGetStyleSpec(raw);
-    return storage.phase4.getStyleSpec(scope, workspaceId);
+    return storage.style.getStyleSpec(scope, workspaceId);
   });
   handle(IPC.upsertStyleSpec, (raw) => {
     const { spec } = validateUpsertStyleSpec(raw);
-    return storage.phase4.upsertStyleSpec(spec);
+    return storage.style.upsertStyleSpec(spec);
   });
   handle(IPC.extractStyleSpecFromCodebase, async (raw) => {
     const { workspaceId } = validateWorkspaceId(raw);
     const root = requireRoot(workspaceId);
     const files = await readSampleFiles(root, 50);
     const spec = extractStyleSpec(files, { scope: "project", workspaceId });
-    return storage.phase4.upsertStyleSpec(spec);
+    return storage.style.upsertStyleSpec(spec);
   });
 }

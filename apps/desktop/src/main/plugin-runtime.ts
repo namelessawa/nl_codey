@@ -59,7 +59,7 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
   const flags = services.phase4Settings.get();
   if (!flags.pluginsEnabled) return null;
 
-  const installations = services.storage.phase4
+  const installations = services.storage.plugins
     .listPlugins()
     .filter((inst) => inst.enabled);
   if (installations.length === 0) return null;
@@ -94,7 +94,7 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
   if (schemas.length === 0) return null;
 
   const host = new PluginHost(
-    () => services.storage.phase4.listPlugins(),
+    () => services.storage.plugins.listPlugins(),
     (mode) => makeSandboxHandle(mode),
   );
 

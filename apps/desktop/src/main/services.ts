@@ -98,13 +98,13 @@ export function buildServices(
       try {
         const flags = phase4Settings.get();
         const globalPatterns = flags.globalMemoryEnabled
-          ? storage.phase4.listGlobalPatterns(20).slice(0, 3)
+          ? storage.kg.listGlobalPatterns(20).slice(0, 3)
           : undefined;
         const styleSpec = flags.styleProfileEnabled
-          ? storage.phase4.getStyleSpec("project", workspaceId) ??
-            storage.phase4.getStyleSpec("global", null)
+          ? storage.style.getStyleSpec("project", workspaceId) ??
+            storage.style.getStyleSpec("global", null)
           : null;
-        const activeModel = storage.phase4.getActiveModel();
+        const activeModel = storage.finetune.getActiveModel();
         const includeModelIdentityReminder = !!activeModel && activeModel.kind !== "base";
         return buildPromptAugmentation({
           ...(globalPatterns ? { globalPatterns } : {}),

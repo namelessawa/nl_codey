@@ -18,9 +18,9 @@ export function registerFinetuneIpc(services: Services, userDataDir: string): vo
   // Resume queued jobs that may have been interrupted by an app restart.
   // Cheap when finetune is disabled (the runner short-circuits).
   finetuneRunner.resumeQueued();
-  const registry = new ModelRegistry(storage.phase4);
+  const registry = new ModelRegistry(storage.finetune);
 
-  handle(IPC.listFinetuneJobs, () => storage.phase4.listFinetuneJobs());
+  handle(IPC.listFinetuneJobs, () => storage.finetune.listFinetuneJobs());
   handle(IPC.createFinetuneJob, (raw) => {
     const { input } = validateCreateFinetuneJob(raw);
     if (!phase4Settings.get().finetuneEnabled) {
@@ -43,10 +43,10 @@ export function registerFinetuneIpc(services: Services, userDataDir: string): vo
   // ----- Evals (frozen suite snapshots + eval runs are finetune-adjacent) -----
   handle(IPC.listFrozenSnapshots, (raw) => {
     const a = validateListFrozenSnapshots(raw);
-    return storage.phase4.listFrozenSuiteSnapshots(a.modelId);
+    return storage.evaluation.listFrozenSuiteSnapshots(a.modelId);
   });
   handle(IPC.listEvalRuns, (raw) => {
     const a = validateListEvalRuns(raw);
-    return storage.phase4.listEvalRuns(a.taskId, a.modelId);
+    return storage.evaluation.listEvalRuns(a.taskId, a.modelId);
   });
 }

@@ -27,10 +27,10 @@ export function registerPluginIpc(services: Services): void {
   // any permission set. Fixed.
   const pluginRepo: PluginRepository = {
     installPlugin: (manifest, installPath, perms) =>
-      storage.phase4.installPlugin(manifest, installPath, perms),
-    listPlugins: () => storage.phase4.listPlugins(),
-    setPluginEnabled: (id, enabled) => storage.phase4.setPluginEnabled(id, enabled),
-    uninstallPlugin: (id) => storage.phase4.uninstallPlugin(id),
+      storage.plugins.installPlugin(manifest, installPath, perms),
+    listPlugins: () => storage.plugins.listPlugins(),
+    setPluginEnabled: (id, enabled) => storage.plugins.setPluginEnabled(id, enabled),
+    uninstallPlugin: (id) => storage.plugins.uninstallPlugin(id),
   };
   // Fallback prompter used only when the install IPC arrives without
   // pre-approval (e.g., a future programmatic install path). The renderer's
@@ -58,7 +58,7 @@ export function registerPluginIpc(services: Services): void {
   };
   const pluginLoader = new PluginLoader(pluginRepo, pluginPrompter);
 
-  handle(IPC.listPlugins, () => storage.phase4.listPlugins());
+  handle(IPC.listPlugins, () => storage.plugins.listPlugins());
   handle(IPC.installPlugin, async (raw): Promise<PluginInstallation> => {
     if (!phase4Settings.get().pluginsEnabled) {
       throw new Error("Plugins feature is disabled in advanced settings");
@@ -74,10 +74,10 @@ export function registerPluginIpc(services: Services): void {
   });
   handle(IPC.setPluginEnabled, (raw) => {
     const { id, enabled } = validateSetPluginEnabled(raw);
-    return storage.phase4.setPluginEnabled(id, enabled);
+    return storage.plugins.setPluginEnabled(id, enabled);
   });
   handle(IPC.uninstallPlugin, (raw) => {
     const { id } = validatePluginId(raw);
-    return { uninstalled: storage.phase4.uninstallPlugin(id) };
+    return { uninstalled: storage.plugins.uninstallPlugin(id) };
   });
 }

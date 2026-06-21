@@ -13,9 +13,9 @@ import type { Services } from "../services.js";
 
 export function registerKgIpc(services: Services): void {
   const { storage } = services;
-  const kg = new KnowledgeGraph(storage.phase4);
+  const kg = new KnowledgeGraph(storage.kg);
 
-  handle(IPC.listGlobalPatterns, () => storage.phase4.listGlobalPatterns());
+  handle(IPC.listGlobalPatterns, () => storage.kg.listGlobalPatterns());
   handle(IPC.contributeGlobalPattern, (raw) => {
     const { input } = validateContributeGlobalPattern(raw);
     return kg.contribute(input);
@@ -26,15 +26,15 @@ export function registerKgIpc(services: Services): void {
   });
   handle(IPC.deleteGlobalPattern, (raw) => {
     const { id } = validateDeleteGlobalPattern(raw);
-    return { deleted: storage.phase4.deleteGlobalPattern(id) };
+    return { deleted: storage.kg.deleteGlobalPattern(id) };
   });
   handle(IPC.getWorkspaceContribution, (raw) => {
     const { workspaceId } = validateWorkspaceId(raw);
-    return storage.phase4.getWorkspaceContribution(workspaceId);
+    return storage.kg.getWorkspaceContribution(workspaceId);
   });
   handle(IPC.setWorkspaceContribution, (raw) => {
     const { workspaceId, mode } = validateSetWorkspaceContribution(raw);
-    storage.phase4.setWorkspaceContribution(workspaceId, mode);
+    storage.kg.setWorkspaceContribution(workspaceId, mode);
     if (mode === "isolated") {
       // Retracting opt-in cascades: drop this workspace's contributions.
       kg.retractProject(workspaceId);

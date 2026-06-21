@@ -14,26 +14,23 @@ import type { TaskNode, TaskNodePatch } from "./task.js";
 import type { RoleMessage } from "./roles.js";
 import type { GitWorkingTreeStatus, PRDescription } from "./git.js";
 import type { SandboxMode } from "./sandbox.js";
+import type { GlobalPattern, GlobalPatternInput, WorkspaceContributionMode } from "./kg-types.js";
+import type { StyleScope, StyleSpec } from "./style-types.js";
+import type { FeedbackSignal, FeedbackSignalInput, PreferenceDataset } from "./learning-types.js";
 import type {
-  FeedbackSignal,
-  FeedbackSignalInput,
   FinetuneJob,
   FinetuneJobInput,
-  FrozenSuiteSnapshot,
-  GlobalPattern,
-  GlobalPatternInput,
   ModelRegistryEntry,
-  Phase4Settings,
+} from "./finetune-types.js";
+import type { WorkerNode } from "./cluster-types.js";
+import type { Proposal } from "./proposals-types.js";
+import type {
   PluginInstallation,
   PluginManifest,
   PluginPermission,
-  PreferenceDataset,
-  Proposal,
-  StyleScope,
-  StyleSpec,
-  WorkerNode,
-  WorkspaceContributionMode,
-} from "./phase4.js";
+} from "./plugin-types.js";
+import type { FrozenSuiteSnapshot } from "./evaluation-types.js";
+import type { Phase4Settings } from "./advanced-settings-types.js";
 import type { DockerStartResult, InstallationStatus, InstallationEvent } from "./installation.js";
 
 /** Consistent response envelope for every IPC call. */
@@ -278,7 +275,7 @@ export interface AgentApi {
   uninstallPlugin(args: { id: string }): Promise<IpcResult<{ uninstalled: boolean }>>;
   // --- Phase 4: evals ---
   listFrozenSnapshots(args?: { modelId?: string }): Promise<IpcResult<FrozenSuiteSnapshot[]>>;
-  listEvalRuns(args?: { taskId?: string; modelId?: string }): Promise<IpcResult<import("./phase4.js").EvalRunResult[]>>;
+  listEvalRuns(args?: { taskId?: string; modelId?: string }): Promise<IpcResult<import("./evaluation-types.js").EvalRunResult[]>>;
   // --- Phase 4: settings ---
   getPhase4Settings(): Promise<IpcResult<Phase4Settings>>;
   updatePhase4Settings(args: { settings: Phase4Settings }): Promise<IpcResult<Phase4Settings>>;

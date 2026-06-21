@@ -20,7 +20,7 @@ type RequireRoot = (workspaceId: string) => string;
 
 export function registerProposalsIpc(services: Services, requireRoot: RequireRoot): void {
   const { storage, phase4Settings } = services;
-  const proposalInbox = new ProposalInbox(storage.phase4);
+  const proposalInbox = new ProposalInbox(storage.proposals);
 
   handle(IPC.listProposals, (raw) => {
     const { workspaceId } = validateWorkspaceId(raw);
@@ -36,7 +36,7 @@ export function registerProposalsIpc(services: Services, requireRoot: RequireRoo
   });
   handle(IPC.convertProposal, async (raw) => {
     const { id } = validateProposalId(raw);
-    const proposal = storage.phase4.getProposal(id);
+    const proposal = storage.proposals.getProposal(id);
     if (!proposal) throw new Error(`Proposal not found: ${id}`);
     if (proposal.status === "converted_to_task") {
       throw new Error("Proposal has already been converted to a run.");

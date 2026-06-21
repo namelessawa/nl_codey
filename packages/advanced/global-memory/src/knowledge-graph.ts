@@ -10,7 +10,7 @@ import type {
   WorkspaceContributionMode,
 } from "@nlc/shared";
 
-/** Persistence port. Implemented by Phase4Storage in the main process. */
+/** Persistence port. Implemented by KgStore in the main process. */
 export interface KnowledgeGraphStore {
   createGlobalPattern(input: GlobalPatternInput): GlobalPattern;
   getGlobalPattern(id: string): GlobalPattern | null;
