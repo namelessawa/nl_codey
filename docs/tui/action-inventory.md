@@ -9,10 +9,10 @@
 
 - Catalogued slash commands: 18
 - Parser alias groups: 17
-- Keyboard/input actions: 18
+- Keyboard/input actions: 19
 - Modal routes: 3
 - Mouse implementation discovered: no
-- Committed CLI/TUI Vitest files: 3
+- Committed CLI/TUI Vitest files: 4
 
 ## Slash commands
 
@@ -41,7 +41,8 @@
 
 | Surface | Key | Implemented result | Automated test |
 | --- | --- | --- | --- |
-| Global | Ctrl+C | Cancel an active run; otherwise exit | None |
+| Global | Ctrl+C | Cancel an active run; otherwise exit | apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
+| Terminal | Resize below 80 columns | Reflow the frame and hide the trace panel | apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
 | Prompt | Enter | Submit a task or slash command; ignore blank input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - command/plain submission |
 | Prompt | Backspace/Delete/Ctrl+H/BS/DEL | Erase the final code unit | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - Windows DEL editing |
 | Prompt | Ctrl+W | Erase the previous word | None |
@@ -83,5 +84,7 @@ No mouse handler or mouse-mode lifecycle is committed. Mouse support must not be
 
 This inventory is discovery evidence, not completion evidence. Slash-command
 catalogue/parser and committed Ink interaction coverage are recorded where
-present. Remaining keyboard rows plus PTY and E2E behavior still require
-stable test identifiers. CI must regenerate this file and fail on a diff.
+present. ConPTY startup, resize, help completion, normal exit and idle Ctrl+C
+are also covered on Windows. Remaining keyboard rows and end-to-end agent
+workflows still require stable test identifiers. CI must regenerate this file
+and fail on a diff.

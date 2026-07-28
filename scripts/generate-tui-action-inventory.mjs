@@ -26,6 +26,16 @@ const inputRenderTestPath = rel(
 const inputRenderTestSource = fs.existsSync(inputRenderTestPath)
   ? fs.readFileSync(inputRenderTestPath, "utf8")
   : "";
+const ptyTestPath = rel(
+  "apps",
+  "cli",
+  "src",
+  "tui",
+  "conpty.pty.test.ts",
+);
+const ptyTestSource = fs.existsSync(ptyTestPath)
+  ? fs.readFileSync(ptyTestPath, "utf8")
+  : "";
 
 function discoverTestFiles(directory) {
   if (!fs.existsSync(directory)) return [];
@@ -221,6 +231,7 @@ function requirePattern(source, pattern, label) {
 
 const keyboardRows = [
   ["Global", "Ctrl+C", appSource, /key\.ctrl\s*&&\s*input\s*===\s*"c"/, "Cancel an active run; otherwise exit"],
+  ["Terminal", "Resize below 80 columns", appSource, /stdout\.on\("resize"[\s\S]*width\s*<\s*NARROW_BREAKPOINT/, "Reflow the frame and hide the trace panel"],
   ["Prompt", "Enter", promptSource, /if\s*\(key\.return\)/, "Submit a task or slash command; ignore blank input"],
   ["Prompt", "Backspace/Delete/Ctrl+H/BS/DEL", promptSource, /function isErase\(/, "Erase the final code unit"],
   ["Prompt", "Ctrl+W", promptSource, /key\.ctrl\s*&&\s*input\s*===\s*"w"/, "Erase the previous word"],
@@ -266,6 +277,11 @@ const inputEvidenceReady =
   requiredInputEvidence.every((needle) => inputRenderTestSource.includes(needle));
 const inputRenderTestLabel =
   "apps/cli/src/tui/inputs.render.test.tsx ([tui-render])";
+const ptyEvidenceReady =
+  ptyTestSource.includes('describeWindows("[tui-pty] Windows ConPTY lifecycle"') &&
+  ptyTestSource.includes("renders, resizes, completes /help and exits cleanly") &&
+  ptyTestSource.includes("turns idle Ctrl+C into deterministic process cleanup");
+const ptyTestLabel = "apps/cli/src/tui/conpty.pty.test.ts ([tui-pty])";
 
 const modalNames = [
   ...new Set(
@@ -298,14 +314,23 @@ const commandTable = table(
 
 const keyboardTable = table(
   ["Surface", "Key", "Implemented result", "Automated test"],
-  keyboardRows.map(([surface, key, , , result]) => [
-    surface,
-    key,
-    result,
-    inputEvidenceReady && inputRenderEvidence.has(`${surface}\u0000${key}`)
-      ? `${inputRenderTestLabel} - ${inputRenderEvidence.get(`${surface}\u0000${key}`)}`
-      : "None",
-  ]),
+  keyboardRows.map(([surface, key, , , result]) => {
+    const inputEvidence = inputRenderEvidence.get(`${surface}\u0000${key}`);
+    const ptyEvidence =
+      ptyEvidenceReady &&
+      ((surface === "Global" && key === "Ctrl+C") ||
+        (surface === "Terminal" && key === "Resize below 80 columns"));
+    return [
+      surface,
+      key,
+      result,
+      inputEvidenceReady && inputEvidence
+        ? `${inputRenderTestLabel} - ${inputEvidence}`
+        : ptyEvidence
+          ? ptyTestLabel
+          : "None",
+    ];
+  }),
 );
 
 const modalTable = table(
@@ -372,8 +397,10 @@ ${hasMouse ? "Mouse source exists and requires a dedicated interaction audit." :
 
 This inventory is discovery evidence, not completion evidence. Slash-command
 catalogue/parser and committed Ink interaction coverage are recorded where
-present. Remaining keyboard rows plus PTY and E2E behavior still require
-stable test identifiers. CI must regenerate this file and fail on a diff.
+present. ConPTY startup, resize, help completion, normal exit and idle Ctrl+C
+are also covered on Windows. Remaining keyboard rows and end-to-end agent
+workflows still require stable test identifiers. CI must regenerate this file
+and fail on a diff.
 `;
 
 const outputPath = rel("docs", "tui", "action-inventory.md");

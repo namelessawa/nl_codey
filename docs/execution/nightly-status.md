@@ -11,7 +11,7 @@ Overall state: **ACTIVE - RED BASELINE**
 | 1 | `codex/audit-production-complete` | Reality audit, control files, generated TUI inventory, current-doc path corrections | Ready for draft review; gate red on SBOX-ABORT-001 | Baseline captured; 18 commands, 18 key actions and 3 modal routes discovered |
 | 2 | `codex/p1-test-cli-foundation` | Formal test configs, live/debug opt-in gate, CLI build/smoke | Ready for draft review; integration gate remains red by design | Default offline gate: 685 passed; CLI bundle/help/version passed |
 | 3 | `codex/p1-tui-render-foundation` | TUI unit/render/ANSI frame tests | Ready for draft review | 8 Ink render/interaction assertions passed with ANSI normalization |
-| 4 | `codex/p1-tui-pty-harness` | Windows ConPTY + resize/key/cleanup primitives | Pending | No PTY dependency or harness at baseline |
+| 4 | `codex/p1-tui-pty-harness` | Windows ConPTY + resize/key/cleanup primitives | Ready for draft review | 2 real ConPTY lifecycle assertions passed |
 | 5 | `codex/p1-tui-core-workflows` | Core approval/reject/stop/session/recovery scenarios | Pending | Depends on PTY harness |
 | 6 | `codex/p0-storage-abi-gate` | Node/Electron ABI + migration gates | Pending | Four storage tests ABI-blocked |
 | 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Pending | Full suite measured 2115 ms vs 1500 ms |
@@ -76,13 +76,27 @@ Overall state: **ACTIVE - RED BASELINE**
 - No agent service or model provider was constructed, so `custom.txt` was not
   read and no network/model call occurred.
 
+### 2026-07-29 - Windows ConPTY harness
+
+- Added the Microsoft `node-pty` prebuilt and a headless xterm screen model so
+  PTY assertions inspect the current terminal buffer rather than concatenated
+  ANSI output.
+- Added a serial Windows PTY test project to the default offline gate.
+- Passed a real ConPTY lifecycle covering wide startup, resize below the
+  80-column breakpoint, trace-panel removal, `/help` completion, normal
+  `/exit`, idle Ctrl+C and bounded child cleanup.
+- Test fixtures use isolated temporary workspace/data roots and wait for child
+  exit before retry-safe cleanup, preventing open ConPTY handles from leaking.
+- The exercised paths do not submit an agent task; no provider was constructed
+  and no model/network call occurred.
+
 ## Current blockers
 
 1. Real storage assertions cannot run with the postinstall Electron binary in
    a Node process.
 2. Windows child-process abort exceeds its documented 1500 ms bound.
-3. Remaining TUI editing/global keys, PTY resize/cleanup and end-to-end
-   workflows still lack committed coverage.
+3. Remaining TUI editing keys and end-to-end mutation/session workflows still
+   lack committed coverage.
 4. Run/Session crash reconciliation and a unified mutation approval boundary
    are not yet proved.
 5. Full Node plugin execution remains outside an OS-enforced capability
