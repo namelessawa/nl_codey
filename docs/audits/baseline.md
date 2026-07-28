@@ -41,6 +41,16 @@ The non-Storage aggregate failure is recorded as a failure, not a pass. It is
 outside this branch's dynamic-tool scope, so no Sandbox timing threshold or
 implementation was changed.
 
+### GitHub Actions
+
+| Workflow | Head | Result | Evidence |
+| --- | --- | --- | --- |
+| `PR checks` | `42fc5c3` | Passed | [Run 30369184403](https://github.com/namelessawa/nl_codey/actions/runs/30369184403): frozen install, full typecheck, Agent Core tests, Desktop wiring test, non-Storage suite, and build all succeeded on `windows-latest`. |
+
+Storage was excluded in that workflow under
+[hardening-backlog.md](hardening-backlog.md); the green result does not claim a
+Node-ABI Storage integration pass.
+
 ### Original P0 verification
 
 | Command | Exit | Observed result |

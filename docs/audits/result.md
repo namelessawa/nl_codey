@@ -68,9 +68,12 @@ fail-closed behavior.
 
 ### GitHub Actions
 
-- `.github/workflows/pr-checks.yml` now runs the requested pull-request command
-  sequence on Windows. Its remote result is pending the branch push and will be
-  recorded in the Draft PR description rather than inferred from local runs.
+- [PR checks run 30369184403](https://github.com/namelessawa/nl_codey/actions/runs/30369184403)
+  passed on Windows for the reviewed code head `42fc5c3`: frozen install, full
+  typecheck, Agent Core tests, Desktop production-wiring test, the test suite
+  excluding `storage.test.ts`, and the production build all completed
+  successfully. Later documentation-only heads must retain their own visible
+  passing PR check; the Draft PR description records the current result.
 
 ### Storage ABI known gap
 
