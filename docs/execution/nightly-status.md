@@ -553,11 +553,31 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - Rollback removes only the isolated settings fixture and budget PTY case; it
   does not alter the production budget controller or user data.
 
+### 2026-07-29 - Native TUI provider configuration
+
+- Added a public-input `/provider` workflow that selects the OpenAI preset,
+  replaces its endpoint with a non-routable `.invalid` fixture URL, leaves the
+  API key empty and confirms the modal.
+- The workflow requires `cli-providers.json` to persist OpenAI as active with
+  the exact URL/model/protocol, and requires one append-only `model_change`
+  event in the session JSONL. Restarting the TUI and opening the picker must
+  reload the fixture URL from that store.
+- The scenario submits no task and asserts that no workspace-state SQLite
+  database exists, so no agent Run or provider request can occur. Ambient
+  provider keys are cleared; `custom.txt` was not read.
+- `pnpm typecheck` and the complete offline `pnpm test` gate passed: 630 unit,
+  80 Desktop-main, 10 TUI render, 2 PTY lifecycle, all 9 TUI E2E workflows
+  and 13 recovery assertions. Both restorative ABI matrices returned
+  `better-sqlite3` to Electron 33.4.11 / modules 130. The only durable files
+  were inside disposable provider/session test roots.
+- Rollback removes the provider PTY case and its modal-enter handshake helper;
+  production provider storage and picker behavior are unchanged.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. Remaining TUI provider, crash-tail, redaction and large-output scenarios
-   still lack full ConPTY coverage.
+2. Remaining TUI crash-tail, redaction and large-output scenarios still lack
+   full ConPTY coverage.

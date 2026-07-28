@@ -17,7 +17,7 @@ no output bytes with system ConPTY, the bundled ConPTY DLL, or winpty. The
 hosted workflows therefore set the explicit `NLC_SKIP_NATIVE_PTY=1` capability
 flag. They still run the deterministic TUI unit/render suites and every other
 default, integration, package, and installer gate. Interactive and self-hosted
-Windows validation must leave the flag unset so all ten native PTY scenarios
+Windows validation must leave the flag unset so all eleven native PTY scenarios
 remain mandatory.
 
 | Document scenario | Evidence in the current gate | Result |
@@ -27,6 +27,7 @@ remain mandatory.
 | 4. Patch reject | `n` reaches `cancelled`; the target file never appears and the prompt remains usable | Pass |
 | Command approve / reject | A whitelisted command stays pending until `y`, then persists command/exit audit output; `n` reaches `cancelled` with no command step | Pass |
 | Budget exhaustion | A one-iteration fixture reaches `budget_exceeded`, displays `max_iterations`, persists the exit reason, makes no patch, and returns prompt control | Pass |
+| Provider configuration | `/provider` selects OpenAI, saves an empty-key `.invalid` endpoint, persists the active provider and `model_change`, then reloads that endpoint after restart without creating an agent Run | Pass |
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
 | 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted | Pass |
 | 11. Resize | Covered by `pnpm test:tui:pty`: resize below 80 columns hides the trace pane and exits cleanly | Pass |
@@ -37,6 +38,6 @@ only after driving public TUI input, to assert the session header and message
 parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
-Still open from the document's 14-scenario matrix: provider configuration,
-redacted error display, and large-output/scrollback behavior. These remain
-explicit blockers rather than inferred coverage.
+Still open from the document's 14-scenario matrix: redacted error display and
+large-output/scrollback behavior. These remain explicit blockers rather than
+inferred coverage.

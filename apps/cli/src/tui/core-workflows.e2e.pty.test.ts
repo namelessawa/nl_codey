@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Storage } from "@nlc/storage";
 import { afterEach, describe, expect, it } from "vitest";
+import { loadProviderStore } from "../lib/provider-store.js";
 import { spawnTuiPty, type TuiPtyHarness } from "./pty-harness.js";
 
 const canRunNativePty =
@@ -25,6 +26,8 @@ type SessionLine = {
   role?: string;
   content?: string;
   parent?: { sessionId: string; messageId: string };
+  from?: { provider: string; model: string } | null;
+  to?: { provider: string; model: string };
 };
 
 afterEach(async () => {
@@ -201,6 +204,22 @@ async function pressCommandDecision(
   await session.waitForScreen(consumed, 1);
 }
 
+async function pressModalEnter(
+  session: TuiPtyHarness,
+  advanced: (screen: string) => boolean,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    session.write("\r");
+    try {
+      await session.waitForScreen(advanced, 2_000);
+      return;
+    } catch {
+      // A modal can paint one tick before its useInput effect mounts.
+    }
+  }
+  await session.waitForScreen(advanced, 1);
+}
+
 describeWindows("[tui-e2e] core agent workflows", () => {
   it("submits, previews, approves, and rolls back a real patch", async () => {
     const fixture = createFixture();
@@ -352,6 +371,88 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await enter(session, "/help");
     await session.waitForBuffer((buffer) => buffer.includes("/rollback"));
     await exit(session);
+  });
+
+  it("configures a provider, persists it, and reloads it without a model run", async () => {
+    const fixture = createFixture();
+    const configuredUrl = "https://provider-fixture.invalid/v1";
+    const session = start(fixture);
+
+    await session.waitForScreen((screen) => screen.includes("(idle)"));
+    await enter(session, "/provider");
+    await session.waitForScreen(
+      (screen) =>
+        screen.includes("[provider] select a provider") &&
+        screen.includes("OpenAI"),
+    );
+    await pressModalEnter(
+      session,
+      (screen) =>
+        screen.includes("[provider] base URL") &&
+        screen.includes("https://api.openai.com/v1"),
+    );
+
+    session.write("\x15");
+    session.write(configuredUrl);
+    await session.waitForScreen((screen) => screen.includes(configuredUrl));
+    await pressModalEnter(
+      session,
+      (screen) => screen.includes("[provider] API key"),
+    );
+    await pressModalEnter(
+      session,
+      (screen) =>
+        screen.includes("[provider] review and save") &&
+        screen.includes("(not set)") &&
+        screen.includes("gpt-4o"),
+    );
+    await pressModalEnter(
+      session,
+      (screen) => screen.includes("provider saved: OpenAI (openai)"),
+    );
+
+    const store = loadProviderStore(fixture.dataRoot);
+    expect(store.active).toBe("openai");
+    expect(store.providers.openai).toMatchObject({
+      key: "openai",
+      name: "OpenAI",
+      baseUrl: configuredUrl,
+      apiKey: "",
+      model: "gpt-4o",
+      protocol: "openai-compat",
+    });
+    expect(
+      fs.existsSync(path.join(fixture.dataRoot, "data", "workspace-state.db")),
+    ).toBe(false);
+    await exit(session);
+
+    const [sessionPath] = await waitForSessionFiles(fixture.dataRoot, 1);
+    const modelChanges = readSession(sessionPath!).filter(
+      (line) => line.type === "model_change",
+    );
+    expect(modelChanges).toHaveLength(1);
+    expect(modelChanges[0]?.to).toEqual({
+      provider: "openai-compat",
+      model: "gpt-4o",
+    });
+
+    const restarted = start(fixture);
+    await restarted.waitForScreen((screen) => screen.includes("(idle)"));
+    await enter(restarted, "/provider");
+    await restarted.waitForScreen((screen) =>
+      screen.includes("[provider] select a provider"),
+    );
+    await pressModalEnter(
+      restarted,
+      (screen) =>
+        screen.includes("[provider] base URL") &&
+        screen.includes(configuredUrl),
+    );
+    restarted.write("\x1b");
+    await restarted.waitForScreen((screen) =>
+      screen.includes("/provider cancelled."),
+    );
+    await exit(restarted);
   });
 
   it("cancels a streaming run and returns control to the prompt", async () => {
