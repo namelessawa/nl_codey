@@ -27,13 +27,13 @@ pnpm rebuild:native   # rebuild better-sqlite3 against Electron's ABI
 Run a single test file or test by name:
 
 ```powershell
-pnpm exec vitest run packages/llm/src/test-connection.test.ts
+pnpm exec vitest run packages/runtime/llm/src/test-connection.test.ts
 pnpm exec vitest run -t "masks all but the last 4 characters"
 ```
 
 ### Native module ABI gotcha (important)
 
-`better-sqlite3` is a native module. `postinstall` / `rebuild:native` compile it against **Electron's** ABI so `pnpm dev`/`build` work. But `pnpm test` runs under plain **Node**, which has a different `NODE_MODULE_VERSION`. As a result `packages/storage/src/storage.test.ts` (the only test that opens a real DB) **fails with an ABI mismatch unless the module is currently built for Node**. This is an environment/toolchain artifact, not a code regression — do not "fix" storage code in response to it. Every other test runs fine under Node because nothing else touches the native binding.
+`better-sqlite3` is a native module. `postinstall` / `rebuild:native` compile it against **Electron's** ABI so `pnpm dev`/`build` work. But `pnpm test` runs under plain **Node**, which has a different `NODE_MODULE_VERSION`. As a result `packages/core/storage/src/storage.test.ts` (the only test that opens a real DB) **fails with an ABI mismatch unless the module is currently built for Node**. This is an environment/toolchain artifact, not a code regression — do not "fix" storage code in response to it. Every other test runs fine under Node because nothing else touches the native binding.
 
 ## Architecture
 
@@ -100,6 +100,32 @@ Live updates flow the other way: main calls `broadcast(IPC_EVENT, event)` → re
 ### Tool limits (`packages/tools`)
 
 Each tool enforces hard caps so a single step can't flood the model or escape the workspace. File/search/exec tools: `list_files` ≤500 files (ignores `node_modules/.git/dist/build/target/.venv/__pycache__/.next/out`); `read_file` ≤200KB, rejects binary; `read_file_range` ≤500-line slice; `search_text` ripgrep, ≤100 matches, ≤300 chars context; `find_symbol` ≤400 files / ≤50 results; `run_command` 60s timeout, 100KB output cap, cwd = workspace root; `apply_patch`/`write_file` snapshot before write and apply transactionally — `apply_patch` accepts both unified diff and the V4A context format, auto-detected by the envelope. Phase 2/3 tools (port-injected, registered in `agent-core/src/tools-registry.ts`): `git_status`/`git_diff`, `record_plan`, `semantic_search`, `web_fetch`/`web_search` (domain-whitelisted), `read_memory`/`write_memory`, `propose_task_breakdown`/`update_task_status`, and the Coder↔Reviewer messages `request_review`/`approve_change`/`request_changes`. `ripgrep` is bundled via `@vscode/ripgrep` — no system install needed.
+
+### Dynamic tool trust boundary
+
+- `DynamicToolBundle.mutatingNames` is mandatory. Read-only bundles must
+  provide `[]`; missing or malformed classification is never interpreted as
+  safe.
+- Agent Core must validate every runtime bundle before exposing schemas or
+  retaining its dispatcher. Reject duplicate schemas/classifications,
+  classifications without schemas, and collisions with every built-in tool
+  surface. `HOST_RESERVED_TOOL_NAMES` is the single collision set and includes
+  Agent, extended, orchestrator, file-mutating, and degraded-mode dangerous
+  names such as `write_file`.
+- Dispatch must reject undeclared dynamic calls even if a model fabricates a
+  tool call it was never offered. Read-only mode must both hide and reject
+  mutating tools; degraded mode must reject them before source dispatch.
+- Multi-agent role schemas and execution allowlists must be derived from the
+  same filtered schema set. Dynamic tools belong to no role by default; a
+  Planner, Coder, or Reviewer fabrication must return `role_tool_denied`
+  before the shared executor or dynamic dispatcher.
+- Bundle factory and validation failures must create a visible `[security]`
+  Run Step. Factory error details must be bounded, single-line, credential-
+  redacted, and user-home-redacted before persistence or renderer emission.
+  Production wiring, including `buildServices`, must not swallow factory
+  exceptions before AgentService can audit them.
+- These controls do not isolate a full Node plugin process. Do not describe
+  manifest permissions as OS-enforced process isolation.
 
 ## Conventions
 

@@ -205,18 +205,38 @@ export async function runMultiAgentTask(
   return coordinator.run(parentRunId, userTask);
 }
 
+type RoleToolAccess = {
+  schemas: ToolSchema[];
+  allowedToolNames: ReadonlySet<string>;
+};
+
 /**
- * Filter schemas for a given role. We start from the base list + the
- * orchestrator-only schemas, then keep only the names the role is permitted
- * to call per {@link ROLE_TOOLS}.
+ * Build both halves of a role's capability boundary from the same filtered
+ * schema list. Dynamic tools are intentionally absent from {@link ROLE_TOOLS},
+ * so a validated bundle does not grant any multi-agent role permission by
+ * itself. A future role policy must add a name explicitly before the schema
+ * is exposed or the call can execute.
  */
-function schemasForRole(
+function toolAccessForRole(
   baseSchemas: readonly ToolSchema[],
   role: ToolRole,
-): ToolSchema[] {
-  const allowed = new Set(ROLE_TOOLS[role]);
+): RoleToolAccess {
+  const rolePolicy = new Set(ROLE_TOOLS[role]);
   const combined = [...baseSchemas, ...ORCHESTRATOR_TOOL_SCHEMAS];
-  return combined.filter((s) => allowed.has(s.name));
+  const schemas = combined.filter((schema) => rolePolicy.has(schema.name));
+  return {
+    schemas,
+    allowedToolNames: new Set(schemas.map((schema) => schema.name)),
+  };
+}
+
+function roleDeniedToolResult(role: ToolRole, toolName: string): string {
+  return JSON.stringify({
+    code: "role_tool_denied",
+    role,
+    toolName,
+    error: `Role "${role}" is not allowed to execute tool "${toolName}".`,
+  });
 }
 
 async function runPlanner(
@@ -224,6 +244,7 @@ async function runPlanner(
   userTask: string,
 ): Promise<TaskBreakdown> {
   let breakdown: TaskBreakdown | null = null;
+  const toolAccess = toolAccessForRole(deps.baseSchemas, "planner");
   const messages: LLMMessage[] = [
     { role: "system", content: PLANNER_PROMPT },
     { role: "user", content: userTask },
@@ -231,7 +252,7 @@ async function runPlanner(
 
   const outcome = await runToolLoop(messages, {
     llm: deps.llm,
-    tools: schemasForRole(deps.baseSchemas, "planner"),
+    tools: toolAccess.schemas,
     budget: deps.budget,
     signal: deps.signal,
     temperature: 0.2,
@@ -246,6 +267,9 @@ async function runPlanner(
     ...(deps.onAssistant ? { onAssistant: deps.onAssistant } : {}),
     ...(deps.onToolCall ? { onToolCall: deps.onToolCall } : {}),
     executeTool: async (call) => {
+      if (!toolAccess.allowedToolNames.has(call.name)) {
+        return roleDeniedToolResult("planner", call.name);
+      }
       if (call.name === "propose_task_breakdown") {
         const args = call.args as Record<string, unknown>;
         breakdown = {
@@ -300,6 +324,7 @@ async function runCoder(
   let pendingReview: { diff: string; testOutput: string } | null = null;
   let lastDiff = "";
   let lastTestOutput = "";
+  const toolAccess = toolAccessForRole(deps.baseSchemas, "coder");
 
   const userParts: string[] = [
     `TaskNode handoff: ${node.title}`,
@@ -329,7 +354,7 @@ async function runCoder(
 
   const outcome = await runToolLoop(messages, {
     llm: deps.llm,
-    tools: schemasForRole(deps.baseSchemas, "coder"),
+    tools: toolAccess.schemas,
     budget: deps.budget,
     signal: deps.signal,
     temperature: 0.2,
@@ -344,6 +369,9 @@ async function runCoder(
     ...(deps.onToolCall ? { onToolCall: deps.onToolCall } : {}),
     ...(deps.verifyAfterPatch ? { verifyAfterPatch: deps.verifyAfterPatch } : {}),
     executeTool: async (call) => {
+      if (!toolAccess.allowedToolNames.has(call.name)) {
+        return roleDeniedToolResult("coder", call.name);
+      }
       if (call.name === "request_review") {
         const args = call.args as Record<string, unknown>;
         pendingReview = {
@@ -411,6 +439,7 @@ async function runReviewer(
   diff: string,
   testOutput: string,
 ): Promise<ReviewResult> {
+  const toolAccess = toolAccessForRole(deps.baseSchemas, "reviewer");
   const userMsg = [
     `Review TaskNode: ${node.title}`,
     "",
@@ -434,7 +463,7 @@ async function runReviewer(
   let finalText = "";
   const outcome = await runToolLoop(messages, {
     llm: deps.llm,
-    tools: schemasForRole(deps.baseSchemas, "reviewer"),
+    tools: toolAccess.schemas,
     budget: deps.budget,
     signal: deps.signal,
     temperature: 0,
@@ -452,6 +481,9 @@ async function runReviewer(
     },
     ...(deps.onToolCall ? { onToolCall: deps.onToolCall } : {}),
     executeTool: async (call) => {
+      if (!toolAccess.allowedToolNames.has(call.name)) {
+        return roleDeniedToolResult("reviewer", call.name);
+      }
       if (call.name === "approve_change" || call.name === "request_changes") {
         // Reviewer's authoritative output is the JSON in the assistant
         // message; the tool calls are advisory acknowledgements only.

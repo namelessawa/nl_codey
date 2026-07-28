@@ -131,14 +131,10 @@ export function buildServices(
     // to the model as `plugin__<name>__<tool>` calls routed through
     // PluginHost (re-checks enablement + permissions per invocation).
     // Re-resolved per loop entry so an install/enable/disable lights up on
-    // the next task without restart. Failures fall back to no plugin tools.
-    getDynamicTools: () => {
-      try {
-        return buildPluginBundle(bundle);
-      } catch {
-        return null;
-      }
-    },
+    // the next task without restart. Factory failures intentionally propagate
+    // to AgentService, which records a visible [security] run step before
+    // continuing without dynamic tools.
+    getDynamicTools: () => buildPluginBundle(bundle),
     emit,
   });
 

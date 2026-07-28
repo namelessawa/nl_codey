@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import type {
   AgentEvent,
   AgentRun,
@@ -19,7 +20,12 @@ import type {
   ToolContext,
   ToolSchema,
 } from "@nlc/shared";
-import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@nlc/shared";
+import {
+  clampBudgetLimits,
+  contextWindowFor,
+  DEFAULT_BUDGET_LIMITS,
+  UNSAFE_WITHOUT_SANDBOX_TOOLS,
+} from "@nlc/shared";
 import type { FileChange } from "@nlc/sandbox";
 import type { Storage } from "@nlc/storage";
 import { detectProject } from "@nlc/project-indexer";
@@ -27,13 +33,19 @@ import { listFilesTool, parseTestFailure, runCommandWithPolicy } from "@nlc/tool
 import { rollbackRun } from "./rollback.js";
 import { BudgetController } from "./budget.js";
 import { runToolLoop, type ToolLoopOutcome } from "./loop.js";
-import { agentToolSchemas, createToolExecutor, type ExecutedTool } from "./tools-registry.js";
+import {
+  AGENT_TOOL_SCHEMAS,
+  agentToolSchemas,
+  createToolExecutor,
+  FILE_MUTATING_TOOLS,
+  type ExecutedTool,
+} from "./tools-registry.js";
 import { getReadonlySystemPrompt, getSystemPrompt } from "./prompts.js";
 import { phase1InitContext } from "./nlc-loop/index.js";
 import { getSummarizePrompt } from "./compressor.js";
 import { evaluateVerification } from "./verifier.js";
 import { analyzeRegressions, regressionNote } from "./regression.js";
-import { runMultiAgentTask } from "./multi-agent.js";
+import { ORCHESTRATOR_TOOL_SCHEMAS, runMultiAgentTask } from "./multi-agent.js";
 import { parseRow as parseRoleMessageRow } from "@nlc/orchestrator";
 
 /**
@@ -51,7 +63,10 @@ export type PromptAugmentationFn = (workspaceId: string) => string;
  * factory is called once per run so settings changes (API keys, sandbox mode)
  * take effect on the next task without requiring a restart.
  */
-import type { ExtendedAgentPorts } from "./extended-tools.js";
+import {
+  EXTENDED_AGENT_TOOL_NAMES,
+  type ExtendedAgentPorts,
+} from "./extended-tools.js";
 export type ExtendedPortsFn = (workspaceId: string) => ExtendedAgentPorts | null;
 
 /**
@@ -59,9 +74,9 @@ export type ExtendedPortsFn = (workspaceId: string) => ExtendedAgentPorts | null
  * The plugin runtime is the primary consumer; other future runtimes (HTTP
  * tools, MCP servers, etc.) can plug in the same shape.
  *
- * {@link mutatingNames} lists the bundle-level tools whose declared
- * permissions allow workspace mutation (e.g. plugin tools that ask for
- * `write_workspace` or `run_command`). The agent loop uses this set to
+ * {@link mutatingNames} is the complete bundle-level classification of tools
+ * whose declared permissions allow persistent mutation (e.g. plugin tools
+ * that ask for `write_workspace` or `run_command`). The agent loop uses this set to
  * extend two security gates that previously only knew about the built-in
  * mutating-tool names:
  *
@@ -72,15 +87,16 @@ export type ExtendedPortsFn = (workspaceId: string) => ExtendedAgentPorts | null
  *   these names at dispatch time, mirroring the gate that already covers
  *   built-in `run_command` / `apply_patch` / `write_file`.
  *
- * When the bundle source can't classify mutation (an empty array or a
- * missing field) the agent treats every dynamic tool as non-mutating —
- * the historical behaviour. Bundle authors who care about read-only /
- * degraded gating MUST populate this.
+ * The field is mandatory. Runtime validation rejects the entire bundle when
+ * it is missing, malformed, names an unknown schema, duplicates a name, or
+ * collides with a built-in tool. This is intentionally fail-closed: a dynamic
+ * source must make an explicit classification before any schema or dispatcher
+ * becomes reachable.
  */
 export type DynamicToolBundle = {
   schemas: readonly ToolSchema[];
   dispatch: (call: LLMToolCall, ctx: ToolContext) => Promise<ExecutedTool | null>;
-  mutatingNames?: readonly string[];
+  mutatingNames: readonly string[];
 };
 
 /**
@@ -92,21 +108,143 @@ export type DynamicToolBundleFn = () => DynamicToolBundle | null;
 
 const MAX_INITIAL_FILES = 200;
 const MAX_STEP_CONTENT = 4000;
+const STEP_TRUNCATION_MARKER = "…(truncated)";
+const DYNAMIC_TOOL_NAME = /^[a-z][a-z0-9_-]*$/;
+
+/**
+ * Every host-owned name that an untrusted dynamic source must never shadow.
+ * This is the single collision boundary for agent schemas, Phase 3 extensions,
+ * orchestrator schemas, file mutators, and degraded-mode dangerous tools.
+ */
+export const HOST_RESERVED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  ...AGENT_TOOL_SCHEMAS.map((schema) => schema.name),
+  ...EXTENDED_AGENT_TOOL_NAMES,
+  ...ORCHESTRATOR_TOOL_SCHEMAS.map((schema) => schema.name),
+  ...FILE_MUTATING_TOOLS,
+  ...UNSAFE_WITHOUT_SANDBOX_TOOLS,
+]);
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
+}
+
+export type DynamicToolBundleValidation =
+  | { ok: true; bundle: DynamicToolBundle }
+  | { ok: false; reason: string };
+
+/**
+ * Validate an untrusted dynamic-tool bundle before either half of the tool
+ * boundary becomes reachable. Types alone are insufficient here because
+ * plugins, future MCP adapters, or plain JavaScript callers can bypass them.
+ */
+export function validateDynamicToolBundle(input: unknown): DynamicToolBundleValidation {
+  if (!isRecord(input)) {
+    return { ok: false, reason: "bundle must be an object" };
+  }
+  if (!Array.isArray(input.schemas) || input.schemas.length === 0) {
+    return { ok: false, reason: "schemas must be a non-empty array" };
+  }
+  if (typeof input.dispatch !== "function") {
+    return { ok: false, reason: "dispatch must be a function" };
+  }
+  if (!Object.prototype.hasOwnProperty.call(input, "mutatingNames")) {
+    return { ok: false, reason: "mutatingNames classification is required" };
+  }
+  if (!Array.isArray(input.mutatingNames)) {
+    return { ok: false, reason: "mutatingNames must be an array" };
+  }
+
+  const schemaNames = new Set<string>();
+  const schemas: ToolSchema[] = [];
+  for (const [index, schema] of input.schemas.entries()) {
+    if (
+      !isRecord(schema) ||
+      typeof schema.name !== "string" ||
+      !DYNAMIC_TOOL_NAME.test(schema.name) ||
+      typeof schema.description !== "string" ||
+      !isRecord(schema.parameters)
+    ) {
+      return { ok: false, reason: `schemas[${index}] is not a valid tool schema` };
+    }
+    if (HOST_RESERVED_TOOL_NAMES.has(schema.name)) {
+      return {
+        ok: false,
+        reason: `dynamic tool "${schema.name}" conflicts with a built-in tool`,
+      };
+    }
+    if (schemaNames.has(schema.name)) {
+      return { ok: false, reason: `duplicate dynamic tool schema "${schema.name}"` };
+    }
+    schemaNames.add(schema.name);
+    schemas.push({
+      name: schema.name,
+      description: schema.description,
+      parameters: schema.parameters,
+    });
+  }
+
+  const classifiedNames = new Set<string>();
+  const mutatingNames: string[] = [];
+  for (const [index, name] of input.mutatingNames.entries()) {
+    if (typeof name !== "string") {
+      return { ok: false, reason: `mutatingNames[${index}] must be a string` };
+    }
+    if (!schemaNames.has(name)) {
+      return {
+        ok: false,
+        reason: `mutating tool "${name}" has no matching schema`,
+      };
+    }
+    if (classifiedNames.has(name)) {
+      return { ok: false, reason: `duplicate mutating tool name "${name}"` };
+    }
+    classifiedNames.add(name);
+    mutatingNames.push(name);
+  }
+
+  const sourceDispatch = input.dispatch as DynamicToolBundle["dispatch"];
+  return {
+    ok: true,
+    bundle: {
+      schemas,
+      mutatingNames,
+      dispatch: async (call, ctx) => {
+        if (schemaNames.has(call.name)) {
+          return sourceDispatch(call, ctx);
+        }
+        // Built-in calls must fall through to the built-in dispatcher. Every
+        // other name is an undeclared dynamic call and is refused here,
+        // before the source dispatcher can see it.
+        if (HOST_RESERVED_TOOL_NAMES.has(call.name)) return null;
+        return {
+          name: call.name,
+          resultText: JSON.stringify({
+            error: `Dynamic tool "${call.name}" was not declared by the validated bundle.`,
+          }),
+          isError: true,
+        };
+      },
+    },
+  };
+}
 
 /**
  * Strip mutating dynamic-tool schemas from the bundle when read-only mode
  * is active. Returns the bundle unchanged when read-only is off, the
  * mutating set is empty, or the bundle itself is null.
  */
-function filterDynamicBundleForReadOnly(
+export function filterDynamicBundleForReadOnly(
   bundle: DynamicToolBundle | null,
   readOnly: boolean,
 ): DynamicToolBundle | null {
-  if (!bundle || !readOnly) return bundle;
-  const mutating = bundle.mutatingNames ?? [];
-  if (mutating.length === 0) return bundle;
+  if (!bundle) return null;
+  const validation = validateDynamicToolBundle(bundle);
+  if (!validation.ok) return null;
+  if (!readOnly) return validation.bundle;
+  const mutating = validation.bundle.mutatingNames;
+  if (mutating.length === 0) return validation.bundle;
   const mutSet = new Set(mutating);
-  const safeSchemas = bundle.schemas.filter((s) => !mutSet.has(s.name));
+  const safeSchemas = validation.bundle.schemas.filter((s) => !mutSet.has(s.name));
   return {
     schemas: safeSchemas,
     dispatch: async (call, ctx) => {
@@ -124,9 +262,9 @@ function filterDynamicBundleForReadOnly(
           isError: true,
         };
       }
-      return bundle.dispatch(call, ctx);
+      return validation.bundle.dispatch(call, ctx);
     },
-    mutatingNames: bundle.mutatingNames,
+    mutatingNames: validation.bundle.mutatingNames,
   };
 }
 
@@ -143,10 +281,10 @@ function filterDynamicBundleForReadOnly(
  */
 function wrapAssertForDynamicPlugins(
   base: ((toolName: string) => void) | undefined,
-  mutatingNames: readonly string[] | undefined,
+  mutatingNames: readonly string[],
 ): ((toolName: string) => void) | undefined {
   if (!base) return undefined;
-  if (!mutatingNames || mutatingNames.length === 0) return base;
+  if (mutatingNames.length === 0) return base;
   const mutSet = new Set(mutatingNames);
   return (toolName: string): void => {
     base(toolName);
@@ -297,6 +435,34 @@ export class AgentService {
   private effectiveReadOnly(): boolean {
     if (this.readOnlyOverride !== undefined) return this.readOnlyOverride;
     return this.getAgentSettings().readOnly === true;
+  }
+
+  /**
+   * Resolve and validate dynamic tools once per loop entry. Rejections are
+   * persisted as an error step so a security denial is visible in both the UI
+   * and the run audit trail; no schema or dispatcher from the rejected bundle
+   * is retained.
+   */
+  private resolveDynamicToolBundle(runId: string): DynamicToolBundle | null {
+    if (!this.getDynamicTools) return null;
+    let candidate: unknown;
+    try {
+      candidate = this.getDynamicTools();
+    } catch (err) {
+      this.addStep(runId, "error", formatDynamicBundleFactoryFailureStep(err));
+      return null;
+    }
+    if (candidate === null) return null;
+    const validation = validateDynamicToolBundle(candidate);
+    if (!validation.ok) {
+      this.addStep(
+        runId,
+        "error",
+        `[security] Dynamic tools disabled: invalid bundle (${validation.reason}).`,
+      );
+      return null;
+    }
+    return validation.bundle;
   }
 
   listRuns(workspaceId: string): AgentRun[] {
@@ -678,12 +844,7 @@ export class AgentService {
     // Resolve the dynamic tool bundle (plugins / future MCP servers) once per
     // loop entry. Same fail-safe: any failure produces null and the agent
     // keeps running on the Phase 1/2 + Phase 3 surface.
-    let dynamicBundle: DynamicToolBundle | null = null;
-    try {
-      dynamicBundle = this.getDynamicTools?.() ?? null;
-    } catch {
-      dynamicBundle = null;
-    }
+    const dynamicBundle = this.resolveDynamicToolBundle(runId);
     // Read-only mode: strip mutating dynamic tools from BOTH the advertised
     // schema and the dispatch path so a plugin can't sneak in a write.
     const safeBundle = filterDynamicBundleForReadOnly(dynamicBundle, readOnly);
@@ -692,7 +853,7 @@ export class AgentService {
     // run_command / apply_patch / write_file).
     const gateAssert = wrapAssertForDynamicPlugins(
       this.assertToolAllowed,
-      dynamicBundle?.mutatingNames,
+      dynamicBundle?.mutatingNames ?? [],
     );
     const execute = createToolExecutor({
       ctx,
@@ -845,12 +1006,7 @@ export class AgentService {
     } catch {
       phase3Ports = null;
     }
-    let dynamicBundle: DynamicToolBundle | null = null;
-    try {
-      dynamicBundle = this.getDynamicTools?.() ?? null;
-    } catch {
-      dynamicBundle = null;
-    }
+    const dynamicBundle = this.resolveDynamicToolBundle(runId);
     // Same plugin-aware read-only + degraded gates the single-agent path
     // installs. Multi-agent runs go through the same executor, so an
     // unfiltered dynamic bundle would let a plugin tool slip past both
@@ -858,7 +1014,7 @@ export class AgentService {
     const safeBundle = filterDynamicBundleForReadOnly(dynamicBundle, readOnly);
     const gateAssert = wrapAssertForDynamicPlugins(
       this.assertToolAllowed,
-      dynamicBundle?.mutatingNames,
+      dynamicBundle?.mutatingNames ?? [],
     );
 
     const execute = createToolExecutor({
@@ -1533,7 +1689,90 @@ function summarizeArgs(call: LLMToolCall): string {
 }
 
 function truncateStep(text: string): string {
-  return text.length > MAX_STEP_CONTENT ? `${text.slice(0, MAX_STEP_CONTENT)}…(truncated)` : text;
+  return limitStepContent(text);
+}
+
+/**
+ * Format an untrusted dynamic-source failure for SQLite and renderer audit
+ * surfaces. Only the sanitized, bounded message is returned; stacks and raw
+ * exception objects never cross this boundary.
+ */
+export function formatDynamicBundleFactoryFailureStep(err: unknown): string {
+  const detail = sanitizeDynamicSourceError(err);
+  return limitStepContent(
+    `[security] Dynamic tools disabled: bundle factory failed (${detail}).`,
+  );
+}
+
+function sanitizeDynamicSourceError(err: unknown): string {
+  let message: string;
+  try {
+    const raw = err instanceof Error ? err.message : err;
+    message = typeof raw === "string" ? raw : String(raw);
+  } catch {
+    message = "Unknown dynamic source error";
+  }
+
+  let sanitized = message
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!sanitized) sanitized = "Unknown dynamic source error";
+
+  sanitized = redactLocalUserDirectories(sanitized)
+    .replace(
+      /\b([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]+:[^@\s/]+@/gi,
+      "$1[REDACTED]@",
+    )
+    .replace(
+      /([?&](?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password)=)[^&#\s]*/gi,
+      "$1[REDACTED]",
+    )
+    .replace(
+      /\bAuthorization\s*[:=]\s*[^,;]+/gi,
+      "Authorization: [REDACTED]",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(
+      /\b(api[\s_-]?key|apikey|access[\s_-]?token|auth[\s_-]?token|token|secret|password)\b\s*[:=]\s*[^\s,;]+/gi,
+      "$1=[REDACTED]",
+    );
+
+  return sanitized;
+}
+
+function redactLocalUserDirectories(message: string): string {
+  const candidates = new Set(
+    [homedir(), process.env.USERPROFILE, process.env.HOME].filter(
+      (value): value is string => typeof value === "string" && value.length >= 3,
+    ),
+  );
+  let redacted = message;
+  for (const candidate of candidates) {
+    redacted = replaceLiteralInsensitive(redacted, candidate, "[USER_HOME]");
+    redacted = replaceLiteralInsensitive(
+      redacted,
+      candidate.replaceAll("\\", "/"),
+      "[USER_HOME]",
+    );
+  }
+  return redacted;
+}
+
+function replaceLiteralInsensitive(
+  input: string,
+  literal: string,
+  replacement: string,
+): string {
+  if (!literal) return input;
+  const escaped = literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return input.replace(new RegExp(escaped, "gi"), replacement);
+}
+
+function limitStepContent(text: string): string {
+  if (text.length <= MAX_STEP_CONTENT) return text;
+  const contentLength = MAX_STEP_CONTENT - STEP_TRUNCATION_MARKER.length;
+  return `${text.slice(0, contentLength)}${STEP_TRUNCATION_MARKER}`;
 }
 
 function formatCommandOutput(out: RunCommandOutput): string {
