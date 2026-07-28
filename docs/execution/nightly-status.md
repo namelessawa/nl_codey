@@ -2,7 +2,7 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - DEFAULT RED ON KNOWN CONPTY CLEANUP FLAKE; INTEGRATION GREEN**
+Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; CI/TUI/PRODUCT WORK REMAINS**
 
 ## Batch board
 
@@ -22,6 +22,7 @@ Overall state: **ACTIVE - DEFAULT RED ON KNOWN CONPTY CLEANUP FLAKE; INTEGRATION
 | 12 | `codex/p0-secret-redaction-tails` | Semantic/eval/fine-tune/Desktop/CLI redaction tails | Ready for draft review; SEC-SECRET-001 closed | Full default gate, 7 Storage and 19 integration assertions pass |
 | 13 | `codex/p0-storage-migration-backup` | Historical SQLite migration backup and recovery | Ready for draft review; DATA-MIG-001 closed | Full default gate, 10 Storage and 19 integration assertions pass |
 | 14 | `codex/p0-rollback-recovery` | Durable single/many/partial/restart rollback | Ready for draft review; REC-ROLLBACK-001 closed; default red on known ConPTY cleanup flake | 13 restorative recovery assertions and 19 integration assertions pass; exact bytes/existence/Run state proved |
+| 15 | `codex/p1-tui-crash-cleanup` | Deterministic loaded ConPTY crash cleanup | Ready for draft review; default gate restored green | Awaited Windows tree termination; clean 5/5 targeted and loaded TUI E2E passes with immediate temp cleanup |
 
 ## Work log
 
@@ -377,11 +378,29 @@ Overall state: **ACTIVE - DEFAULT RED ON KNOWN CONPTY CLEANUP FLAKE; INTEGRATION
   counted as replacement evidence.
 - No live LLM call occurred and `custom.txt` was not read or printed.
 
+### 2026-07-29 - Deterministic loaded ConPTY crash cleanup
+
+- Replaced the harness's fire-and-forget `taskkill /T /F` with a bounded,
+  awaited child lifecycle. The harness now spends up to 75% of its public
+  termination budget on the Windows tree traversal, then waits the remainder
+  for node-pty's exit event.
+- Kept node-pty's `kill()` out of the Windows fallback. Version 1.1 starts a
+  console-list helper that races an already-terminated ConPTY and emits
+  `AttachConsole failed`; the awaited `taskkill` path releases the process tree
+  without that orphan/noise tail.
+- The real approval-crash/restart fixture passed cleanly in two targeted 5/5
+  TUI E2E runs after the final ordering, and the loaded full default sequence
+  then passed all slices: 624 unit, 80 Desktop-main, renderer/preload/CLI/TUI,
+  both ConPTY lifecycle checks, all 5 TUI E2E workflows, and all 13 recovery
+  assertions. Both native stages restored and verified Electron 33.4.11 /
+  modules 130.
+- `pnpm test:integration` passed 10 Storage and 19 integration assertions with
+  environment-gated skips, then restored the Electron ABI. No live LLM call
+  occurred and `custom.txt` was not read.
+
 ## Current blockers
 
-1. The approval-crash ConPTY fixture intermittently fails to reap its killed
-   process within 10 seconds and leaves a locked temporary directory.
-2. `CI-LIVE-001` and `CI-RELEASE-001` still need explicit opt-in live-smoke and
+1. `CI-LIVE-001` and `CI-RELEASE-001` still need explicit opt-in live-smoke and
    clean Windows release workflow evidence.
-3. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
+2. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.

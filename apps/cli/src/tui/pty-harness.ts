@@ -161,12 +161,15 @@ export class TuiPtyHarness {
   async terminate(timeoutMs = 10_000): Promise<PtyExit> {
     if (!this.exited) {
       if (process.platform === "win32") {
-        const killer = spawnChild(
-          "taskkill.exe",
-          ["/PID", String(this.pid), "/T", "/F"],
-          { windowsHide: true, stdio: "ignore" },
-        );
-        killer.unref();
+        const started = Date.now();
+        // Await taskkill instead of unref'ing it so its Windows tree traversal
+        // finishes (or reports the target already gone) before the exit wait.
+        // Avoid pty.kill here because node-pty 1.1's ConPTY console-list helper
+        // races an already-terminated console and prints AttachConsole errors.
+        const killBudget = Math.min(7_500, Math.max(500, timeoutMs * 0.75));
+        await terminateWindowsTree(this.pid, killBudget);
+        const remaining = Math.max(250, timeoutMs - (Date.now() - started));
+        return this.waitForExit(remaining);
       } else {
         this.pty.kill();
       }
@@ -188,4 +191,32 @@ export class TuiPtyHarness {
 
 export function spawnTuiPty(options: TuiPtyOptions): TuiPtyHarness {
   return new TuiPtyHarness(options);
+}
+
+async function terminateWindowsTree(pid: number, timeoutMs: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const killer = spawnChild(
+      "taskkill.exe",
+      ["/PID", String(pid), "/T", "/F"],
+      { windowsHide: true, stdio: "ignore" },
+    );
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      try {
+        killer.kill();
+      } catch {
+        // Best effort; the remaining PTY exit wait reports any real timeout.
+      }
+      finish();
+    }, timeoutMs);
+    timer.unref();
+    killer.once("close", finish);
+    killer.once("error", finish);
+  });
 }
