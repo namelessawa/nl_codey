@@ -27,8 +27,8 @@
     "@nlc/shared": "workspace:*",
     "@nlc/storage": "workspace:*",
     "@nlc/tools": "workspace:*",
-    "better-sqlite3": "^11.7.0",
     "@vscode/ripgrep": "^1.15.9",
+    "better-sqlite3": "^11.7.0",
     "bindings": "^1.5.0",
     "file-uri-to-path": "^1.0.0",
     "ink": "^5.0.1",
@@ -38,6 +38,8 @@
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "esbuild": "^0.24.0",
+    "ink-testing-library": "4.0.0",
+    "strip-ansi": "7.2.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

@@ -10,7 +10,7 @@ Overall state: **ACTIVE - RED BASELINE**
 | --- | --- | --- | --- | --- |
 | 1 | `codex/audit-production-complete` | Reality audit, control files, generated TUI inventory, current-doc path corrections | Ready for draft review; gate red on SBOX-ABORT-001 | Baseline captured; 18 commands, 18 key actions and 3 modal routes discovered |
 | 2 | `codex/p1-test-cli-foundation` | Formal test configs, live/debug opt-in gate, CLI build/smoke | Ready for draft review; integration gate remains red by design | Default offline gate: 685 passed; CLI bundle/help/version passed |
-| 3 | `codex/p1-tui-render-foundation` | TUI unit/render/ANSI frame tests | Pending | No committed TUI tests at baseline |
+| 3 | `codex/p1-tui-render-foundation` | TUI unit/render/ANSI frame tests | Ready for draft review | 8 Ink render/interaction assertions passed with ANSI normalization |
 | 4 | `codex/p1-tui-pty-harness` | Windows ConPTY + resize/key/cleanup primitives | Pending | No PTY dependency or harness at baseline |
 | 5 | `codex/p1-tui-core-workflows` | Core approval/reject/stop/session/recovery scenarios | Pending | Depends on PTY harness |
 | 6 | `codex/p0-storage-abi-gate` | Node/Electron ABI + migration gates | Pending | Four storage tests ABI-blocked |
@@ -61,13 +61,28 @@ Overall state: **ACTIVE - RED BASELINE**
 - `custom.txt` remained ignored and unread by test processes. No explicit live
   model smoke was required for this batch.
 
+### 2026-07-29 - TUI render foundation
+
+- Added the Ink 5-compatible testing library and pinned ANSI normalization as
+  CLI development dependencies.
+- Added a dedicated `test:tui:render` project and included it in the default
+  offline gate.
+- Passed eight render/interaction assertions covering themed header/footer
+  frames, ANSI stripping, live trace retention, streaming state, Prompt
+  completion and Windows DEL input, bounded patch previews, approve/reject,
+  and two-way provider/skill picker navigation.
+- Updated the generated inventory so the covered command, key and modal rows
+  point to their committed test evidence; uncovered rows remain `None`.
+- No agent service or model provider was constructed, so `custom.txt` was not
+  read and no network/model call occurred.
+
 ## Current blockers
 
 1. Real storage assertions cannot run with the postinstall Electron binary in
    a Node process.
 2. Windows child-process abort exceeds its documented 1500 ms bound.
-3. TUI key/modal/render, PTY and end-to-end workflows still lack committed
-   coverage.
+3. Remaining TUI editing/global keys, PTY resize/cleanup and end-to-end
+   workflows still lack committed coverage.
 4. Run/Session crash reconciliation and a unified mutation approval boundary
    are not yet proved.
 5. Full Node plugin execution remains outside an OS-enforced capability

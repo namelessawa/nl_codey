@@ -16,6 +16,16 @@ const commandTestPath = rel("apps", "cli", "src", "tui", "commands.test.ts");
 const commandTestSource = fs.existsSync(commandTestPath)
   ? fs.readFileSync(commandTestPath, "utf8")
   : "";
+const inputRenderTestPath = rel(
+  "apps",
+  "cli",
+  "src",
+  "tui",
+  "inputs.render.test.tsx",
+);
+const inputRenderTestSource = fs.existsSync(inputRenderTestPath)
+  ? fs.readFileSync(inputRenderTestPath, "utf8")
+  : "";
 
 function discoverTestFiles(directory) {
   if (!fs.existsSync(directory)) return [];
@@ -233,6 +243,30 @@ for (const [, key, source, pattern, result] of keyboardRows) {
   requirePattern(source, pattern, `${key}: ${result}`);
 }
 
+const inputRenderEvidence = new Map([
+  ["Prompt\u0000Enter", "command/plain submission"],
+  ["Prompt\u0000Backspace/Delete/Ctrl+H/BS/DEL", "Windows DEL editing"],
+  ["Prompt\u0000Tab", "command completion"],
+  ["Approval\u0000Y", "approval callback"],
+  ["Approval\u0000N/Q", "rejection callback"],
+  ["Provider picker\u0000Up/Down", "two-way navigation"],
+  ["Provider picker\u0000Enter", "step advance"],
+  ["Provider picker\u0000Escape", "cancel callback"],
+  ["Skill install picker\u0000Up/Down", "two-way navigation"],
+  ["Skill install picker\u0000Enter", "target callback"],
+]);
+const requiredInputEvidence = [
+  "handles Windows DEL input",
+  "routes approval keys",
+  "navigates both directions in the skill picker",
+  "navigates, advances and cancels the provider picker",
+];
+const inputEvidenceReady =
+  inputRenderTestSource.length > 0 &&
+  requiredInputEvidence.every((needle) => inputRenderTestSource.includes(needle));
+const inputRenderTestLabel =
+  "apps/cli/src/tui/inputs.render.test.tsx ([tui-render])";
+
 const modalNames = [
   ...new Set(
     [...appSource.matchAll(/<(Approval|[A-Z][A-Za-z]*Picker)\b/g)].map(
@@ -268,7 +302,9 @@ const keyboardTable = table(
     surface,
     key,
     result,
-    "None",
+    inputEvidenceReady && inputRenderEvidence.has(`${surface}\u0000${key}`)
+      ? `${inputRenderTestLabel} - ${inputRenderEvidence.get(`${surface}\u0000${key}`)}`
+      : "None",
   ]),
 );
 
@@ -280,7 +316,15 @@ const modalTable = table(
       ProviderPicker: "/provider",
       SkillInstallPicker: "/skills-generate <description>",
     };
-    return [name, pathByName[name] ?? "Discovered in InnerApp JSX", "Modal blocks global/prompt input", "None"];
+    const modalCovered =
+      inputEvidenceReady &&
+      ["Approval", "ProviderPicker", "SkillInstallPicker"].includes(name);
+    return [
+      name,
+      pathByName[name] ?? "Discovered in InnerApp JSX",
+      "Modal blocks global/prompt input",
+      modalCovered ? inputRenderTestLabel : "None",
+    ];
   }),
 );
 
@@ -327,9 +371,9 @@ ${hasMouse ? "Mouse source exists and requires a dedicated interaction audit." :
 ## Coverage gate
 
 This inventory is discovery evidence, not completion evidence. Slash-command
-catalogue/parser coverage is recorded where present; keyboard, modal, render,
-PTY, and E2E rows still require stable test identifiers. CI must regenerate
-this file and fail on a diff.
+catalogue/parser and committed Ink interaction coverage are recorded where
+present. Remaining keyboard rows plus PTY and E2E behavior still require
+stable test identifiers. CI must regenerate this file and fail on a diff.
 `;
 
 const outputPath = rel("docs", "tui", "action-inventory.md");

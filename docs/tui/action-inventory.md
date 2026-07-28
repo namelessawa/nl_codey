@@ -12,7 +12,7 @@
 - Keyboard/input actions: 18
 - Modal routes: 3
 - Mouse implementation discovered: no
-- Committed CLI/TUI Vitest files: 1
+- Committed CLI/TUI Vitest files: 3
 
 ## Slash commands
 
@@ -42,22 +42,22 @@
 | Surface | Key | Implemented result | Automated test |
 | --- | --- | --- | --- |
 | Global | Ctrl+C | Cancel an active run; otherwise exit | None |
-| Prompt | Enter | Submit a task or slash command; ignore blank input | None |
-| Prompt | Backspace/Delete/Ctrl+H/BS/DEL | Erase the final code unit | None |
+| Prompt | Enter | Submit a task or slash command; ignore blank input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - command/plain submission |
+| Prompt | Backspace/Delete/Ctrl+H/BS/DEL | Erase the final code unit | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - Windows DEL editing |
 | Prompt | Ctrl+W | Erase the previous word | None |
 | Prompt | Ctrl+U | Clear the input | None |
 | Prompt | Up/Down | Move through command suggestions | None |
-| Prompt | Tab | Complete the selected slash command | None |
+| Prompt | Tab | Complete the selected slash command | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - command completion |
 | Prompt | Escape | Clear prompt and command suggestions | None |
 | Prompt | Ctrl+C | Clear prompt input | None |
-| Approval | Y | Approve the pending patch | None |
-| Approval | N/Q | Reject the pending patch | None |
-| Provider picker | Up/Down | Move through providers | None |
-| Provider picker | Enter | Advance or save | None |
-| Provider picker | Escape | Cancel the picker | None |
+| Approval | Y | Approve the pending patch | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - approval callback |
+| Approval | N/Q | Reject the pending patch | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - rejection callback |
+| Provider picker | Up/Down | Move through providers | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - two-way navigation |
+| Provider picker | Enter | Advance or save | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - step advance |
+| Provider picker | Escape | Cancel the picker | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - cancel callback |
 | Provider editor | Backspace/Delete, Ctrl+W, Ctrl+U | Edit the active field | None |
-| Skill install picker | Up/Down | Move through install targets | None |
-| Skill install picker | Enter | Confirm the install target | None |
+| Skill install picker | Up/Down | Move through install targets | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - two-way navigation |
+| Skill install picker | Enter | Confirm the install target | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - target callback |
 | Skill install picker | Escape/Q | Cancel skill generation | None |
 
 Not implemented in the current prompt editor: cursor movement, Home/End,
@@ -68,9 +68,9 @@ or preservation tests across resize.
 
 | Modal route | Open path | Input ownership | Automated test |
 | --- | --- | --- | --- |
-| Approval | Agent emits patch_ready | Modal blocks global/prompt input | None |
-| SkillInstallPicker | /skills-generate <description> | Modal blocks global/prompt input | None |
-| ProviderPicker | /provider | Modal blocks global/prompt input | None |
+| Approval | Agent emits patch_ready | Modal blocks global/prompt input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) |
+| SkillInstallPicker | /skills-generate <description> | Modal blocks global/prompt input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) |
+| ProviderPicker | /provider | Modal blocks global/prompt input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) |
 
 The help catalogue is appended to the message stream; it is not a modal.
 Session list/tree are also stream messages rather than interactive pickers.
@@ -82,6 +82,6 @@ No mouse handler or mouse-mode lifecycle is committed. Mouse support must not be
 ## Coverage gate
 
 This inventory is discovery evidence, not completion evidence. Slash-command
-catalogue/parser coverage is recorded where present; keyboard, modal, render,
-PTY, and E2E rows still require stable test identifiers. CI must regenerate
-this file and fail on a diff.
+catalogue/parser and committed Ink interaction coverage are recorded where
+present. Remaining keyboard rows plus PTY and E2E behavior still require
+stable test identifiers. CI must regenerate this file and fail on a diff.
