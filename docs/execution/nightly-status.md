@@ -27,6 +27,10 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 17 | `codex/p1-release-ci-gates` | Required CI, CLI package and Windows install gates | Ready for draft review; hosted Release green; main-target required checks remain | Run 30405876544 passed clean install, tests, integration, builds, CLI/NSIS smoke and artifact upload |
 | 18 | `codex/p1-tui-command-approval` | Native TUI command confirmation and rejection | Ready for draft review; command scenarios closed | 630 unit, 10 render, 2 lifecycle, 7 E2E and 13 recovery assertions passed |
 | 19 | `codex/p1-tui-budget-exhaustion` | Native TUI budget circuit-breaker evidence | Ready for draft review; budget scenario closed | 630 unit, 10 render, 2 lifecycle, 8 E2E and 13 recovery assertions passed |
+| 20 | `codex/p1-tui-provider-configuration` | Native provider setup and restart persistence | Ready for draft review; provider scenario closed | 630 unit, 2 lifecycle, 9 E2E and 13 recovery assertions passed |
+| 21 | `codex/p1-tui-redacted-error` | Native provider-error redaction through TUI/SQLite/JSONL | Ready for draft review; redaction scenario closed | 631 unit, 2 lifecycle, 10 E2E and 13 recovery assertions passed |
+| 22 | `codex/p1-tui-large-scrollback` | Native large-output retention and scrollback navigation | Ready for draft review; document behavior matrix closed | 632 unit, 2 lifecycle, 11 E2E and 13 recovery assertions passed |
+| 23 | `codex/p1-tui-crash-soak` | Five-cycle bounded ConPTY crash cleanup | Ready for draft review; TUI crash-tail blocker closed | 5/5 soak, 11 E2E and 13 recovery assertions passed; ABI restored |
 
 ## Work log
 
@@ -620,11 +624,33 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - Rollback removes the large-output Mock branch, PTY assertion and three
   harness scroll helpers; production TUI rendering is unchanged.
 
+### 2026-07-29 - Bounded TUI crash cleanup soak
+
+- Added a dedicated `pnpm test:tui:crash-soak` gate so expensive repeated
+  process-tree cleanup evidence stays explicit instead of lengthening every
+  default developer run.
+- Five serial real-ConPTY cycles each stop the process at pending patch
+  approval, require the PTY root PID to disappear within the bounded
+  terminator window, restart into interrupted-Run recovery without applying
+  the patch, exit normally, and immediately remove the entire fixture root.
+- The gate uses only the offline Mock provider with ambient keys cleared. It
+  performs no network request and does not read `custom.txt`.
+- The first soak invocation never submitted a task because the new fixture had
+  copied a PowerShell-misdecoded prompt glyph (`鉂?`) instead of the real UTF-8
+  `❯`. All five cases timed out before process termination; the ABI wrapper
+  still restored Electron. The fixture now uses the same UTF-8 prompt
+  handshake as the core E2E suite.
+- The corrected named soak passed all 5 cycles in 48.4 seconds (each cycle
+  9.4-10.3 seconds), and `pnpm typecheck` passed. The complete offline
+  `pnpm test` gate remained green with 632 unit, 80 Desktop-main, 10 TUI
+  render, 2 PTY lifecycle, 11 TUI E2E and 13 recovery assertions; all native
+  matrices restored Electron 33.4.11 / modules 130.
+- Rollback removes the named config/script/test and its evidence row; the
+  production TUI and process-tree terminator are unchanged.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. The remaining TUI crash-tail stability gate still lacks its final bounded
-   ConPTY soak evidence.

@@ -17,8 +17,8 @@ no output bytes with system ConPTY, the bundled ConPTY DLL, or winpty. The
 hosted workflows therefore set the explicit `NLC_SKIP_NATIVE_PTY=1` capability
 flag. They still run the deterministic TUI unit/render suites and every other
 default, integration, package, and installer gate. Interactive and self-hosted
-Windows validation must leave the flag unset so all thirteen native PTY scenarios
-remain mandatory.
+Windows validation must leave the flag unset so the default thirteen native PTY
+scenarios and the separate five-cycle crash soak remain mandatory.
 
 | Document scenario | Evidence in the current gate | Result |
 | --- | --- | --- |
@@ -34,12 +34,12 @@ remain mandatory.
 | 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted | Pass |
 | 11. Resize | Covered by `pnpm test:tui:pty`: resize below 80 columns hides the trace pane and exits cleanly | Pass |
 | 12. Crash recovery | The process is killed at patch approval; restart links SQLite Run to JSONL Session, marks it interrupted once, and leaves the patch absent | Pass |
+| Crash-tail soak | `pnpm test:tui:crash-soak` repeats approval termination/recovery five times; every root PID exits within the bound, recovery is visible, normal exit succeeds, and the fixture directory is immediately removable | Pass |
 
 The E2E code never writes a session file directly. It reads the produced JSONL
 only after driving public TUI input, to assert the session header and message
 parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
-Every TUI behavior called out as open in the document's scenario matrix now has
-native PTY evidence. Crash-tail process cleanup remains tracked separately as a
-stability gate rather than being inferred from these behavior assertions.
+Every TUI behavior and the separately tracked crash-tail stability requirement
+now have native PTY evidence.
