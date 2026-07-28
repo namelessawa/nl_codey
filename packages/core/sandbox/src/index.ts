@@ -19,3 +19,10 @@ export { detectDocker, probeDockerStatus } from "./docker-detect.js";
 export type { DockerProbeResult } from "./docker-detect.js";
 export { WorkspaceSandbox } from "./workspace-sandbox.js";
 export type { FileChange, BinaryChange, DiffResult } from "./workspace-sandbox.js";
+export {
+  RestrictedPluginRunner,
+  buildRestrictedPluginDockerArgv,
+  synthesizePluginPatch,
+  type RestrictedPluginRunRequest,
+  type RestrictedPluginRunResult,
+} from "./restricted-plugin-runner.js";

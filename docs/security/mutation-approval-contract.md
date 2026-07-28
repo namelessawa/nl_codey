@@ -37,6 +37,7 @@ pnpm test:mutation-inventory
    unit test reject any entry that lacks its source or evidence file.
 
 `write_file` is reserved but not advertised or dispatched. MCP mutation is
-default-off because no MCP adapter exists. Full Node plugin process isolation is
-not claimed here; it remains `SEC-PLUGIN-001` and is the next restricted-runner
-batch.
+default-off because no MCP adapter exists. Plugin execution now has the
+additional Docker-only process boundary and staged-patch handoff documented in
+`docs/security/restricted-plugin-runner.md`; that boundary complements rather
+than replaces the per-call authorization contract.

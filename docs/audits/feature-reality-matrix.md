@@ -20,8 +20,8 @@ evidence.
 
 ```text
 Production: 0
-Functional: 19
-Partial: 3
+Functional: 20
+Partial: 2
 Scaffold: 1
 Dead: 0
 Unknown: 0
@@ -79,7 +79,7 @@ that the functional modules are unusable.
 | `packages/advanced/style-profile` | Desktop style extraction and feedback paths | One suite | Lifecycle/UI recovery evidence limited | Functional |
 | `packages/advanced/learning` | Feedback signal and preference dataset IPC | One suite | Dataset lifecycle/privacy integration limited | Functional |
 | `packages/advanced/proactive` | Read-only scan, proposal inbox and scheduler | One suite | Scheduler errors can be skipped and mutation handoff is not in the unified approval inventory | Functional |
-| `packages/advanced/plugin-sdk` | Manifest/install/grant/host logic used by Desktop plugin runtime | One suite plus Agent Core dynamic-tool tests | Whitelist mode launches full Node under the host user; manifest permissions do not confine direct syscalls | Partial |
+| `packages/advanced/plugin-sdk` | Manifest/install/grant/host logic used by Desktop's default-off plugin runtime | SDK, Desktop adapter, restricted-runner unit and real Docker adversarial gates | Docker Desktop and the pinned image must be pre-provisioned; non-Docker manifests intentionally fail closed | Functional |
 | `packages/advanced/finetune` | Desktop job/model registry and external runner hooks | One suite | No bundled complete trainer/evaluator or production job isolation | Partial |
 | `packages/advanced/distributed` | Coordinator/node/assignment logic and IPC list/register surface | One suite | No authenticated remote transport or production dispatch path | Scaffold |
 
@@ -90,8 +90,9 @@ that the functional modules are unusable.
 - Dynamic tool bundles now require complete mutation classification, reject
   reserved/undeclared calls, keep multi-agent role schemas and allowlists
   aligned, and persist bounded/redacted security failures.
-- Those dispatch controls do not sandbox an already-started Node plugin
-  process.
+- Plugin dispatch has no host-user Node fallback. Docker-only execution receives
+  a credential-filtered staging copy under an OS-enforced resource/network
+  boundary and can return only an unapplied proposed patch.
 - SQLite is the Run-state store and JSONL is the CLI conversation store, but
   there is no proved stable linkage/reconciler after a crash.
 - The root build and default offline test gate pass. The explicit integration

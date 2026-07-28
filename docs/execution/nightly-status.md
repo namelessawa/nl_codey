@@ -2,7 +2,7 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
+Overall state: **ACTIVE - INTEGRATION GREEN; DEFAULT RED ON CONPTY CLEANUP FLAKE; P0 WORK REMAINS**
 
 ## Batch board
 
@@ -17,7 +17,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 | 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Ready for draft review | 12 serial + 8 concurrent abort soak passed below 1500 ms; descendant PID cleanup proved |
 | 8 | `codex/p0-run-session-recovery` | Startup reconciliation and Run/Session linkage | Ready for draft review | Dead-owner recovery, Desktop wiring and approval-crash ConPTY restart passed |
 | 9 | `codex/p0-unified-approval` | Mutation inventory and common approval enforcement | Ready for draft review | 31 paths inventoried; single-use mutation grants and denial/approval contract passed |
-| 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Pending | Must follow preceding P0 gates |
+| 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Ready for draft review; default gate red on existing loaded ConPTY cleanup flake | Real Docker adversarial gate denied host/workspace secrets, network, process, rootfs and oversized-file access |
 
 ## Work log
 
@@ -199,11 +199,57 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 - All verification remains deterministic and offline. `custom.txt` was not read
   and no network/model call occurred.
 
+### 2026-07-29 - Restricted plugin runner
+
+- Removed Desktop's host-user `process.execPath` plugin path. Only Docker
+  manifests execute; whitelist and WSL manifests fail closed, and the advanced
+  plugin feature remains default-off.
+- Added a Docker runner that mounts only a bounded staging copy plus the
+  read-only plugin directory. The container uses a pinned Node image with
+  implicit pulls disabled, no network, private IPC, read-only rootfs, no
+  capabilities, no-new-privileges, a non-root user, and CPU/memory/PID/file/
+  descriptor/temp/time limits.
+- Prevented repository-root `custom.txt` and common workspace credential files
+  from entering the mounted staging tree. They are moved to an unmounted
+  temporary backup and restored before diffing, so neither content nor a false
+  deletion reaches plugin output.
+- Staged text edits return as `proposedPatch` with `applied: false`; binary
+  conflicts are surfaced by path. Real workspace writeback remains a separate
+  `apply_patch` call and single-use approval.
+- Added unit coverage for exact confinement arguments, fail-closed Desktop
+  routing, secret restoration and proposed-patch propagation. Added an explicit
+  `pnpm test:plugin:restricted` gate for the real Docker boundary.
+- The first named gate failed before Docker execution because Node 24 rejected
+  the Windows `pnpm.cmd` spawn wrapper; the wrapper now invokes pnpm's JS entry
+  with `process.execPath`. The next attempt exhausted its 30-second budget while
+  first pulling the image, so image acquisition is now explicit and separate
+  from `--pull=never` production execution.
+- After those harness fixes, the real adversarial container passed. It could not
+  read an external host file, the host secret environment, workspace
+  `custom.txt`, use the external network, see the host PID, write rootfs, or
+  create an oversized file. It returned a staged patch while host bytes remained
+  unchanged.
+- Docker Desktop was stopped before the test, started only for the explicit
+  gate, and restored to its stopped state afterward. The final stop client
+  exceeded its 60-second wait, but an immediate `docker desktop status`
+  confirmed `stopped`. No LLM was called and `custom.txt` was neither read nor
+  printed.
+- `pnpm typecheck`, `pnpm build`, the 617-test unit slice, 78 Desktop-main
+  assertions, renderer/preload/CLI/TUI surface slices, and the real restricted
+  plugin gate passed. The loaded default sequence failed twice only in the
+  existing ConPTY approval-crash cleanup: the killed PTY did not report exit
+  within 10 seconds and held its temp directory. An isolated rerun passed all
+  5/5 TUI E2E workflows, including that scenario in 13.2 seconds.
+- `pnpm test:integration` then passed 5 Storage plus 19 integration assertions
+  with environment-gated skips, and verified the Electron ABI restoration.
+  The default gate remains explicitly red until the loaded ConPTY cleanup is
+  fixed; isolated success is not counted as a replacement.
+
 ## Current blockers
 
 1. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
 2. Historical migration coverage still needs more fixtures plus
    backup-before-upgrade/failure-recovery behavior.
-3. Full Node plugin execution remains outside an OS-enforced capability
-   boundary.
+3. One bounded cross-surface secret-redaction contract and its persistence/TUI
+   regression fixtures remain open.
