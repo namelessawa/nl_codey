@@ -26,6 +26,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 16 | `codex/p1-live-smoke-gate` | Explicit custom.txt live-model gate | Ready for draft review; CI-LIVE-001 closed | Custom provider streamed a real read_memory tool round-trip in 4.7s; default 629-unit slice remained offline |
 | 17 | `codex/p1-release-ci-gates` | Required CI, CLI package and Windows install gates | Ready for draft review; hosted Release green; main-target required checks remain | Run 30405876544 passed clean install, tests, integration, builds, CLI/NSIS smoke and artifact upload |
 | 18 | `codex/p1-tui-command-approval` | Native TUI command confirmation and rejection | Ready for draft review; command scenarios closed | 630 unit, 10 render, 2 lifecycle, 7 E2E and 13 recovery assertions passed |
+| 19 | `codex/p1-tui-budget-exhaustion` | Native TUI budget circuit-breaker evidence | Ready for draft review; budget scenario closed | 630 unit, 10 render, 2 lifecycle, 8 E2E and 13 recovery assertions passed |
 
 ## Work log
 
@@ -534,11 +535,29 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   and the two PTY cases; all settings, command output and files were confined
   to disposable test roots.
 
+### 2026-07-29 - Native TUI budget exhaustion
+
+- Added an isolated English-locale fixture with `maxAutoSteps: 1`. The ordinary
+  offline Mock reaches its first iteration boundary, then the real shared
+  `BudgetController` must stop the run before any patch call.
+- The ConPTY scenario requires the user-facing `max_iterations` reason,
+  persisted `budget_exceeded` state and exit reason, no workspace mutation,
+  and a usable prompt afterward.
+- The first assertion expected the explanatory sentence on one visual line;
+  ConPTY correctly wrapped it. The final predicate normalizes terminal
+  whitespace while retaining the full message contract.
+- `pnpm typecheck` and the complete offline `pnpm test` gate passed: 630 unit,
+  80 Desktop, 10 TUI render, 2 PTY lifecycle, 8 TUI E2E and 13 recovery
+  assertions. Both ABI matrices restored Electron. No live LLM call occurred
+  and `custom.txt` was not read.
+- Rollback removes only the isolated settings fixture and budget PTY case; it
+  does not alter the production budget controller or user data.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. Remaining TUI budget, provider, crash-tail, redaction and large-output
-   scenarios still lack full ConPTY coverage.
+2. Remaining TUI provider, crash-tail, redaction and large-output scenarios
+   still lack full ConPTY coverage.

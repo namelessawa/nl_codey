@@ -89,8 +89,20 @@ function enableCommandConfirmation(fixture: Fixture): void {
   );
 }
 
+function enableSingleStepBudget(fixture: Fixture): void {
+  fs.writeFileSync(
+    path.join(fixture.dataRoot, "settings.json"),
+    JSON.stringify({
+      agent: { maxAutoSteps: 1 },
+      ui: { language: "en-US" },
+    }),
+    "utf8",
+  );
+}
+
 function readOnlyRunAudit(fixture: Fixture): {
   status: string;
+  exitReason: string | null;
   steps: ReturnType<Storage["listSteps"]>;
 } {
   const storage = new Storage(
@@ -101,7 +113,11 @@ function readOnlyRunAudit(fixture: Fixture): {
     if (!workspace) throw new Error("command fixture did not create a workspace");
     const run = storage.listRuns(workspace.id)[0];
     if (!run) throw new Error("command fixture did not create a run");
-    return { status: run.status, steps: storage.listSteps(run.id) };
+    return {
+      status: run.status,
+      exitReason: run.exitReason ?? null,
+      steps: storage.listSteps(run.id),
+    };
   } finally {
     storage.close();
   }
@@ -298,6 +314,43 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     expect(audit.status).toBe("cancelled");
     expect(audit.steps.some((step) => step.type === "command")).toBe(false);
 
+    await exit(session);
+  });
+
+  it("surfaces an exhausted iteration budget and returns prompt control", async () => {
+    const fixture = createFixture();
+    enableSingleStepBudget(fixture);
+    const session = start(fixture);
+
+    await session.waitForScreen((screen) => screen.includes("(idle)"));
+    await enter(session, "exhaust the iteration budget");
+    await session.waitForBuffer(
+      (buffer) => {
+        const normalized = buffer.replace(/\s+/g, " ");
+        return (
+          normalized.includes("Budget exhausted (max_iterations).") &&
+          normalized.includes("roll back or continue manually.")
+        );
+      },
+      20_000,
+    );
+
+    const audit = readOnlyRunAudit(fixture);
+    expect(audit.status).toBe("budget_exceeded");
+    expect(audit.exitReason).toBe("max_iterations");
+    expect(
+      audit.steps.some(
+        (step) =>
+          step.type === "message" &&
+          step.content.includes("Budget exhausted (max_iterations)."),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(fixture.workspaceRoot, "AGENT_NOTES.md")),
+    ).toBe(false);
+
+    await enter(session, "/help");
+    await session.waitForBuffer((buffer) => buffer.includes("/rollback"));
     await exit(session);
   });
 
