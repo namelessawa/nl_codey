@@ -1,0 +1,58 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Use hoisted node-linker
+        shell: pwsh
+        run: Copy-Item .npmrc.ci .npmrc -Force
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Agent Core security tests
+        run: pnpm exec vitest run packages/runtime/agent-core/src
+
+      - name: Desktop production wiring test
+        run: pnpm exec vitest run apps/desktop/src/main/services.test.ts
+
+      - name: Test suite without Storage ABI integration
+        # Storage's real-DB test remains excluded only for the documented
+        # Node/Electron better-sqlite3 ABI backlog:
+        # docs/audits/hardening-backlog.md#p1--make-the-storage-abi-test-gate-explicit
+        # This step does not claim that Storage has been verified.
+        run: pnpm exec vitest run --exclude '**/storage.test.ts'
+
+      - name: Build
+        run: pnpm build
