@@ -41,7 +41,7 @@ jobs:
       - name: Deterministic default gates
         run: pnpm test
         env:
-          NLC_TUI_PTY_BACKEND: winpty
+          NLC_TUI_PTY_BACKEND: conpty-dll
 
       - name: Storage ABI and integration gates
         run: pnpm test:integration

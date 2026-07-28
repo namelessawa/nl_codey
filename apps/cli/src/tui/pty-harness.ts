@@ -44,18 +44,23 @@ export class TuiPtyHarness {
     this.serializer = new SerializeAddon();
     this.terminal.loadAddon(this.serializer);
     // GitHub's Windows runner is a non-interactive service session where the
-    // ConPTY output pipe can remain silent. The explicit CI override keeps the
-    // same PTY behavior assertions on node-pty's bundled winpty backend while
-    // local Windows runs continue to exercise ConPTY by default.
+    // system ConPTY output pipe can remain silent. The explicit CI override
+    // keeps the same PTY behavior assertions on node-pty's bundled ConPTY DLL,
+    // while local Windows runs exercise the system ConPTY API by default.
+    const ptyBackend = process.env.NLC_TUI_PTY_BACKEND;
     const useConpty =
       process.platform === "win32" &&
-      process.env.NLC_TUI_PTY_BACKEND !== "winpty";
+      ptyBackend !== "winpty";
+    const useConptyDll =
+      process.platform === "win32" &&
+      ptyBackend === "conpty-dll";
     this.pty = spawn(process.execPath, [tsxCli, cliEntry, ...options.args], {
       name: "xterm-256color",
       cwd: options.cwd,
       cols,
       rows,
       useConpty,
+      useConptyDll,
       env: {
         ...process.env,
         FORCE_COLOR: "0",
