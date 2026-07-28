@@ -166,8 +166,30 @@ export class TuiPtyHarness {
         // finishes (or reports the target already gone) before the exit wait.
         // Avoid pty.kill here because node-pty 1.1's ConPTY console-list helper
         // races an already-terminated console and prints AttachConsole errors.
-        const killBudget = Math.min(7_500, Math.max(500, timeoutMs * 0.75));
-        await terminateWindowsTree(this.pid, killBudget);
+        const firstKillBudget = Math.min(4_000, Math.max(500, timeoutMs * 0.4));
+        await terminateWindowsTree(this.pid, firstKillBudget);
+        if (this.exited) return this.waitForExit(250);
+
+        // Give node-pty a short window to deliver onExit. If taskkill itself
+        // stalled, retry the tree kill instead of spending the whole budget
+        // waiting for an event from a process that is still alive.
+        const firstWaitBudget = Math.min(
+          1_500,
+          Math.max(250, (timeoutMs - (Date.now() - started)) * 0.25),
+        );
+        try {
+          return await this.waitForExit(firstWaitBudget);
+        } catch {
+          // One bounded retry below handles a stalled first taskkill.
+        }
+
+        if (!this.exited) {
+          const retryBudget = Math.min(
+            3_000,
+            Math.max(500, (timeoutMs - (Date.now() - started)) * 0.6),
+          );
+          await terminateWindowsTree(this.pid, retryBudget);
+        }
         const remaining = Math.max(250, timeoutMs - (Date.now() - started));
         return this.waitForExit(remaining);
       } else {
@@ -208,6 +230,15 @@ async function terminateWindowsTree(pid: number, timeoutMs: number): Promise<voi
       resolve();
     };
     const timer = setTimeout(() => {
+      // taskkill can itself stall while traversing a busy ConPTY tree. Force
+      // the PTY root down through Node's direct TerminateProcess path so
+      // node-pty can emit onExit and release handles before the caller's
+      // cleanup deadline. taskkill remains the primary path for descendants.
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Best effort; waitForExit retains the actionable timeout details.
+      }
       try {
         killer.kill();
       } catch {

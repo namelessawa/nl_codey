@@ -24,7 +24,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 14 | `codex/p0-rollback-recovery` | Durable single/many/partial/restart rollback | Ready for draft review; REC-ROLLBACK-001 closed; default red on known ConPTY cleanup flake | 13 restorative recovery assertions and 19 integration assertions pass; exact bytes/existence/Run state proved |
 | 15 | `codex/p1-tui-crash-cleanup` | Deterministic loaded ConPTY crash cleanup | Ready for draft review; default gate restored green | Awaited Windows tree termination; clean 5/5 targeted and loaded TUI E2E passes with immediate temp cleanup |
 | 16 | `codex/p1-live-smoke-gate` | Explicit custom.txt live-model gate | Ready for draft review; CI-LIVE-001 closed | Custom provider streamed a real read_memory tool round-trip in 4.7s; default 629-unit slice remained offline |
-| 17 | `codex/p1-release-ci-gates` | Required CI, CLI package and Windows install gates | Ready for draft review; hosted required-check run remains | Node 20/24, CodeQL/dependency/audit workflows wired; local CLI install, NSIS install/uninstall and full named gates pass |
+| 17 | `codex/p1-release-ci-gates` | Required CI, CLI package and Windows install gates | Ready for draft review; hosted Release rerun and main-target required checks remain | Node 22/24, CodeQL/dependency/audit workflows wired; local CLI install, NSIS install/uninstall and full named gates pass |
 
 ## Work log
 
@@ -428,7 +428,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 
 - Replaced the blanket Storage exclusion in both workflows with named
   `pnpm test` and `pnpm test:integration` gates. PR checks now exercise
-  `windows-latest` on the declared minimum Node 20 and current Node 24, then
+  `windows-latest` on the supported Node 22 and current Node 24 lines, then
   require a separate Windows build/package/install job.
 - Added CodeQL JavaScript/TypeScript analysis, dependency-review and a
   high-severity production `pnpm audit` gate. Updated hosted actions to their
@@ -454,19 +454,39 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   handshakes replaced both timing assumptions. Five consecutive ConPTY runs
   passed, followed by a green loaded default run with 629 unit, 80 Desktop,
   2 ConPTY, 5 TUI E2E and 13 recovery assertions.
+- Hosted Release run
+  [30400540034](https://github.com/namelessawa/nl_codey/actions/runs/30400540034)
+  reached a clean `windows-latest` runner but failed during dependency install:
+  Node 24 had no `better-sqlite3` 11 prebuild, and its source fallback used
+  node-gyp 11, which does not recognize the runner's Visual Studio 2026
+  toolchain. No build, test or publish step ran.
+- Moved the supported runtime floor to Node `>=22.22.2` because Node 20 is
+  end-of-life, changed the matrix to Node 22/24, targeted the CLI bundle at
+  Node 22, upgraded `better-sqlite3` to 12.11.1 (published Node 24 prebuild)
+  and upgraded node-gyp to 12.2.0 (Visual Studio 2026 support). A frozen local
+  install rebuilt the Electron native binding successfully.
+- The loaded default test initially reproduced the known approval-crash cleanup
+  tail after `taskkill` itself stalled. The ConPTY harness now keeps tree kill
+  as the primary path but directly terminates the PTY root when that bounded
+  traversal stalls, then retries the tree cleanup. Four consecutive targeted
+  5/5 runs and the subsequent full loaded gate passed with immediate temporary
+  directory cleanup and Electron ABI restoration.
 - `pnpm typecheck`, `pnpm build`, workflow YAML parsing, production audit
   (zero high/critical; one low), CLI pack/install/help, unpacked Windows
   packaging, NSIS/ZIP packaging, silent install/uninstall, 10 Storage and
-  19 integration assertions all passed. Native gates restored Electron ABI.
-  No live LLM call occurred and `custom.txt` was not read.
+  19 integration assertions all passed after the native/runtime upgrades.
+  The final default gate passed 629 unit, 80 Desktop, 2 ConPTY, 5 TUI E2E and
+  13 recovery assertions. Native gates restored Electron ABI. No live LLM call
+  occurred and `custom.txt` was not read.
 - Rollback is a branch revert: the temporary CLI and Windows installations were
   removed by their smoke scripts, and the installer uninstall completed, so no
   application or user-data state remains from this batch.
 
 ## Current blockers
 
-1. `CI-RELEASE-001` still needs the new required jobs to execute on a
-   main-target GitHub PR; local Windows evidence is green, but hosted
-   CodeQL/dependency/Node-matrix results must not be inferred.
+1. `CI-RELEASE-001` still needs a clean hosted Release rerun after the
+   native/runtime upgrades and the required jobs on a main-target GitHub PR.
+   Local Windows evidence is green, but hosted CodeQL/dependency/Node-matrix
+   results must not be inferred.
 2. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
