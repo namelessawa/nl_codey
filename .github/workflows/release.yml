@@ -4,35 +4,29 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      publish_release:
-        description: 'Attach artifacts to a GitHub Release (only meaningful on a tag)'
-        required: false
-        default: 'false'
 
-# A tagged push creates a Release; manual runs just upload an artifact.
+# A tagged push creates a Release; manual runs only upload a verified artifact.
 permissions:
   contents: write
 
 jobs:
   build-windows:
+    name: Verify and package Windows release
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.0
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
-          cache: 'pnpm'
+          node-version: 24
+          cache: pnpm
 
       - name: Use hoisted node-linker for build
         shell: pwsh
@@ -41,40 +35,43 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Approve native build scripts
-        # electron-builder pulls electron-winstaller which needs its build script
-        # to run; pnpm 10 blocks unknown scripts by default in CI.
-        run: pnpm approve-builds || echo "no interactive prompt in CI - skipping"
-        shell: bash
-        continue-on-error: true
-
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Unit tests
-        # Skip storage.test.ts: postinstall already built better-sqlite3 for
-        # Electron ABI, so opening a real DB under Node fails with
-        # NODE_MODULE_VERSION mismatch (see CLAUDE.md). The packaged app runs
-        # under Electron so the binding works there.
-        run: pnpm exec vitest run --exclude '**/storage.test.ts'
+      - name: Deterministic default gates
+        run: pnpm test
 
-      - name: Build renderer + main + preload
+      - name: Storage ABI and integration gates
+        run: pnpm test:integration
+
+      - name: Build all production surfaces
         run: pnpm build
 
-      - name: Rebuild native modules against Electron
-        run: pnpm rebuild:native
+      - name: Pack, install and smoke the CLI artifact
+        run: pnpm smoke:cli:artifact
 
       - name: Package Windows installer
         run: pnpm --filter @nlc/desktop exec electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: List artifacts
+      - name: Verify release artifacts
         shell: pwsh
-        run: Get-ChildItem release -Recurse | Select-Object FullName, Length
+        run: |
+          $artifacts = @(
+            Get-ChildItem release -File |
+              Where-Object { $_.Extension -in '.exe', '.zip' }
+          )
+          if ($artifacts.Count -eq 0) {
+            throw 'electron-builder produced no Windows installer or archive'
+          }
+          $artifacts | Select-Object FullName, Length
+
+      - name: Smoke silent install and uninstall
+        run: pnpm smoke:windows:installer
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coding-agent-windows-x64
           path: |
@@ -85,7 +82,7 @@ jobs:
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             release/*.exe

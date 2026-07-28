@@ -30,12 +30,14 @@
     "test:llm:live": "vitest run --config vitest.live-llm.config.ts",
     "test:integration": "pnpm test:storage:abi && vitest run --config vitest.integration.config.ts",
     "test:all": "pnpm test && pnpm test:integration",
+    "smoke:cli:artifact": "node scripts/smoke-cli-package.mjs",
+    "smoke:windows:installer": "node scripts/smoke-windows-installer.mjs",
     "test:watch": "vitest --config vitest.unit.config.ts",
     "rebuild:native": "pnpm --filter @nlc/desktop exec electron-rebuild -f -w better-sqlite3"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "electron-builder": "^26.8.1",
+    "electron-builder": "^26.15.7",
     "node-gyp": "11.4.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

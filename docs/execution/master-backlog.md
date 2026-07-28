@@ -19,7 +19,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 
 | ID | Work | Acceptance evidence | State |
 | --- | --- | --- | --- |
-| DATA-ABI-001 | Split Node and Electron storage native-module gates with deterministic rebuild ordering | `test:storage:node`, `test:storage:electron`, and migrations all green on clean CI | Done in Batch 6; clean-CI workflow wiring remains under CI-RELEASE-001 |
+| DATA-ABI-001 | Split Node and Electron storage native-module gates with deterministic rebuild ordering | `test:storage:node`, `test:storage:electron`, and migrations all green on clean CI | Done in Batch 6; clean-CI workflow wired in Batch 17, with hosted evidence tracked by CI-RELEASE-001 |
 | DATA-MIG-001 | Add supported historical migration fixtures, backup-before-upgrade and documented failure recovery | Real-file fixtures pass; failed migration leaves a recoverable backup | Done in Batch 13; v1 upgrade, consistent backup and failure recovery fixtures pass |
 | REC-RUN-001 | Add startup reconciler for non-terminal Runs and interrupted tool/apply windows | Desktop and TUI restart tests mark/recover interrupted Runs without replaying writes | Done in Batch 8 |
 | REC-LINK-001 | Define and persist stable SQLite Run ↔ JSONL Session linkage | Branch/resume/restart lineage E2E proves no cross-session delta or orphan Run | Done in Batch 8 |
@@ -33,7 +33,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | CI-SPLIT-001 | Add formal unit/desktop-main/renderer/preload/CLI/TUI/integration configs and named root scripts | Each command selects at least one intended test and fails on zero matches | Done in Batches 2-4 |
 | CI-LIVE-001 | Remove debug/live suites from default test discovery unless explicitly enabled | Default tests make zero network/model calls; explicit smoke loads ignored `custom.txt` | Done in Batch 16; dedicated custom-provider smoke passed and the 629-assertion default unit slice remained offline |
 | SBOX-ABORT-001 | Fix/characterize Windows process-tree abort without timeout inflation | Repeated isolated and loaded runs stop promptly, leave no child and preserve AbortError | Done in Batch 7 |
-| CI-RELEASE-001 | Add Node-version/Windows/build/package/CodeQL/dependency/CLI smoke gates | Required checks all green; no blanket production-test exclusion | Open |
+| CI-RELEASE-001 | Add Node-version/Windows/build/package/CodeQL/dependency/CLI smoke gates | Required checks all green; no blanket production-test exclusion | Implemented in Batch 17; local Windows build/package/install, audit and all named test gates pass; hosted required-check run pending |
 
 ## P1 - TUI product surface
 

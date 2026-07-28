@@ -73,7 +73,12 @@ describeWindows("[tui-pty] Windows ConPTY lifecycle", () => {
     await session.waitForBuffer((buffer) => buffer.includes("/skills-generate"));
 
     session.write("/exit");
-    await session.waitForScreen((screen) => screen.includes("/exit"));
+    // The help catalogue itself contains "/exit", so wait for the prompt row
+    // specifically. Otherwise the Enter write can overtake the text write in
+    // ConPTY and leave a visible but unsubmitted "/exit" behind.
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ /exit")),
+    );
     session.write("\r");
     const exit = await session.waitForExit();
 
@@ -82,7 +87,22 @@ describeWindows("[tui-pty] Windows ConPTY lifecycle", () => {
 
   it("turns idle Ctrl+C into deterministic process cleanup", async () => {
     const session = start(80);
-    await session.waitForScreen((screen) => screen.includes("(idle)"));
+    await session.waitForScreen(
+      (screen) => screen.includes("(idle)") && screen.includes("/exit quit"),
+    );
+
+    // Prove Ink's raw-input handlers are mounted before sending Ctrl+C.
+    // A status/header render can arrive a tick earlier than the input effect,
+    // in which case ConPTY forwards Ctrl+C as SIGINT and Node exits with 1.
+    session.write("x");
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ x")),
+    );
+    session.write("\u0015");
+    await session.waitForScreen(
+      (screen) =>
+        screen.split("\n").some((line) => line.includes("❯") && !line.includes("❯ x")),
+    );
 
     const started = Date.now();
     session.write("\u0003");

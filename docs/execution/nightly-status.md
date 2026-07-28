@@ -2,7 +2,7 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; CI/TUI/PRODUCT WORK REMAINS**
+Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK REMAINS**
 
 ## Batch board
 
@@ -24,6 +24,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; CI/TUI/PRODUCT WORK REM
 | 14 | `codex/p0-rollback-recovery` | Durable single/many/partial/restart rollback | Ready for draft review; REC-ROLLBACK-001 closed; default red on known ConPTY cleanup flake | 13 restorative recovery assertions and 19 integration assertions pass; exact bytes/existence/Run state proved |
 | 15 | `codex/p1-tui-crash-cleanup` | Deterministic loaded ConPTY crash cleanup | Ready for draft review; default gate restored green | Awaited Windows tree termination; clean 5/5 targeted and loaded TUI E2E passes with immediate temp cleanup |
 | 16 | `codex/p1-live-smoke-gate` | Explicit custom.txt live-model gate | Ready for draft review; CI-LIVE-001 closed | Custom provider streamed a real read_memory tool round-trip in 4.7s; default 629-unit slice remained offline |
+| 17 | `codex/p1-release-ci-gates` | Required CI, CLI package and Windows install gates | Ready for draft review; hosted required-check run remains | Node 20/24, CodeQL/dependency/audit workflows wired; local CLI install, NSIS install/uninstall and full named gates pass |
 
 ## Work log
 
@@ -423,9 +424,49 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; CI/TUI/PRODUCT WORK REM
   passed; every Node-native stage restored the Electron ABI. Added
   `docs/testing/live-llm-smoke.md` as the operator contract.
 
+### 2026-07-29 - Release CI and installed-artifact gates
+
+- Replaced the blanket Storage exclusion in both workflows with named
+  `pnpm test` and `pnpm test:integration` gates. PR checks now exercise
+  `windows-latest` on the declared minimum Node 20 and current Node 24, then
+  require a separate Windows build/package/install job.
+- Added CodeQL JavaScript/TypeScript analysis, dependency-review and a
+  high-severity production `pnpm audit` gate. Updated hosted actions to their
+  supported 2026 major lines: checkout/setup-node/pnpm-setup v6, CodeQL v4,
+  dependency review v5, artifact v7 and release v3.
+- Made the CLI tarball independently installable: its compiled `dist` entry is
+  now the package main, bundled private `@nlc/*` inputs are development-only,
+  and `pnpm smoke:cli:artifact` packs, installs and invokes `nlc --help` from a
+  temporary npm installation. The tarball contained only bin/dist/metadata/
+  README and the smoke installed 93 public packages before passing.
+- Added `pnpm smoke:windows:installer`. It selects the generated NSIS artifact,
+  silently installs it into an isolated system-temporary directory, verifies
+  the main executable and uninstaller, silently uninstalls, and proves the
+  directory was removed. No application/user-data process is started.
+- The first package attempt found electron-builder 26.8.1 unable to unpack
+  `winCodeSign` as a standard Windows user because its archive contained
+  privileged symlinks. Upgrading to stable 26.15.7 fixed that path and also
+  brought its pnpm-workspace production-dependency packaging fixes. Both
+  `win-unpacked/NL_Codey.exe` and fresh NSIS/ZIP artifacts then built.
+- The first loaded default run also exposed two test-handshake races: the help
+  catalogue was mistaken for the typed `/exit` prompt and the idle header could
+  render before Ink's raw-input effect mounted. Prompt-specific/input-ready
+  handshakes replaced both timing assumptions. Five consecutive ConPTY runs
+  passed, followed by a green loaded default run with 629 unit, 80 Desktop,
+  2 ConPTY, 5 TUI E2E and 13 recovery assertions.
+- `pnpm typecheck`, `pnpm build`, workflow YAML parsing, production audit
+  (zero high/critical; one low), CLI pack/install/help, unpacked Windows
+  packaging, NSIS/ZIP packaging, silent install/uninstall, 10 Storage and
+  19 integration assertions all passed. Native gates restored Electron ABI.
+  No live LLM call occurred and `custom.txt` was not read.
+- Rollback is a branch revert: the temporary CLI and Windows installations were
+  removed by their smoke scripts, and the installer uninstall completed, so no
+  application or user-data state remains from this batch.
+
 ## Current blockers
 
-1. `CI-RELEASE-001` still needs clean Windows release workflow evidence with
-   named Node/Storage/build/package/CodeQL/dependency/CLI gates.
+1. `CI-RELEASE-001` still needs the new required jobs to execute on a
+   main-target GitHub PR; local Windows evidence is green, but hosted
+   CodeQL/dependency/Node-matrix results must not be inferred.
 2. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
