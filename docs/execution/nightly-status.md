@@ -12,7 +12,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 | 2 | `codex/p1-test-cli-foundation` | Formal test configs, live/debug opt-in gate, CLI build/smoke | Ready for draft review; initial red integration evidence retained | Default offline gate: 685 passed; CLI bundle/help/version passed |
 | 3 | `codex/p1-tui-render-foundation` | TUI unit/render/ANSI frame tests | Ready for draft review | 8 Ink render/interaction assertions passed with ANSI normalization |
 | 4 | `codex/p1-tui-pty-harness` | Windows ConPTY + resize/key/cleanup primitives | Ready for draft review | 2 real ConPTY lifecycle assertions passed |
-| 5 | `codex/p1-tui-core-workflows` | Core approval/reject/stop/session/recovery scenarios | Pending | Depends on PTY harness |
+| 5 | `codex/p1-tui-core-workflows` | Core approval/reject/stop/session/recovery scenarios | Ready for draft review | 4 real ConPTY workflows; approval, rollback, reject, cancel, restart, resume and branch passed |
 | 6 | `codex/p0-storage-abi-gate` | Node/Electron ABI + migration gates | Ready for draft review | Node migration/lifecycle 4/4; Electron load before/after restore passed |
 | 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Ready for draft review | 12 serial + 8 concurrent abort soak passed below 1500 ms; descendant PID cleanup proved |
 | 8 | `codex/p0-run-session-recovery` | Startup reconciliation and Run/Session linkage | Pending | No current E2E contract |
@@ -123,10 +123,32 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
   plus 8 concurrent cancellations, with every duration below the unchanged
   1500 ms bound. No LLM provider or network path was constructed.
 
+### 2026-07-29 - Core TUI workflows and session replay
+
+- Extended the restorative Storage ABI matrix so real Node/ConPTY agent tests
+  can run against the Node native binary and always finish by verifying the
+  Electron ABI. The default offline gate now includes this named TUI E2E
+  project.
+- Passed four isolated real-ConPTY workflows: approve then `/rollback`, reject
+  without mutation, Ctrl+C during delayed streaming, and append-only session
+  persistence across two restarts plus `/resume`, `/tree`, and `/branch`.
+- Fixed the deterministic Mock provider to preserve the actual task from the
+  agent context envelope and to honor `AbortSignal` while streaming. All tests
+  explicitly select the mock provider and clear ambient provider keys.
+- Startup session recovery replays the newest valid JSONL history without
+  constructing a run or re-executing tools. Resume accepts exact ids or unique
+  prefixes, while branch evidence asserts both header ancestry and the first
+  child message's `parentId` on disk.
+- Added `/rollback [<run>]`, backed by persisted snapshots and an exact/unique
+  prefix resolver. Ink Static is remounted only for non-append replay so the
+  selected history is actually visible in terminal scrollback.
+- `custom.txt` remained ignored and unread by test processes; no network/model
+  call occurred. See `docs/tui/pty-e2e-report.md` for the scenario evidence.
+
 ## Current blockers
 
-1. Remaining TUI editing keys and end-to-end mutation/session workflows still
-   lack committed coverage.
+1. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
+   large-output scenarios still lack full ConPTY coverage.
 2. Run/Session crash reconciliation and a unified mutation approval boundary
    are not yet proved.
 3. Historical migration coverage still needs more fixtures plus

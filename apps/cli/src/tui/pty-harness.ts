@@ -29,6 +29,7 @@ export class TuiPtyHarness {
   private readonly pty: IPty;
   private readonly exitPromise: Promise<PtyExit>;
   private exited = false;
+  private exitResult: PtyExit | null = null;
 
   constructor(options: TuiPtyOptions) {
     const cols = options.cols ?? 100;
@@ -61,13 +62,14 @@ export class TuiPtyHarness {
     this.exitPromise = new Promise((resolve) => {
       this.pty.onExit((event) => {
         this.exited = true;
-        resolve({ exitCode: event.exitCode, signal: event.signal ?? 0 });
+        this.exitResult = { exitCode: event.exitCode, signal: event.signal ?? 0 };
+        resolve(this.exitResult);
       });
     });
   }
 
   write(data: string): void {
-    this.pty.write(data);
+    if (!this.exited) this.pty.write(data);
   }
 
   resize(cols: number, rows: number): void {
@@ -100,12 +102,16 @@ export class TuiPtyHarness {
     while (Date.now() - started < timeoutMs) {
       const screen = this.viewport();
       if (predicate(screen)) return screen;
+      if (this.exitResult) break;
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 20);
       });
     }
     throw new Error(
-      `Timed out waiting for PTY screen after ${timeoutMs} ms.\n${this.viewport()}`,
+      `Timed out waiting for PTY screen after ${timeoutMs} ms.\n` +
+        `viewport:\n${this.viewport()}\n` +
+        `buffer:\n${this.bufferText()}\n` +
+        `exit: ${JSON.stringify(this.exitResult)}`,
     );
   }
 
@@ -117,12 +123,14 @@ export class TuiPtyHarness {
     while (Date.now() - started < timeoutMs) {
       const buffer = this.bufferText();
       if (predicate(buffer)) return buffer;
+      if (this.exitResult) break;
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 20);
       });
     }
     throw new Error(
-      `Timed out waiting for PTY buffer after ${timeoutMs} ms.\n${this.bufferText()}`,
+      `Timed out waiting for PTY buffer after ${timeoutMs} ms.\n` +
+        `${this.bufferText()}\nexit: ${JSON.stringify(this.exitResult)}`,
     );
   }
 
@@ -133,7 +141,14 @@ export class TuiPtyHarness {
         this.exitPromise,
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
-            reject(new Error(`PTY process ${this.pid} did not exit within ${timeoutMs} ms`));
+            reject(
+              new Error(
+                `PTY process ${this.pid} did not exit within ${timeoutMs} ms\n` +
+                  `viewport:\n${this.viewport()}\n` +
+                  `buffer:\n${this.bufferText()}\n` +
+                  `exit: ${JSON.stringify(this.exitResult)}`,
+              ),
+            );
           }, timeoutMs);
         }),
       ]);

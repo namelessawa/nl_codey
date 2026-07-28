@@ -26,6 +26,7 @@ export type CommandEffect =
   | { kind: "tree" }
   | { kind: "branch"; messageId: string; sessionId: string | null }
   | { kind: "resume"; target: string }
+  | { kind: "rollback"; runId: string | null }
   | { kind: "model"; spec: string | null }
   | { kind: "think"; level: string | null }
   | { kind: "provider" }
@@ -50,6 +51,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "/tree", hint: "Render the project's conversation tree (git-style)." },
   { name: "/branch <msg> [<session>]", hint: "Start a new session branched from a message id." },
   { name: "/resume <session>", hint: "Switch the active session to an existing file." },
+  { name: "/rollback [<run>]", hint: "Restore snapshots from the latest (or selected) run." },
   { name: "/provider", hint: "Open the provider picker (presets + 5 custom slots)." },
   { name: "/model [<provider/model>]", hint: "Show or change the active LLM and log the swap." },
   { name: "/think [<level>]", hint: "Show or change the thinking level and log the swap." },
@@ -142,6 +144,11 @@ export function parseCommand(line: string): CommandEffect | null {
       const target = parts.slice(1).join(" ").trim();
       if (!target) return { kind: "unknown", raw: trimmed };
       return { kind: "resume", target };
+    }
+    case "rollback":
+    case "undo": {
+      const runId = parts.slice(1).join(" ").trim();
+      return { kind: "rollback", runId: runId.length > 0 ? runId : null };
     }
     case "model":
     case "mdl": {

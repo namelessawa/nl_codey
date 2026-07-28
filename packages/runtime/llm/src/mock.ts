@@ -48,7 +48,7 @@ export class MockLLMProvider implements ChatLLMProvider {
   async *chat(input: LLMChatInput): AsyncIterable<LLMChunk> {
     const hasTools = (input.tools?.length ?? 0) > 0;
     if (!hasTools) {
-      yield* emitText("Mock response (no tools available).");
+      yield* emitText("Mock response (no tools available).", input.signal);
       yield finish("stop", input.messages, "Mock response (no tools available).");
       return;
     }
@@ -58,7 +58,7 @@ export class MockLLMProvider implements ChatLLMProvider {
 
     if (turn === 0) {
       const text = `Exploring the project for task: ${firstLine(task)}`;
-      yield* emitText(text);
+      yield* emitText(text, input.signal);
       yield { type: "tool_call", id: "call_list", name: "list_files", args: {} };
       yield finish("tool_use", input.messages, text);
       return;
@@ -66,7 +66,7 @@ export class MockLLMProvider implements ChatLLMProvider {
 
     if (turn === 1) {
       const text = "Applying a minimal change.";
-      yield* emitText(text);
+      yield* emitText(text, input.signal);
       yield {
         type: "tool_call",
         id: "call_patch_1",
@@ -79,7 +79,7 @@ export class MockLLMProvider implements ChatLLMProvider {
 
     if (turn === 2 && hasFailingCommand(input.messages)) {
       const text = "A check failed; applying a repair.";
-      yield* emitText(text);
+      yield* emitText(text, input.signal);
       yield {
         type: "tool_call",
         id: "call_patch_2",
@@ -91,7 +91,7 @@ export class MockLLMProvider implements ChatLLMProvider {
     }
 
     const summary = `Done. Task handled by MockLLMProvider: ${firstLine(task)}`;
-    yield* emitText(summary);
+    yield* emitText(summary, input.signal);
     yield finish("stop", input.messages, summary);
   }
 
@@ -125,13 +125,37 @@ function notesPatch(file: string, heading: string, task: string): string {
   return ["--- /dev/null", `+++ b/${file}`, `@@ -0,0 +1,${body.length} @@`, lines, ""].join("\n");
 }
 
-async function* emitText(text: string): AsyncGenerator<LLMChunk> {
+async function* emitText(
+  text: string,
+  signal?: AbortSignal,
+): AsyncGenerator<LLMChunk> {
   // Simulate streaming by chunking the text into a few deltas.
   const mid = Math.ceil(text.length / 2);
   const parts = [text.slice(0, mid), text.slice(mid)].filter((p) => p.length > 0);
   for (const part of parts) {
+    await waitForMockDelay(signal);
     yield { type: "text_delta", text: part };
   }
+}
+
+async function waitForMockDelay(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  const raw = Number.parseInt(process.env["NLC_MOCK_CHUNK_DELAY_MS"] ?? "0", 10);
+  const delayMs = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 5_000) : 0;
+  if (delayMs === 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const finish = (): void => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    };
+    const abort = (): void => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(finish, delayMs);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
 }
 
 function finish(
@@ -164,7 +188,10 @@ function hasFailingCommand(messages: LLMMessage[]): boolean {
 }
 
 function firstUserText(messages: LLMMessage[]): string {
-  return messages.find((m) => m.role === "user")?.content ?? "";
+  const content = messages.find((m) => m.role === "user")?.content ?? "";
+  const taggedPrefix = "用户任务：\n";
+  if (!content.startsWith(taggedPrefix)) return content;
+  return content.slice(taggedPrefix.length).split("\n")[0]?.trim() ?? "";
 }
 
 function firstLine(text: string): string {

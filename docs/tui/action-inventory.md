@@ -7,12 +7,12 @@
 
 ## Discovery summary
 
-- Catalogued slash commands: 18
-- Parser alias groups: 17
+- Catalogued slash commands: 19
+- Parser alias groups: 18
 - Keyboard/input actions: 19
 - Modal routes: 3
 - Mouse implementation discovered: no
-- Committed CLI/TUI Vitest files: 4
+- Committed CLI/TUI Vitest files: 5
 
 ## Slash commands
 
@@ -29,7 +29,8 @@
 | /sessions | Prompt | /sessions, /list-sessions | Readable session store | Append session summaries | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /tree | Prompt | /tree, /log | Readable session store | Append the session tree | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /branch <msg> [<session>] | Prompt | /branch | Message id and active/explicit parent session | Create and activate a child session | Session store | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
-| /resume <session> | Prompt | /resume, /checkout | Resolvable session id/prefix | Switch active JSONL session | Active session | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /resume <session> | Prompt | /resume, /checkout | Resolvable session id/prefix | Switch active JSONL session and replay history without running tools | Active session | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /rollback [<run>] | Prompt | /rollback, /undo | Completed run with persisted snapshots | Restore the latest or uniquely selected run snapshots | Workspace files + run status | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /provider | Prompt | /provider, /providers, /p | Readable provider store | Open picker; save provider config and model-change event on confirmation | Provider store + session event | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /model [<provider/model>] | Prompt | /model, /mdl | provider/model syntax when changing | Show model or record a model-change event; runtime settings are not changed | Session event only | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /think [<level>] | Prompt | /think, /thinking | Optional level | Show limitation or record a thinking-level event | Session event only | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |

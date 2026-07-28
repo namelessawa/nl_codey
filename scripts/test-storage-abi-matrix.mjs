@@ -33,6 +33,7 @@ const electronExecutable = desktopRequire("electron");
 const electronSmoke = path.join(root, "scripts", "storage-electron-smoke.mjs");
 const pnpmCli = process.env.npm_execpath;
 const mode = process.argv[2] ?? "--node";
+const nodeVitestConfig = mode === "--node-vitest" ? process.argv[3] : undefined;
 const nodeBinaryCache = path.join(
   root,
   "node_modules",
@@ -65,7 +66,10 @@ if (mode === "--electron-only") {
   run("verify installed Electron ABI", electronExecutable, [electronSmoke]);
   process.exit(0);
 }
-if (mode !== "--node") {
+if (mode === "--node-vitest" && !nodeVitestConfig) {
+  throw new Error("--node-vitest requires a Vitest config path");
+}
+if (mode !== "--node" && mode !== "--node-vitest") {
   throw new Error(`Unknown storage ABI mode: ${mode}`);
 }
 
@@ -111,14 +115,21 @@ try {
     fs.mkdirSync(path.dirname(nodeBinaryCache), { recursive: true });
     fs.copyFileSync(nativeBinary, nodeBinaryCache);
   }
-  run("run Node storage migration/lifecycle tests", process.execPath, [
-    pnpmCli,
-    "exec",
-    "vitest",
-    "run",
-    "--config",
-    "vitest.storage.config.ts",
-  ]);
+  const vitestConfig = nodeVitestConfig ?? "vitest.storage.config.ts";
+  run(
+    nodeVitestConfig
+      ? `run Node tests from ${nodeVitestConfig}`
+      : "run Node storage migration/lifecycle tests",
+    process.execPath,
+    [
+      pnpmCli,
+      "exec",
+      "vitest",
+      "run",
+      "--config",
+      vitestConfig,
+    ],
+  );
 } catch (error) {
   primaryFailure = error;
 } finally {

@@ -336,14 +336,30 @@ function InnerApp(opts: TuiOptions) {
       }
       case "resume": {
         try {
-          const { id, filePath } = loop.resumeSession(effect.target);
+          const { id, filePath, messageCount } = loop.resumeSession(effect.target);
           loop.appendSystem(
-            `resumed ${id}\n  ${filePath}\nnew messages will append to this session.`,
+            `resumed ${id}; replayed ${messageCount} messages without running tools.\n` +
+              `  ${filePath}\nnew messages will append to this session.`,
             "resume",
           );
         } catch (err) {
           loop.appendSystem(
             `/resume failed: ${err instanceof Error ? err.message : String(err)}`,
+            "system",
+          );
+        }
+        return;
+      }
+      case "rollback": {
+        try {
+          const result = loop.rollback(effect.runId);
+          loop.appendSystem(
+            `rolled back ${result.id}\nworkspace snapshots restored; run status is ${result.status}.`,
+            "rollback",
+          );
+        } catch (err) {
+          loop.appendSystem(
+            `/rollback failed: ${err instanceof Error ? err.message : String(err)}`,
             "system",
           );
         }
@@ -459,7 +475,7 @@ function InnerApp(opts: TuiOptions) {
       {/* SCROLLBACK — Static items, owned by the OS terminal.
           Mouse wheel scrolls this region. Each finalised message lands
           here once and is never repainted. */}
-      <MessageStream items={loop.stream} />
+      <MessageStream key={loop.streamVersion} items={loop.stream} />
 
       {/* LIVE FRAME — Ink repaints this region on every state change. */}
       <Box

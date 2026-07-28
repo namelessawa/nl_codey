@@ -35,6 +35,11 @@ describe("[tui] command registry", () => {
     expect(parseCommand("/p")).toEqual({ kind: "provider" });
     expect(parseCommand("/q")).toEqual({ kind: "exit" });
     expect(parseCommand("/checkout abc")).toEqual({ kind: "resume", target: "abc" });
+    expect(parseCommand("/undo")).toEqual({ kind: "rollback", runId: null });
+    expect(parseCommand("/rollback run-1")).toEqual({
+      kind: "rollback",
+      runId: "run-1",
+    });
     expect(parseCommand("/log")).toEqual({ kind: "tree" });
   });
 

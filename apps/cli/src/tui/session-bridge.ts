@@ -193,19 +193,25 @@ export class SessionBridge {
     return this.#writer;
   }
 
-  /** Resume an existing session file by absolute path. */
-  resume(filePath: string): SessionWriter {
+  /** Resume an existing session file and return its loaded replay view. */
+  resume(filePath: string): { writer: SessionWriter; loaded: LoadedSession } {
     this.#flushAssistantTurn();
     this.#writer?.close();
-    const { writer } = this.store.resumeSession(filePath);
+    const { writer, loaded } = this.store.resumeSession(filePath);
     this.#writer = writer;
-    return writer;
+    return { writer, loaded };
   }
 
-  /** Lookup absolute path for a session id; null when not found. */
+  /** Lookup by exact id or a unique prefix; null when not found. */
   filePathFor(sessionId: string): string | null {
-    const match = this.listSessions().find((s) => s.id === sessionId);
-    return match?.filePath ?? null;
+    const sessions = this.listSessions();
+    const exact = sessions.find((session) => session.id === sessionId);
+    if (exact) return exact.filePath;
+    const matches = sessions.filter((session) => session.id.startsWith(sessionId));
+    if (matches.length > 1) {
+      throw new Error(`ambiguous session id prefix: ${sessionId}`);
+    }
+    return matches[0]?.filePath ?? null;
   }
 
   /** Close the active writer (idempotent). */

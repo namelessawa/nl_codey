@@ -25,7 +25,7 @@
 import { useEffect, useMemo, useReducer, useRef } from "react";
 import path from "node:path";
 import { nlcRoot, type AgentEvent } from "@nlc/shared";
-import type { LoadedSession, SessionSummary } from "@nlc/session";
+import type { LoadedSession, SessionMessage, SessionSummary } from "@nlc/session";
 import { renderProjectTree } from "@nlc/session";
 import { buildCliServices, type CliServices } from "../lib/services.js";
 import { SessionBridge, sessionRootFor } from "./session-bridge.js";
@@ -50,6 +50,8 @@ export type TraceItem = {
 type State = {
   /** Finalised messages — routed through `<Static>` into terminal scrollback. */
   stream: StreamItem[];
+  /** Remount key for replaying a non-append stream through Ink Static. */
+  streamVersion: number;
   /** Currently-streaming agent message (mutates on each delta). Null when idle. */
   liveAgent: StreamItem | null;
   trace: TraceItem[];
@@ -62,6 +64,7 @@ type State = {
 
 type Action =
   | { type: "append"; item: StreamItem }
+  | { type: "replace-stream"; items: StreamItem[] }
   | { type: "trace"; item: TraceItem }
   | { type: "delta"; text: string }
   | { type: "flush" }
@@ -87,6 +90,14 @@ function reducer(state: State, action: Action): State {
         liveAgent: null,
       };
     }
+    case "replace-stream":
+      return {
+        ...state,
+        stream: action.items.slice(-MAX_STREAM),
+        streamVersion: state.streamVersion + 1,
+        liveAgent: null,
+        trace: [],
+      };
     case "trace":
       return { ...state, trace: trimTail(state.trace, action.item, MAX_TRACE) };
     case "delta": {
@@ -113,7 +124,13 @@ function reducer(state: State, action: Action): State {
     case "set-status":
       return { ...state, status: action.value };
     case "clear":
-      return { ...state, stream: [], trace: [], liveAgent: null };
+      return {
+        ...state,
+        stream: [],
+        streamVersion: state.streamVersion + 1,
+        trace: [],
+        liveAgent: null,
+      };
   }
 }
 
@@ -135,6 +152,7 @@ export function useLoop(opts: UseLoopOptions = {}) {
 
   const [state, dispatch] = useReducer(reducer, {
     stream: [],
+    streamVersion: 0,
     liveAgent: null,
     trace: [],
     pendingApproval: null,
@@ -192,6 +210,33 @@ export function useLoop(opts: UseLoopOptions = {}) {
   };
 
   useEffect(() => {
+    try {
+      const bridge = getBridge();
+      const latest = bridge.listSessions()[0];
+      if (latest) {
+        const { loaded } = bridge.resume(latest.filePath);
+        dispatch({ type: "replace-stream", items: sessionItems(loaded) });
+        dispatch({
+          type: "append",
+          item: {
+            id: `restore-${Date.now()}`,
+            role: "system",
+            label: "resume",
+            text: `restored ${loaded.header.id} (${loaded.messages.length} messages); no tools were re-run.`,
+          },
+        });
+      }
+    } catch (err) {
+      dispatch({
+        type: "append",
+        item: {
+          id: `restore-error-${Date.now()}`,
+          role: "error",
+          label: "system",
+          text: `session restore failed: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      });
+    }
     return () => {
       try {
         servicesRef.current?.storage.close();
@@ -280,6 +325,19 @@ export function useLoop(opts: UseLoopOptions = {}) {
     }
   };
 
+  const rollback = (requestedRunId: string | null): { id: string; status: string } => {
+    const services = getServices();
+    if (!services) throw new Error(errorRef.current ?? "storage is unavailable");
+    const workspace = services.storage.upsertWorkspace(workspaceRoot);
+    const runs = services.agent.listRuns(workspace.id);
+    const run = requestedRunId
+      ? resolveRunPrefix(runs, requestedRunId)
+      : runs[0];
+    if (!run) throw new Error("no run is available to roll back");
+    const detail = services.agent.rollback(run.id);
+    return { id: detail.run.id, status: detail.run.status };
+  };
+
   const clear = (): void => dispatch({ type: "clear" });
 
   /**
@@ -328,14 +386,21 @@ export function useLoop(opts: UseLoopOptions = {}) {
   };
 
   /** Resume an existing session as the active writer. Accepts id or absolute path. */
-  const resumeSession = (idOrPath: string): { id: string; filePath: string } => {
+  const resumeSession = (
+    idOrPath: string,
+  ): { id: string; filePath: string; messageCount: number } => {
     const bridge = getBridge();
     const filePath = idOrPath.includes(path.sep) || idOrPath.endsWith(".json")
       ? idOrPath
       : bridge.filePathFor(idOrPath);
     if (!filePath) throw new Error(`unknown session id: ${idOrPath}`);
-    const writer = bridge.resume(filePath);
-    return { id: writer.header.id, filePath: writer.filePath };
+    const { writer, loaded } = bridge.resume(filePath);
+    dispatch({ type: "replace-stream", items: sessionItems(loaded) });
+    return {
+      id: writer.header.id,
+      filePath: writer.filePath,
+      messageCount: loaded.messages.length,
+    };
   };
 
   /** Append a state-change event to the active session file. */
@@ -354,6 +419,7 @@ export function useLoop(opts: UseLoopOptions = {}) {
   return useMemo(
     () => ({
       stream: state.stream,
+      streamVersion: state.streamVersion,
       liveAgent: state.liveAgent,
       trace: state.trace,
       pendingApproval: state.pendingApproval,
@@ -365,6 +431,7 @@ export function useLoop(opts: UseLoopOptions = {}) {
       approve,
       reject,
       cancel,
+      rollback,
       clear,
       appendSystem,
       // session ops
@@ -496,4 +563,35 @@ async function waitTerminal(
 
 function isTerminal(status: string): boolean {
   return status === "done" || status === "failed" || status === "cancelled" || status === "budget_exceeded";
+}
+
+function resolveRunPrefix<T extends { id: string }>(runs: T[], prefix: string): T {
+  const exact = runs.find((run) => run.id === prefix);
+  if (exact) return exact;
+  const matches = runs.filter((run) => run.id.startsWith(prefix));
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length === 0) throw new Error(`unknown run id: ${prefix}`);
+  throw new Error(`ambiguous run id prefix: ${prefix}`);
+}
+
+function sessionItems(loaded: LoadedSession): StreamItem[] {
+  return loaded.messages.map((message) => sessionItem(message));
+}
+
+function sessionItem(message: SessionMessage): StreamItem {
+  switch (message.role) {
+    case "user":
+      return { id: message.id, role: "user", label: "user", text: message.content };
+    case "assistant":
+      return { id: message.id, role: "agent", label: "agent", text: message.content };
+    case "tool":
+      return {
+        id: message.id,
+        role: "tool",
+        label: `tool:${message.toolCallId ?? "result"}`,
+        text: message.content,
+      };
+    case "system":
+      return { id: message.id, role: "system", label: "system", text: message.content };
+  }
 }

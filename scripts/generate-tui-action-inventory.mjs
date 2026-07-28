@@ -178,8 +178,13 @@ const effectMetadata = {
   },
   resume: {
     precondition: "Resolvable session id/prefix",
-    result: "Switch active JSONL session",
+    result: "Switch active JSONL session and replay history without running tools",
     mutation: "Active session",
+  },
+  rollback: {
+    precondition: "Completed run with persisted snapshots",
+    result: "Restore the latest or uniquely selected run snapshots",
+    mutation: "Workspace files + run status",
   },
   model: {
     precondition: "provider/model syntax when changing",
