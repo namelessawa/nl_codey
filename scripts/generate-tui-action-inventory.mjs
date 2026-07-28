@@ -12,6 +12,26 @@ const promptSource = read("apps", "cli", "src", "tui", "prompt.tsx");
 const approvalSource = read("apps", "cli", "src", "tui", "approval.tsx");
 const providerSource = read("apps", "cli", "src", "tui", "provider-picker.tsx");
 const skillSource = read("apps", "cli", "src", "tui", "skill-install-picker.tsx");
+const commandTestPath = rel("apps", "cli", "src", "tui", "commands.test.ts");
+const commandTestSource = fs.existsSync(commandTestPath)
+  ? fs.readFileSync(commandTestPath, "utf8")
+  : "";
+
+function discoverTestFiles(directory) {
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) return discoverTestFiles(absolute);
+    return /\.test\.tsx?$/.test(entry.name) ? [absolute] : [];
+  });
+}
+
+const cliTuiTestFiles = discoverTestFiles(rel("apps", "cli", "src")).map(
+  (file) => path.relative(root, file).replaceAll("\\", "/"),
+);
+const commandRegistryCovered =
+  commandTestSource.includes('describe("[tui] command registry"') &&
+  commandTestSource.includes("for (const spec of COMMANDS)");
 
 const commandSpecs = [];
 for (const match of commandSource.matchAll(/\{\s*name:\s*"([^"]+)",\s*hint:\s*"([^"]+)"\s*\}/g)) {
@@ -179,7 +199,9 @@ const commandRows = commandSpecs.map((spec) => {
       .map((alias) => `/${alias}`)
       .join(", "),
     ...metadata,
-    test: "None - CLI/TUI is outside the committed Vitest include",
+    test: commandRegistryCovered
+      ? "apps/cli/src/tui/commands.test.ts ([tui] registry/parser)"
+      : "None",
   };
 });
 
@@ -277,7 +299,7 @@ const output = `# TUI action inventory
 - Keyboard/input actions: ${keyboardRows.length}
 - Modal routes: ${modalNames.length}
 - Mouse implementation discovered: ${hasMouse ? "yes" : "no"}
-- Committed CLI/TUI Vitest files: 0
+- Committed CLI/TUI Vitest files: ${cliTuiTestFiles.length}
 
 ## Slash commands
 
@@ -304,10 +326,10 @@ ${hasMouse ? "Mouse source exists and requires a dedicated interaction audit." :
 
 ## Coverage gate
 
-This inventory is discovery evidence, not completion evidence. Every row above
-currently lacks a committed CLI/TUI test. The dedicated unit, render, PTY, and
-E2E batches must replace the \`None\` cells with stable test identifiers and
-must add a CI check that regenerates this file and fails on a diff.
+This inventory is discovery evidence, not completion evidence. Slash-command
+catalogue/parser coverage is recorded where present; keyboard, modal, render,
+PTY, and E2E rows still require stable test identifiers. CI must regenerate
+this file and fail on a diff.
 `;
 
 const outputPath = rel("docs", "tui", "action-inventory.md");

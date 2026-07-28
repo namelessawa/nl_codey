@@ -12,30 +12,30 @@
 - Keyboard/input actions: 18
 - Modal routes: 3
 - Mouse implementation discovered: no
-- Committed CLI/TUI Vitest files: 0
+- Committed CLI/TUI Vitest files: 1
 
 ## Slash commands
 
 | Action | Entry | Shortcut/command | Precondition | Result | Mutates state | Test |
 | --- | --- | --- | --- | --- | --- | --- |
-| /help | Prompt | /help, /? | Idle prompt | Append command catalogue to the message stream | In-memory UI | None - CLI/TUI is outside the committed Vitest include |
-| /init | Prompt | /init | Writable workspace; --force for replacement | Create or update the project .nlc skeleton | Workspace files | None - CLI/TUI is outside the committed Vitest include |
-| /skills | Prompt | /skills, /sk | Readable global/project skill roots | Append discovered skills | No | None - CLI/TUI is outside the committed Vitest include |
-| /skills-generate <desc> | Prompt | /skills-generate, /skill-gen, /sg | Description; configured LLM; install-target approval | Generate and install a skill | LLM call + project/global files | None - CLI/TUI is outside the committed Vitest include |
-| /theme [<name>] | Prompt | /theme, /th | Known theme when an argument is supplied | List themes or switch active theme and record a session event | UI + session event | None - CLI/TUI is outside the committed Vitest include |
-| /settings | Prompt | /settings, /set | Readable CLI settings | Append resolved non-secret settings | In-memory UI | None - CLI/TUI is outside the committed Vitest include |
-| /workspaces | Prompt | /workspaces, /ws | Idle prompt | Currently displays an ABI-gap notice instead of workspace data | No | None - CLI/TUI is outside the committed Vitest include |
-| /cd <path> | Prompt | /cd | Path argument | Currently reports that workspace switching is not wired | No (scaffold) | None - CLI/TUI is outside the committed Vitest include |
-| /sessions | Prompt | /sessions, /list-sessions | Readable session store | Append session summaries | No | None - CLI/TUI is outside the committed Vitest include |
-| /tree | Prompt | /tree, /log | Readable session store | Append the session tree | No | None - CLI/TUI is outside the committed Vitest include |
-| /branch <msg> [<session>] | Prompt | /branch | Message id and active/explicit parent session | Create and activate a child session | Session store | None - CLI/TUI is outside the committed Vitest include |
-| /resume <session> | Prompt | /resume, /checkout | Resolvable session id/prefix | Switch active JSONL session | Active session | None - CLI/TUI is outside the committed Vitest include |
-| /provider | Prompt | /provider, /providers, /p | Readable provider store | Open picker; save provider config and model-change event on confirmation | Provider store + session event | None - CLI/TUI is outside the committed Vitest include |
-| /model [<provider/model>] | Prompt | /model, /mdl | provider/model syntax when changing | Show model or record a model-change event; runtime settings are not changed | Session event only | None - CLI/TUI is outside the committed Vitest include |
-| /think [<level>] | Prompt | /think, /thinking | Optional level | Show limitation or record a thinking-level event | Session event only | None - CLI/TUI is outside the committed Vitest include |
-| /clear | Prompt | /clear | Idle prompt | Clear the in-memory message stream | In-memory UI | None - CLI/TUI is outside the committed Vitest include |
-| /exit | Prompt | /exit, /quit, /q | No blocking modal | Exit the Ink application | Process state | None - CLI/TUI is outside the committed Vitest include |
-| /quit | Prompt | /quit, /exit, /q | No blocking modal | Exit the Ink application | Process state | None - CLI/TUI is outside the committed Vitest include |
+| /help | Prompt | /help, /? | Idle prompt | Append command catalogue to the message stream | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /init | Prompt | /init | Writable workspace; --force for replacement | Create or update the project .nlc skeleton | Workspace files | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /skills | Prompt | /skills, /sk | Readable global/project skill roots | Append discovered skills | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /skills-generate <desc> | Prompt | /skills-generate, /skill-gen, /sg | Description; configured LLM; install-target approval | Generate and install a skill | LLM call + project/global files | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /theme [<name>] | Prompt | /theme, /th | Known theme when an argument is supplied | List themes or switch active theme and record a session event | UI + session event | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /settings | Prompt | /settings, /set | Readable CLI settings | Append resolved non-secret settings | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /workspaces | Prompt | /workspaces, /ws | Idle prompt | Currently displays an ABI-gap notice instead of workspace data | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /cd <path> | Prompt | /cd | Path argument | Currently reports that workspace switching is not wired | No (scaffold) | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /sessions | Prompt | /sessions, /list-sessions | Readable session store | Append session summaries | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /tree | Prompt | /tree, /log | Readable session store | Append the session tree | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /branch <msg> [<session>] | Prompt | /branch | Message id and active/explicit parent session | Create and activate a child session | Session store | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /resume <session> | Prompt | /resume, /checkout | Resolvable session id/prefix | Switch active JSONL session | Active session | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /provider | Prompt | /provider, /providers, /p | Readable provider store | Open picker; save provider config and model-change event on confirmation | Provider store + session event | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /model [<provider/model>] | Prompt | /model, /mdl | provider/model syntax when changing | Show model or record a model-change event; runtime settings are not changed | Session event only | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /think [<level>] | Prompt | /think, /thinking | Optional level | Show limitation or record a thinking-level event | Session event only | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /clear | Prompt | /clear | Idle prompt | Clear the in-memory message stream | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /exit | Prompt | /exit, /quit, /q | No blocking modal | Exit the Ink application | Process state | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /quit | Prompt | /quit, /exit, /q | No blocking modal | Exit the Ink application | Process state | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 
 ## Keyboard and text-input actions
 
@@ -81,7 +81,7 @@ No mouse handler or mouse-mode lifecycle is committed. Mouse support must not be
 
 ## Coverage gate
 
-This inventory is discovery evidence, not completion evidence. Every row above
-currently lacks a committed CLI/TUI test. The dedicated unit, render, PTY, and
-E2E batches must replace the `None` cells with stable test identifiers and
-must add a CI check that regenerates this file and fails on a diff.
+This inventory is discovery evidence, not completion evidence. Slash-command
+catalogue/parser coverage is recorded where present; keyboard, modal, render,
+PTY, and E2E rows still require stable test identifiers. CI must regenerate
+this file and fail on a diff.

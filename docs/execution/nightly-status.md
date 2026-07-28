@@ -9,7 +9,7 @@ Overall state: **ACTIVE - RED BASELINE**
 | Batch | Branch | Scope | State | Evidence |
 | --- | --- | --- | --- | --- |
 | 1 | `codex/audit-production-complete` | Reality audit, control files, generated TUI inventory, current-doc path corrections | Ready for draft review; gate red on SBOX-ABORT-001 | Baseline captured; 18 commands, 18 key actions and 3 modal routes discovered |
-| 2 | `codex/p1-test-cli-foundation` | Formal test configs, live/debug opt-in gate, CLI build/smoke | Pending | Depends on Batch 1 review |
+| 2 | `codex/p1-test-cli-foundation` | Formal test configs, live/debug opt-in gate, CLI build/smoke | Ready for draft review; integration gate remains red by design | Default offline gate: 685 passed; CLI bundle/help/version passed |
 | 3 | `codex/p1-tui-render-foundation` | TUI unit/render/ANSI frame tests | Pending | No committed TUI tests at baseline |
 | 4 | `codex/p1-tui-pty-harness` | Windows ConPTY + resize/key/cleanup primitives | Pending | No PTY dependency or harness at baseline |
 | 5 | `codex/p1-tui-core-workflows` | Core approval/reject/stop/session/recovery scenarios | Pending | Depends on PTY harness |
@@ -40,13 +40,35 @@ Overall state: **ACTIVE - RED BASELINE**
   excluded, 79 files/693 tests passed and only the pre-existing Windows abort
   timing assertion failed (1936 ms measured, 1500 ms bound).
 
+### 2026-07-29 - formal test and CLI foundation
+
+- Split the default offline gate into explicit unit, Desktop main, renderer,
+  preload, CLI and TUI Vitest projects. The combined `pnpm test` gate passed
+  685 assertions without consulting ambient LLM credentials.
+- Moved Storage ABI, sandbox abort and Docker tool coverage into the explicit
+  integration project. Its baseline is intentionally red: 16 passed, 7
+  skipped and 5 failed (four ABI failures plus the Windows abort bound,
+  measured at 3147 ms).
+- Added an explicit `RUN_AGENT_DEBUG_TESTS=1` requirement to the Docker LLM
+  debug suite. Its no-opt-in preflight passed and the live case skipped; no
+  network request was made.
+- Added the missing CLI bundle script and verified both the bundled entry and
+  package shim with `--help`, plus bundled `--version`.
+- Added command-catalogue/parser, argv, renderer-appearance and typed preload
+  bridge smoke coverage. The generated action inventory now records the
+  command tests while retaining honest gaps for key, modal, render and PTY
+  behavior.
+- `custom.txt` remained ignored and unread by test processes. No explicit live
+  model smoke was required for this batch.
+
 ## Current blockers
 
-1. Default `pnpm test` is non-deterministic because ambient live LLM variables
-   activate a Docker debug suite.
-2. Real storage assertions cannot run with the postinstall Electron binary in
+1. Real storage assertions cannot run with the postinstall Electron binary in
    a Node process.
-3. The CLI package cannot produce its declared `dist` artifact.
-4. CLI/TUI, preload and renderer lack formal normal test coverage.
+2. Windows child-process abort exceeds its documented 1500 ms bound.
+3. TUI key/modal/render, PTY and end-to-end workflows still lack committed
+   coverage.
+4. Run/Session crash reconciliation and a unified mutation approval boundary
+   are not yet proved.
 5. Full Node plugin execution remains outside an OS-enforced capability
    boundary.
