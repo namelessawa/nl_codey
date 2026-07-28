@@ -38,6 +38,8 @@ export type Services = {
    * without re-resolving the path themselves.
    */
   dataRoot: string;
+  /** Runs owned by dead processes that were marked interrupted on startup. */
+  startupRecoveries: ReturnType<Storage["reconcileInterruptedRuns"]>;
 };
 
 /**
@@ -57,6 +59,7 @@ export function buildServices(
   const dataDir = path.join(dataRoot, "data");
   const dbPath = path.join(dataDir, "workspace-state.db");
   const storage = new Storage(dbPath);
+  const startupRecoveries = storage.reconcileInterruptedRuns();
   const settings = new SettingsStore(dataRoot);
   const installationGate = new InstallationGate(dataRoot, emit);
   const advancedSettings = new AdvancedSettingsStore(dataRoot);
@@ -138,6 +141,15 @@ export function buildServices(
     emit,
   });
 
-  bundle = { storage, settings, agent, installationGate, advancedSettings, emit, dataRoot };
+  bundle = {
+    storage,
+    settings,
+    agent,
+    installationGate,
+    advancedSettings,
+    emit,
+    dataRoot,
+    startupRecoveries,
+  };
   return bundle;
 }

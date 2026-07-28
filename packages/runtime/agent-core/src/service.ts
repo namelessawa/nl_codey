@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import type {
   AgentEvent,
   AgentRun,
@@ -362,6 +363,12 @@ export type AgentDeps = {
   emit: (event: AgentEvent) => void;
 };
 
+export type RunTaskOptions = {
+  /** Optional stable link to the CLI JSONL session that owns this run. */
+  sessionId?: string;
+  sessionFilePath?: string;
+};
+
 /**
  * A {@link Pending} entry parks the loop while it waits on the user.
  *
@@ -393,6 +400,7 @@ export class AgentService {
   private readonly getExtendedPorts: ExtendedPortsFn | undefined;
   private readonly getDynamicTools: DynamicToolBundleFn | undefined;
   private readonly emit: (event: AgentEvent) => void;
+  private readonly runtimeInstanceId = randomUUID();
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly approvals = new Map<string, Approval>();
@@ -614,10 +622,19 @@ export class AgentService {
    * runs in the background and drives the UI via events, so this returns the
    * initial detail immediately.
    */
-  async runTask(workspaceId: string, task: string): Promise<AgentRunDetail> {
+  async runTask(
+    workspaceId: string,
+    task: string,
+    options: RunTaskOptions = {},
+  ): Promise<AgentRunDetail> {
     const ws = this.storage.getWorkspace(workspaceId);
     if (!ws) throw new Error("No workspace open");
-    const run = this.storage.createRun(workspaceId, task);
+    const run = this.storage.createRun(workspaceId, task, {
+      ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+      ...(options.sessionFilePath ? { sessionFilePath: options.sessionFilePath } : {}),
+      runtimeInstanceId: this.runtimeInstanceId,
+      ownerPid: process.pid,
+    });
     const controller = new AbortController();
     this.controllers.set(run.id, controller);
 

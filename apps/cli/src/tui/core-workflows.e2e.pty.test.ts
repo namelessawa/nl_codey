@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Storage } from "@nlc/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnTuiPty, type TuiPtyHarness } from "./pty-harness.js";
 
@@ -223,6 +224,17 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     )!;
     expect(originalHeader.id).toBeTruthy();
     expect(originalUser.content).toBe("persist the restart fixture");
+    const linkStorage = new Storage(
+      path.join(fixture.dataRoot, "data", "workspace-state.db"),
+    );
+    const linkedRuns = linkStorage.listRunsForSession(originalHeader.id!);
+    linkStorage.close();
+    expect(linkedRuns).toHaveLength(1);
+    expect(linkedRuns[0]).toMatchObject({
+      userTask: "persist the restart fixture",
+      sessionId: originalHeader.id,
+      sessionFilePath: originalPath,
+    });
 
     const restored = start(fixture);
     await restored.waitForBuffer(
@@ -274,5 +286,73 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     );
     expect(fs.existsSync(notesPath)).toBe(false);
     await exit(restarted);
+  });
+
+  it("reconciles a run killed at approval without replaying its patch", async () => {
+    const fixture = createFixture();
+    const notesPath = path.join(fixture.workspaceRoot, "AGENT_NOTES.md");
+    const crashed = start(fixture);
+
+    await crashed.waitForScreen((screen) => screen.includes("○ idle"));
+    await enter(crashed, "crash at the approval fixture");
+    await crashed.waitForBuffer(
+      (buffer) =>
+        buffer.includes("[verify] pending patch") &&
+        buffer.includes("AGENT_NOTES.md"),
+      20_000,
+    );
+    await crashed.terminate();
+    expect(fs.existsSync(notesPath)).toBe(false);
+
+    const [sessionPath] = await waitForSessionFiles(fixture.dataRoot, 1);
+    const header = readSession(sessionPath!).find((line) => line.type === "session")!;
+    const recovered = start(fixture);
+    await recovered.waitForBuffer(
+      (buffer) =>
+        buffer.includes("crash at the approval fixture") &&
+        buffer.includes("recovered 1 interrupted run(s)") &&
+        buffer.includes("No tools or workspace writes were") &&
+        buffer.includes("replayed; /rollback remains available"),
+      20_000,
+    );
+    expect(fs.existsSync(notesPath)).toBe(false);
+    await exit(recovered);
+
+    const dbPath = path.join(fixture.dataRoot, "data", "workspace-state.db");
+    const storage = new Storage(dbPath);
+    const [run] = storage.listRunsForSession(header.id!);
+    const recoveryStepCount = storage
+      .listSteps(run!.id)
+      .filter((step) =>
+        step.content.includes("No tool or workspace write was replayed"),
+      ).length;
+    storage.close();
+    expect(run).toMatchObject({
+      userTask: "crash at the approval fixture",
+      status: "failed",
+      exitReason: "interrupted_restart",
+      sessionFilePath: sessionPath,
+    });
+    expect(run?.ownerPid).toEqual(expect.any(Number));
+    expect(recoveryStepCount).toBe(1);
+
+    const secondRestart = start(fixture);
+    const secondBuffer = await secondRestart.waitForBuffer(
+      (buffer) =>
+        buffer.includes(`restored ${header.id}`) &&
+        buffer.includes("crash at the approval fixture"),
+      15_000,
+    );
+    expect(secondBuffer).not.toContain("recovered 1 interrupted run(s)");
+    await exit(secondRestart);
+
+    const reopened = new Storage(dbPath);
+    const reopenedRecoverySteps = reopened
+      .listSteps(run!.id)
+      .filter((step) =>
+        step.content.includes("No tool or workspace write was replayed"),
+      );
+    reopened.close();
+    expect(reopenedRecoverySteps).toHaveLength(1);
   });
 });

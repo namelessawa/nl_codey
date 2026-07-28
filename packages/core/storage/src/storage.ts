@@ -65,6 +65,10 @@ type RunRow = {
   iteration_count: number;
   model_name: string | null;
   exit_reason: string | null;
+  session_id: string | null;
+  session_file_path: string | null;
+  runtime_instance_id: string | null;
+  owner_pid: number | null;
 };
 type StepRow = { id: string; run_id: string; type: string; content: string; created_at: number };
 type SnapshotRow = {
@@ -85,6 +89,28 @@ export type RunUsageDelta = {
   costUsd?: number;
   toolCalls?: number;
   iterations?: number;
+};
+
+export type CreateRunOptions = {
+  sessionId?: string;
+  sessionFilePath?: string;
+  runtimeInstanceId?: string;
+  ownerPid?: number;
+};
+
+export type StartupRecovery = {
+  runId: string;
+  workspaceId: string;
+  previousStatus: AgentRunState;
+  sessionId: string | null;
+  sessionFilePath: string | null;
+};
+
+export type ReconcileInterruptedRunOptions = {
+  currentPid?: number;
+  now?: number;
+  legacyGraceMs?: number;
+  isProcessAlive?: (pid: number) => boolean;
 };
 
 /** Thin synchronous persistence layer over SQLite. Construction runs the schema. */
@@ -244,7 +270,11 @@ export class Storage {
 
   // --- runs ---
 
-  createRun(workspaceId: string, userTask: string): AgentRun {
+  createRun(
+    workspaceId: string,
+    userTask: string,
+    options: CreateRunOptions = {},
+  ): AgentRun {
     const now = Date.now();
     const run: AgentRun = {
       id: randomUUID(),
@@ -260,12 +290,30 @@ export class Storage {
       iterationCount: 0,
       modelName: null,
       exitReason: null,
+      sessionId: options.sessionId ?? null,
+      sessionFilePath: options.sessionFilePath ?? null,
+      runtimeInstanceId: options.runtimeInstanceId ?? null,
+      ownerPid: options.ownerPid ?? null,
     };
     this.db
       .prepare(
-        "INSERT INTO agent_runs (id, workspace_id, user_task, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        `INSERT INTO agent_runs
+           (id, workspace_id, user_task, status, created_at, updated_at,
+            session_id, session_file_path, runtime_instance_id, owner_pid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(run.id, run.workspaceId, run.userTask, run.status, run.createdAt, run.updatedAt);
+      .run(
+        run.id,
+        run.workspaceId,
+        run.userTask,
+        run.status,
+        run.createdAt,
+        run.updatedAt,
+        run.sessionId,
+        run.sessionFilePath,
+        run.runtimeInstanceId,
+        run.ownerPid,
+      );
     return run;
   }
 
@@ -326,6 +374,79 @@ export class Storage {
       .prepare("SELECT * FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC")
       .all(workspaceId) as RunRow[];
     return rows.map(toRun);
+  }
+
+  listRunsForSession(sessionId: string): AgentRun[] {
+    const rows = this.db
+      .prepare("SELECT * FROM agent_runs WHERE session_id = ? ORDER BY created_at ASC")
+      .all(sessionId) as RunRow[];
+    return rows.map(toRun);
+  }
+
+  /**
+   * Mark runs abandoned by dead owner processes exactly once. This only
+   * changes SQLite status/audit rows; tools, patches, commands and snapshots
+   * are never replayed or automatically rolled back.
+   */
+  reconcileInterruptedRuns(
+    options: ReconcileInterruptedRunOptions = {},
+  ): StartupRecovery[] {
+    const currentPid = options.currentPid ?? process.pid;
+    const now = options.now ?? Date.now();
+    const legacyGraceMs = options.legacyGraceMs ?? 30_000;
+    const isAlive = options.isProcessAlive ?? isProcessAlive;
+    const candidates = this.db
+      .prepare(
+        `SELECT * FROM agent_runs
+         WHERE status NOT IN ('done', 'failed', 'cancelled', 'budget_exceeded')
+         ORDER BY created_at ASC`,
+      )
+      .all() as RunRow[];
+    const recover = this.db.transaction((candidate: RunRow): StartupRecovery | null => {
+      const current = this.db
+        .prepare("SELECT * FROM agent_runs WHERE id = ?")
+        .get(candidate.id) as RunRow | undefined;
+      if (!current || isTerminalRunStatus(current.status)) return null;
+      const updated = this.db
+        .prepare(
+          `UPDATE agent_runs
+           SET status = 'failed', exit_reason = 'interrupted_restart', updated_at = ?
+           WHERE id = ? AND status = ?`,
+        )
+        .run(now, current.id, current.status);
+      if (updated.changes !== 1) return null;
+      this.db
+        .prepare(
+          "INSERT INTO agent_steps (id, run_id, type, content, created_at) VALUES (?, ?, 'error', ?, ?)",
+        )
+        .run(
+          randomUUID(),
+          current.id,
+          `Run interrupted by process restart while status was ${current.status}. ` +
+            "No tool or workspace write was replayed; use rollback if snapshots exist.",
+          now,
+        );
+      return {
+        runId: current.id,
+        workspaceId: current.workspace_id,
+        previousStatus: current.status as AgentRunState,
+        sessionId: current.session_id,
+        sessionFilePath: current.session_file_path,
+      };
+    });
+
+    const recovered: StartupRecovery[] = [];
+    for (const candidate of candidates) {
+      const ownerPid = candidate.owner_pid;
+      if (ownerPid !== null) {
+        if (ownerPid === currentPid || isAlive(ownerPid)) continue;
+      } else if (now - candidate.updated_at < legacyGraceMs) {
+        continue;
+      }
+      const result = recover(candidate);
+      if (result) recovered.push(result);
+    }
+    return recovered;
   }
 
   /**
@@ -806,7 +927,30 @@ function toRun(row: RunRow): AgentRun {
     iterationCount: row.iteration_count,
     modelName: row.model_name,
     exitReason: row.exit_reason,
+    sessionId: row.session_id,
+    sessionFilePath: row.session_file_path,
+    runtimeInstanceId: row.runtime_instance_id,
+    ownerPid: row.owner_pid,
   };
+}
+
+function isTerminalRunStatus(status: string): boolean {
+  return (
+    status === "done" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "budget_exceeded"
+  );
+}
+
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
 }
 
 function toSnapshot(r: SnapshotRow): FileSnapshot {

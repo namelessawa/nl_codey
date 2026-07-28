@@ -19,6 +19,7 @@ export type CliServices = {
   storage: Storage;
   agent: AgentService;
   dataRoot: string;
+  startupRecoveries: ReturnType<Storage["reconcileInterruptedRuns"]>;
 };
 
 export type BuildCliServicesOpts = {
@@ -33,6 +34,7 @@ export function buildCliServices(opts: BuildCliServicesOpts): CliServices {
   fs.mkdirSync(dataRoot, { recursive: true });
   const dbPath = path.join(dataRoot, "data", "workspace-state.db");
   const storage = new Storage(dbPath);
+  const startupRecoveries = storage.reconcileInterruptedRuns();
 
   const agent = new AgentService({
     storage,
@@ -47,5 +49,5 @@ export function buildCliServices(opts: BuildCliServicesOpts): CliServices {
     emit: opts.emit,
   });
 
-  return { storage, agent, dataRoot };
+  return { storage, agent, dataRoot, startupRecoveries };
 }

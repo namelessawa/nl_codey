@@ -111,4 +111,82 @@ describe("Storage", () => {
     expect(storage.listWorkspaces(1)).toHaveLength(1);
     storage.close();
   });
+
+  it("[recovery] marks dead and legacy owners once without replaying writes", () => {
+    const storage = new Storage(":memory:");
+    const workspaceRoot = path.join(
+      os.tmpdir(),
+      `nlc-recovery-workspace-${randomUUID()}`,
+    );
+    const untouchedPath = path.join(workspaceRoot, "never-created.txt");
+    const ws = storage.upsertWorkspace(workspaceRoot);
+
+    const dead = storage.createRun(ws.id, "dead owner", {
+      sessionId: "ses_dead",
+      sessionFilePath: path.join(workspaceRoot, "ses_dead.json"),
+      runtimeInstanceId: "instance-dead",
+      ownerPid: 999_999,
+    });
+    storage.updateRunStatus(dead.id, "waiting_for_user_approval");
+    storage.addSnapshot(dead.id, "never-created.txt", "original bytes");
+
+    const live = storage.createRun(ws.id, "live peer", {
+      runtimeInstanceId: "instance-live",
+      ownerPid: 4_242,
+    });
+    storage.updateRunStatus(live.id, "applying_patch");
+
+    const terminal = storage.createRun(ws.id, "already done", {
+      ownerPid: 999_998,
+    });
+    storage.updateRunStatus(terminal.id, "done");
+
+    const legacy = storage.createRun(ws.id, "legacy owner");
+    storage.updateRunStatus(legacy.id, "tool_use");
+
+    const recovered = storage.reconcileInterruptedRuns({
+      currentPid: 1_234,
+      legacyGraceMs: 0,
+      isProcessAlive: (pid) => pid === 4_242,
+    });
+
+    expect(recovered.map((item) => item.runId).sort()).toEqual(
+      [dead.id, legacy.id].sort(),
+    );
+    expect(storage.getRun(dead.id)).toMatchObject({
+      status: "failed",
+      exitReason: "interrupted_restart",
+      sessionId: "ses_dead",
+      runtimeInstanceId: "instance-dead",
+      ownerPid: 999_999,
+    });
+    expect(storage.getRun(live.id)?.status).toBe("applying_patch");
+    expect(storage.getRun(terminal.id)?.status).toBe("done");
+    expect(storage.listRunsForSession("ses_dead").map((run) => run.id)).toEqual([
+      dead.id,
+    ]);
+    expect(storage.listSnapshots(dead.id)).toMatchObject([
+      { filePath: "never-created.txt", beforeContent: "original bytes" },
+    ]);
+    expect(fs.existsSync(untouchedPath)).toBe(false);
+    expect(
+      storage
+        .listSteps(dead.id)
+        .filter((step) => step.content.includes("No tool or workspace write was replayed")),
+    ).toHaveLength(1);
+
+    expect(
+      storage.reconcileInterruptedRuns({
+        currentPid: 1_234,
+        legacyGraceMs: 0,
+        isProcessAlive: (pid) => pid === 4_242,
+      }),
+    ).toEqual([]);
+    expect(
+      storage
+        .listSteps(dead.id)
+        .filter((step) => step.content.includes("No tool or workspace write was replayed")),
+    ).toHaveLength(1);
+    storage.close();
+  });
 });

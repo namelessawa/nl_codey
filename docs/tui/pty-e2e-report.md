@@ -19,6 +19,7 @@ restored and verified in `finally`.
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
 | 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted | Pass |
 | 11. Resize | Covered by `pnpm test:tui:pty`: resize below 80 columns hides the trace pane and exits cleanly | Pass |
+| 12. Crash recovery | The process is killed at patch approval; restart links SQLite Run to JSONL Session, marks it interrupted once, and leaves the patch absent | Pass |
 
 The E2E code never writes a session file directly. It reads the produced JSONL
 only after driving public TUI input, to assert the session header and message
@@ -26,6 +27,6 @@ parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
 Still open from the document's 14-scenario matrix: command approval/rejection,
-budget exhaustion, provider configuration, crash-tail recovery, redacted error
-display, and large-output/scrollback behavior. These remain explicit blockers
-rather than inferred coverage.
+budget exhaustion, provider configuration, redacted error display, and
+large-output/scrollback behavior. These remain explicit blockers rather than
+inferred coverage.

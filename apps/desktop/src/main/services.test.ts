@@ -111,6 +111,29 @@ afterEach(() => {
 });
 
 describe("buildServices dynamic tool wiring", () => {
+  it("surfaces the runs reconciled before Desktop starts accepting work", () => {
+    const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nlc-services-recovery-"));
+    roots.push(dataRoot);
+    const workspaceRoot = path.join(dataRoot, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const startupRecoveries = [
+      {
+        runId: "run-interrupted",
+        workspaceId: "workspace-1",
+        previousStatus: "applying_patch" as const,
+        sessionId: "ses_interrupted",
+        sessionFilePath: path.join(dataRoot, "ses_interrupted.json"),
+      },
+    ];
+    const storage = createMemoryStorage(workspaceRoot, startupRecoveries);
+    mocked.makeStorage.mockReturnValue(storage);
+
+    const services = buildServices(vi.fn(), { dataRoot });
+
+    expect(storage.reconcileInterruptedRuns).toHaveBeenCalledOnce();
+    expect(services.startupRecoveries).toEqual(startupRecoveries);
+  });
+
   it("lets AgentService audit a buildPluginBundle factory failure", async () => {
     const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nlc-services-security-"));
     roots.push(dataRoot);
@@ -142,7 +165,12 @@ describe("buildServices dynamic tool wiring", () => {
   });
 });
 
-function createMemoryStorage(workspaceRoot: string): StorageShape {
+function createMemoryStorage(
+  workspaceRoot: string,
+  startupRecoveries: ReturnType<
+    StorageShape["reconcileInterruptedRuns"]
+  > = [],
+): StorageShape {
   const workspace = { id: "workspace-1", rootPath: workspaceRoot, openedAt: Date.now() };
   let run: AgentRun | null = null;
   const steps: AgentStep[] = [];
@@ -151,6 +179,7 @@ function createMemoryStorage(workspaceRoot: string): StorageShape {
     finetune: {
       getActiveModel: () => null,
     },
+    reconcileInterruptedRuns: vi.fn(() => startupRecoveries),
     getWorkspace: (id: string) => (id === workspace.id ? workspace : null),
     createRun: (workspaceId: string, userTask: string) => {
       const now = Date.now();

@@ -57,7 +57,11 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   tool_call_count INTEGER NOT NULL DEFAULT 0,
   iteration_count INTEGER NOT NULL DEFAULT 0,
   model_name TEXT,
-  exit_reason TEXT
+  exit_reason TEXT,
+  session_id TEXT,
+  session_file_path TEXT,
+  runtime_instance_id TEXT,
+  owner_pid INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS agent_steps (
@@ -381,6 +385,7 @@ CREATE TABLE IF NOT EXISTS frozen_suite_snapshots (
 export const INDEX_SQL = `
 CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace ON agent_runs(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_agent_steps_run ON agent_steps(run_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_session ON agent_runs(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_run_messages_run_seq ON agent_run_messages(run_id, seq);
 CREATE INDEX IF NOT EXISTS idx_file_snapshots_run ON file_snapshots(run_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_run_iter ON file_snapshots(run_id, iteration);
@@ -421,6 +426,10 @@ export const COLUMN_MIGRATIONS: readonly string[] = [
   "ALTER TABLE agent_runs ADD COLUMN iteration_count INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE agent_runs ADD COLUMN model_name TEXT",
   "ALTER TABLE agent_runs ADD COLUMN exit_reason TEXT",
+  "ALTER TABLE agent_runs ADD COLUMN session_id TEXT",
+  "ALTER TABLE agent_runs ADD COLUMN session_file_path TEXT",
+  "ALTER TABLE agent_runs ADD COLUMN runtime_instance_id TEXT",
+  "ALTER TABLE agent_runs ADD COLUMN owner_pid INTEGER",
   "ALTER TABLE file_snapshots ADD COLUMN iteration INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE file_snapshots ADD COLUMN snapshot_type TEXT NOT NULL DEFAULT 'before_run'",
   // Phase 3: link sub-runs to parent run + task node.
@@ -488,13 +497,18 @@ export const STRUCTURAL_MIGRATIONS: readonly StructuralMigration[] = [
          model_name TEXT,
          exit_reason TEXT,
          parent_run_id TEXT,
-         task_node_id TEXT
+         task_node_id TEXT,
+         session_id TEXT,
+         session_file_path TEXT,
+         runtime_instance_id TEXT,
+         owner_pid INTEGER
        )`,
       `INSERT INTO agent_runs_v2
          SELECT id, workspace_id, user_task, status, created_at, updated_at,
                 input_tokens, output_tokens, cost_usd, tool_call_count,
                 iteration_count, model_name, exit_reason, parent_run_id,
-                task_node_id
+                task_node_id, session_id, session_file_path,
+                runtime_instance_id, owner_pid
            FROM agent_runs`,
       `DROP TABLE agent_runs`,
       `ALTER TABLE agent_runs_v2 RENAME TO agent_runs`,

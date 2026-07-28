@@ -1,3 +1,4 @@
+import { spawn as spawnChild } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { Terminal } from "@xterm/headless";
@@ -157,11 +158,26 @@ export class TuiPtyHarness {
     }
   }
 
+  async terminate(timeoutMs = 10_000): Promise<PtyExit> {
+    if (!this.exited) {
+      if (process.platform === "win32") {
+        const killer = spawnChild(
+          "taskkill.exe",
+          ["/PID", String(this.pid), "/T", "/F"],
+          { windowsHide: true, stdio: "ignore" },
+        );
+        killer.unref();
+      } else {
+        this.pty.kill();
+      }
+    }
+    return this.waitForExit(timeoutMs);
+  }
+
   async dispose(): Promise<void> {
-    if (!this.exited) this.pty.kill();
     if (!this.exited) {
       try {
-        await this.waitForExit(5_000);
+        await this.terminate(5_000);
       } catch {
         // The test assertion reports the original failure; cleanup stays best-effort.
       }

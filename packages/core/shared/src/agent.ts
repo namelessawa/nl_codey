@@ -41,6 +41,12 @@ export type AgentRun = {
   modelName?: string | null;
   /** How the run ended, e.g. "done", "max_cost", "needs_human". */
   exitReason?: string | null;
+  /** Stable link to the CLI JSONL session that owns this run, when any. */
+  sessionId?: string | null;
+  sessionFilePath?: string | null;
+  /** Runtime owner used by startup recovery to avoid touching a live peer. */
+  runtimeInstanceId?: string | null;
+  ownerPid?: number | null;
 };
 
 export type AgentStepType =

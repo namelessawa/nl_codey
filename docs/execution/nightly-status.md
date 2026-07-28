@@ -15,7 +15,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 | 5 | `codex/p1-tui-core-workflows` | Core approval/reject/stop/session/recovery scenarios | Ready for draft review | 4 real ConPTY workflows; approval, rollback, reject, cancel, restart, resume and branch passed |
 | 6 | `codex/p0-storage-abi-gate` | Node/Electron ABI + migration gates | Ready for draft review | Node migration/lifecycle 4/4; Electron load before/after restore passed |
 | 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Ready for draft review | 12 serial + 8 concurrent abort soak passed below 1500 ms; descendant PID cleanup proved |
-| 8 | `codex/p0-run-session-recovery` | Startup reconciliation and Run/Session linkage | Pending | No current E2E contract |
+| 8 | `codex/p0-run-session-recovery` | Startup reconciliation and Run/Session linkage | Ready for draft review | Dead-owner recovery, Desktop wiring and approval-crash ConPTY restart passed |
 | 9 | `codex/p0-unified-approval` | Mutation inventory and common approval enforcement | Pending | Whole graph not yet proved |
 | 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Pending | Must follow preceding P0 gates |
 
@@ -145,12 +145,36 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 - `custom.txt` remained ignored and unread by test processes; no network/model
   call occurred. See `docs/tui/pty-e2e-report.md` for the scenario evidence.
 
+### 2026-07-29 - Run/Session startup reconciliation
+
+- Added stable nullable Run linkage fields for JSONL session id/path plus the
+  owning runtime instance and process id. AgentService writes them atomically
+  with Run creation; TUI branch/resume tests query Runs back from the session
+  id and assert the exact produced JSONL path.
+- Added an idempotent Storage startup reconciler. It marks only non-terminal
+  Runs owned by dead processes (or sufficiently old legacy rows) as
+  `failed/interrupted_restart`, appends one bounded audit step, and never
+  invokes a tool, reapplies a patch, changes snapshots or writes workspace
+  files. A live peer PID is left untouched.
+- Both Desktop and CLI service factories reconcile before accepting work.
+  Desktop wiring exposes the recovery result; TUI displays it after replaying
+  the latest valid session. Fresh TUI launches stay lazy and do not open
+  SQLite until a database actually exists or a task is submitted.
+- Added the named `pnpm test:recovery` ABI-restorative gate. Its real SQLite
+  fixture proves dead/legacy recovery, live-peer preservation, stable session
+  lookup, snapshot preservation and second-pass idempotency.
+- Added a real ConPTY crash test that kills the process while the patch
+  approval card is open. Restart restores JSONL, marks the linked Run once,
+  leaves the patch absent, reports that no write was replayed, and a second
+  restart adds no duplicate recovery step.
+- All recovery tests use the deterministic mock provider and isolated roots.
+  `custom.txt` was not read and no network/model call occurred.
+
 ## Current blockers
 
 1. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
-2. Run/Session crash reconciliation and a unified mutation approval boundary
-   are not yet proved.
+2. A unified mutation approval boundary is not yet proved.
 3. Historical migration coverage still needs more fixtures plus
    backup-before-upgrade/failure-recovery behavior.
 4. Full Node plugin execution remains outside an OS-enforced capability

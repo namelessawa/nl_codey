@@ -23,6 +23,7 @@
  * subscriber to the same `emit` channel.
  */
 import { useEffect, useMemo, useReducer, useRef } from "react";
+import fs from "node:fs";
 import path from "node:path";
 import { nlcRoot, type AgentEvent } from "@nlc/shared";
 import type { LoadedSession, SessionMessage, SessionSummary } from "@nlc/session";
@@ -210,6 +211,15 @@ export function useLoop(opts: UseLoopOptions = {}) {
   };
 
   useEffect(() => {
+    const dbPath = path.join(dataRoot, "data", "workspace-state.db");
+    const startupServices = fs.existsSync(dbPath) ? getServices() : null;
+    const startupRecoveries =
+      startupServices?.startupRecoveries.filter((recovery) => {
+        const workspace = startupServices.storage.getWorkspace(recovery.workspaceId);
+        return workspace
+          ? sameWorkspacePath(workspace.rootPath, workspaceRoot)
+          : false;
+      }) ?? [];
     try {
       const bridge = getBridge();
       const latest = bridge.listSessions()[0];
@@ -237,6 +247,22 @@ export function useLoop(opts: UseLoopOptions = {}) {
         },
       });
     }
+    if (startupRecoveries.length > 0) {
+      const statuses = [
+        ...new Set(startupRecoveries.map((recovery) => recovery.previousStatus)),
+      ].join(", ");
+      dispatch({
+        type: "append",
+        item: {
+          id: `run-recovery-${Date.now()}`,
+          role: "system",
+          label: "recovery",
+          text:
+            `recovered ${startupRecoveries.length} interrupted run(s) from ${statuses}. ` +
+            "No tools or workspace writes were replayed; /rollback remains available.",
+        },
+      });
+    }
     return () => {
       try {
         servicesRef.current?.storage.close();
@@ -260,8 +286,13 @@ export function useLoop(opts: UseLoopOptions = {}) {
     });
     // Capture the user message in the session BEFORE the agent run so
     // the file always contains the prompt even if the run dies mid-flight.
+    let sessionId: string | null = null;
+    let sessionFilePath: string | null = null;
     try {
-      getBridge().recordUserMessage(trimmed);
+      const bridge = getBridge();
+      bridge.recordUserMessage(trimmed);
+      sessionId = bridge.currentSessionId;
+      sessionFilePath = bridge.currentFilePath;
     } catch {
       /* best-effort — session capture must never block a run */
     }
@@ -271,7 +302,10 @@ export function useLoop(opts: UseLoopOptions = {}) {
       const workspace = services.storage.upsertWorkspace(workspaceRoot);
       dispatch({ type: "set-running", value: true });
       dispatch({ type: "set-status", value: "tool_use" });
-      const detail = await services.agent.runTask(workspace.id, trimmed);
+      const detail = await services.agent.runTask(workspace.id, trimmed, {
+        ...(sessionId ? { sessionId } : {}),
+        ...(sessionFilePath ? { sessionFilePath } : {}),
+      });
       const runId = detail.run.id;
       await waitTerminal(services, runId, dispatch);
     } catch (err) {
@@ -594,4 +628,12 @@ function sessionItem(message: SessionMessage): StreamItem {
     case "system":
       return { id: message.id, role: "system", label: "system", text: message.content };
   }
+}
+
+function sameWorkspacePath(left: string, right: string): boolean {
+  const normalize = (value: string): string => {
+    const resolved = path.resolve(value);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  return normalize(left) === normalize(right);
 }
