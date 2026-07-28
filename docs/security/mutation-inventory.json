@@ -1,0 +1,531 @@
+{
+  "schemaVersion": 1,
+  "goal": "SEC-APPROVAL-001",
+  "generatedBy": "scripts/generate-mutation-inventory.mjs",
+  "policySource": "packages/runtime/agent-core/src/mutation-policy.ts",
+  "entries": [
+    {
+      "id": "agent.apply_patch",
+      "surface": "agent_tool",
+      "operations": [
+        "apply_patch"
+      ],
+      "capability": "workspace.write",
+      "control": "per_call_approval",
+      "source": [
+        "packages/runtime/agent-core/src/service.ts",
+        "packages/runtime/agent-core/src/tools-registry.ts"
+      ],
+      "audit": "run tool_call/diff/approval steps plus before/after snapshot",
+      "denialEvidence": "packages/runtime/agent-core/src/acceptance.test.ts#user rejects the patch",
+      "approvalEvidence": "apps/cli/src/tui/core-workflows.e2e.pty.test.ts#approve and rollback"
+    },
+    {
+      "id": "agent.run_command.confirmed",
+      "surface": "agent_tool",
+      "operations": [
+        "run_command when requireConfirmationBeforeCommand=true"
+      ],
+      "capability": "process.execute",
+      "control": "per_call_approval",
+      "source": [
+        "packages/runtime/agent-core/src/service.ts",
+        "packages/runtime/agent-core/src/tools-registry.ts"
+      ],
+      "audit": "run tool_call/command/approval steps",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "agent.run_command.delegated",
+      "surface": "agent_tool",
+      "operations": [
+        "run_command when requireConfirmationBeforeCommand=false"
+      ],
+      "capability": "process.execute",
+      "control": "capability_grant",
+      "source": [
+        "packages/runtime/agent-core/src/mutation-policy.ts",
+        "packages/core/shared/src/settings.ts"
+      ],
+      "audit": "shell setting plus run tool_call/command steps",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "agent.write_memory",
+      "surface": "agent_tool",
+      "operations": [
+        "write_memory"
+      ],
+      "capability": "memory.write",
+      "control": "per_call_approval",
+      "source": [
+        "packages/runtime/agent-core/src/service.ts",
+        "packages/runtime/agent-core/src/extended-tools.ts"
+      ],
+      "audit": "run tool_call/approval/tool_result steps plus memory row",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "dynamic.plugin.mutator",
+      "surface": "dynamic_tool",
+      "operations": [
+        "plugin tool declaring run_command or write_workspace"
+      ],
+      "capability": "dynamic.mutate",
+      "control": "per_call_approval",
+      "source": [
+        "apps/desktop/src/main/plugin-runtime.ts",
+        "packages/runtime/agent-core/src/service.ts"
+      ],
+      "audit": "qualified tool_call plus approval and result steps",
+      "denialEvidence": "packages/runtime/agent-core/src/dynamic-tools-security.test.ts#denies a mutating dynamic tool",
+      "approvalEvidence": "packages/runtime/agent-core/src/dynamic-tools-security.test.ts#executes a mutating dynamic tool once"
+    },
+    {
+      "id": "dynamic.mcp.mutator",
+      "surface": "dynamic_tool",
+      "operations": [
+        "future MCP tool declaring mutation"
+      ],
+      "capability": "dynamic.mutate",
+      "control": "default_off",
+      "source": [
+        "packages/runtime/agent-core/src/service.ts"
+      ],
+      "audit": "no adapter is installed; validated bundles must classify every mutator",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": null
+    },
+    {
+      "id": "sandbox.command.writeback",
+      "surface": "sandbox",
+      "operations": [
+        "docker/wsl staged file add",
+        "modify",
+        "delete"
+      ],
+      "capability": "workspace.write",
+      "control": "sandbox_writeback_approval",
+      "source": [
+        "packages/runtime/agent-core/src/service.ts",
+        "packages/runtime/tools/src/run-command-routed.ts"
+      ],
+      "audit": "synthesized diff, approval step, and snapshots",
+      "denialEvidence": "packages/runtime/tools/src/e2e-docker.test.ts#writeback=approve(false)",
+      "approvalEvidence": "packages/runtime/tools/src/e2e-docker.test.ts#writeback=auto"
+    },
+    {
+      "id": "multiagent.plan.persist",
+      "surface": "multi_agent",
+      "operations": [
+        "persist planner DAG",
+        "advance task-node state"
+      ],
+      "capability": "task_state.write",
+      "control": "explicit_modal_confirmation",
+      "source": [
+        "packages/runtime/agent-core/src/service.ts",
+        "packages/runtime/agent-core/src/multi-agent.ts"
+      ],
+      "audit": "task_updated events and planner approval run step",
+      "denialEvidence": "packages/runtime/agent-core/src/service-race.test.ts#plan-approval gate",
+      "approvalEvidence": "packages/runtime/agent-core/src/service-race.test.ts#plan-approval gate"
+    },
+    {
+      "id": "multiagent.coder.mutation",
+      "surface": "multi_agent",
+      "operations": [
+        "coder apply_patch",
+        "coder run_command"
+      ],
+      "capability": "workspace.write",
+      "control": "per_call_approval",
+      "source": [
+        "packages/runtime/agent-core/src/multi-agent.ts",
+        "packages/runtime/agent-core/src/service.ts"
+      ],
+      "audit": "role message plus shared tool/approval steps",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "multiagent.planner.workspace",
+      "surface": "multi_agent",
+      "operations": [
+        "planner forged workspace mutation"
+      ],
+      "capability": "workspace.write",
+      "control": "role_denied",
+      "source": [
+        "packages/runtime/agent-core/src/multi-agent.ts"
+      ],
+      "audit": "role_tool_denied structured tool result",
+      "denialEvidence": "packages/runtime/agent-core/src/dynamic-tools-security.test.ts#Planner-forged dynamic mutating tool",
+      "approvalEvidence": null
+    },
+    {
+      "id": "multiagent.reviewer.mutation",
+      "surface": "multi_agent",
+      "operations": [
+        "reviewer forged mutation",
+        "reviewer run_command"
+      ],
+      "capability": "process.execute",
+      "control": "per_call_approval",
+      "source": [
+        "packages/runtime/agent-core/src/multi-agent.ts",
+        "packages/runtime/agent-core/src/service.ts"
+      ],
+      "audit": "role deny or shared command approval/tool steps",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "cli.agent.patch.prompt",
+      "surface": "cli",
+      "operations": [
+        "interactive patch approval",
+        "interactive command confirmation"
+      ],
+      "capability": "workspace.write",
+      "control": "per_call_approval",
+      "source": [
+        "apps/cli/src/commands/run.ts"
+      ],
+      "audit": "AgentService run and step log plus terminal decision",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "cli.agent.yes",
+      "surface": "cli",
+      "operations": [
+        "--yes blanket approval for one invoked run"
+      ],
+      "capability": "workspace.write",
+      "control": "capability_grant",
+      "source": [
+        "apps/cli/src/commands/run.ts"
+      ],
+      "audit": "explicit argv grant plus AgentService run and step log",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "tui.init",
+      "surface": "tui",
+      "operations": [
+        "/init",
+        "/init --force"
+      ],
+      "capability": "workspace.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/cli/src/tui/commands.ts",
+        "apps/cli/src/tui/ink-tui.tsx"
+      ],
+      "audit": "TUI system message and created .nlc files",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "tui.skill.install",
+      "surface": "tui",
+      "operations": [
+        "/skills-generate followed by install target"
+      ],
+      "capability": "workspace.write",
+      "control": "explicit_modal_confirmation",
+      "source": [
+        "apps/cli/src/tui/ink-tui.tsx",
+        "apps/cli/src/tui/skill-install-picker.tsx"
+      ],
+      "audit": "TUI generation/install outcome",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "tui.rollback",
+      "surface": "tui",
+      "operations": [
+        "/rollback",
+        "/undo"
+      ],
+      "capability": "workspace.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/cli/src/tui/ink-tui.tsx",
+        "apps/cli/src/tui/use-loop.ts"
+      ],
+      "audit": "rollback run step and terminal system message",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "apps/cli/src/tui/core-workflows.e2e.pty.test.ts#approve and rollback"
+    },
+    {
+      "id": "tui.session.mutation",
+      "surface": "tui",
+      "operations": [
+        "/branch",
+        "/resume",
+        "appended JSONL messages"
+      ],
+      "capability": "session.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/cli/src/tui/ink-tui.tsx",
+        "apps/cli/src/tui/session-bridge.ts"
+      ],
+      "audit": "append-only JSONL event with lineage",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "tui.preferences",
+      "surface": "tui",
+      "operations": [
+        "/provider save",
+        "/theme",
+        "/model",
+        "/think"
+      ],
+      "capability": "settings.write",
+      "control": "explicit_modal_confirmation",
+      "source": [
+        "apps/cli/src/tui/ink-tui.tsx",
+        "apps/cli/src/tui/provider-picker.tsx"
+      ],
+      "audit": "provider store or session state-change event",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.agent.approval",
+      "surface": "desktop_ipc",
+      "operations": [
+        "agent:applyPatch",
+        "agent:rejectPatch",
+        "task:approveTree"
+      ],
+      "capability": "workspace.write",
+      "control": "explicit_modal_confirmation",
+      "source": [
+        "apps/desktop/src/main/ipc.ts",
+        "apps/desktop/src/main/ipc/task-ipc.ts"
+      ],
+      "audit": "AgentService approval/plan step",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.run.command",
+      "surface": "desktop_ipc",
+      "operations": [
+        "agent:runCommand"
+      ],
+      "capability": "process.execute",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc.ts",
+        "packages/runtime/agent-core/src/service.ts"
+      ],
+      "audit": "direct typed command result and sandbox snapshots",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.run.maintenance",
+      "surface": "desktop_ipc",
+      "operations": [
+        "agent:rollbackRun",
+        "agent:clearRuns",
+        "agent:stopRun"
+      ],
+      "capability": "workspace.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc.ts"
+      ],
+      "audit": "run status/rollback step or deleted run count",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.settings",
+      "surface": "desktop_ipc",
+      "operations": [
+        "settings:update",
+        "settings:reset",
+        "sandbox:setMode",
+        "phase4:updateSettings"
+      ],
+      "capability": "settings.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc.ts",
+        "apps/desktop/src/main/ipc/advanced-settings-ipc.ts"
+      ],
+      "audit": "validated settings store write",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.memory",
+      "surface": "desktop_ipc",
+      "operations": [
+        "memory:create",
+        "memory:update",
+        "memory:delete",
+        "memory:import"
+      ],
+      "capability": "memory.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc/memory-ipc.ts"
+      ],
+      "audit": "validated memory row mutation",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.index.task.git",
+      "surface": "desktop_ipc",
+      "operations": [
+        "semantic:rebuild",
+        "task:editNode",
+        "task:cancelNode",
+        "git:discardBranch"
+      ],
+      "capability": "project_state.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc/semantic-ipc.ts",
+        "apps/desktop/src/main/ipc/task-ipc.ts",
+        "apps/desktop/src/main/ipc/git-ipc.ts"
+      ],
+      "audit": "index status, task event, or Git operation result",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.intelligence",
+      "surface": "desktop_ipc",
+      "operations": [
+        "global-memory contribute/retract/delete/mode",
+        "style upsert/extract",
+        "learning record/build dataset"
+      ],
+      "capability": "intelligence_state.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc/memory-ipc.ts",
+        "apps/desktop/src/main/ipc/style-ipc.ts",
+        "apps/desktop/src/main/ipc/learning-ipc.ts"
+      ],
+      "audit": "validated SQLite mutation",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.finetune",
+      "surface": "desktop_ipc",
+      "operations": [
+        "finetune:createJob",
+        "finetune:promoteModel",
+        "finetune:rollbackToBase"
+      ],
+      "capability": "model_state.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc/finetune-ipc.ts"
+      ],
+      "audit": "fine-tune job/model registry row",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.proactive",
+      "surface": "desktop_ipc",
+      "operations": [
+        "proposal:snooze",
+        "proposal:dismiss",
+        "proposal:convert",
+        "proposal:scanNow"
+      ],
+      "capability": "proposal_state.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc/proposals-ipc.ts"
+      ],
+      "audit": "proposal row/task conversion result",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "proactive.scheduler",
+      "surface": "background",
+      "operations": [
+        "scheduled debt scan and proposal persistence"
+      ],
+      "capability": "proposal_state.write",
+      "control": "feature_flag",
+      "source": [
+        "packages/advanced/proactive/src",
+        "apps/desktop/src/main/services.ts"
+      ],
+      "audit": "advanced setting plus proposal timestamps",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.cluster",
+      "surface": "desktop_ipc",
+      "operations": [
+        "cluster:registerWorker"
+      ],
+      "capability": "cluster_state.write",
+      "control": "explicit_user_action",
+      "source": [
+        "apps/desktop/src/main/ipc/cluster-ipc.ts"
+      ],
+      "audit": "validated worker registry row",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "desktop.plugin.lifecycle",
+      "surface": "desktop_ipc",
+      "operations": [
+        "plugin:install",
+        "plugin:setEnabled",
+        "plugin:uninstall"
+      ],
+      "capability": "plugin_state.write",
+      "control": "explicit_modal_confirmation",
+      "source": [
+        "apps/desktop/src/main/ipc/plugin-ipc.ts",
+        "packages/advanced/plugin-sdk/src/plugin-loader.ts"
+      ],
+      "audit": "approved permission set and installation row",
+      "denialEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization",
+      "approvalEvidence": "packages/runtime/agent-core/src/tools-registry.test.ts#unified mutation authorization"
+    },
+    {
+      "id": "storage.startup.recovery",
+      "surface": "startup",
+      "operations": [
+        "reconcile interrupted non-terminal runs"
+      ],
+      "capability": "run_state.write",
+      "control": "trusted_recovery",
+      "source": [
+        "packages/core/storage/src/index.ts"
+      ],
+      "audit": "single interrupted_restart error step and idempotency marker",
+      "denialEvidence": "packages/core/storage/src/storage.test.ts#recovery",
+      "approvalEvidence": "packages/core/storage/src/storage.test.ts#recovery"
+    }
+  ]
+}

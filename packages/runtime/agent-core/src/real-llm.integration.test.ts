@@ -116,6 +116,10 @@ describeReal("real-LLM smoke (DeepSeek)", () => {
         storage,
         allowShellExecution: false,
         readOnly: true,
+        authorizeMutation: () => ({
+          allowed: false,
+          reason: "live read-only smoke does not grant mutation capability",
+        }),
         phase3Ports: ports,
       });
 

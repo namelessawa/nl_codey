@@ -179,6 +179,8 @@ describeReal("docker-mode agent loop debug (custom OpenAI-compat)", () => {
       storage: snapshotStore as unknown as Parameters<typeof createToolExecutor>[0]["storage"],
       allowShellExecution: true,
       readOnly: false,
+      // This opt-in debug harness auto-approves its model tool calls below.
+      authorizeMutation: () => ({ allowed: true, reason: "debug harness approval" }),
       sandboxPolicy: policy,
       requestSandboxWriteApproval: async (call, changes) => {
         const command =

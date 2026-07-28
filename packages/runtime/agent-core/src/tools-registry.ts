@@ -22,9 +22,12 @@ import {
   createExtendedDispatcher,
   EXTENDED_AGENT_TOOL_NAMES,
   EXTENDED_AGENT_TOOL_SCHEMAS,
-  EXTENDED_MUTATING_TOOLS,
   type ExtendedAgentPorts,
 } from "./extended-tools.js";
+import {
+  MUTATING_AGENT_TOOL_NAMES,
+  type MutationAuthorizationResult,
+} from "./mutation-policy.js";
 
 /**
  * Tool schemas exposed to the model via the chat tool-calling API. Kept in sync
@@ -174,7 +177,7 @@ export const AGENT_TOOL_SCHEMAS: ToolSchema[] = [
  * deliberate defense in depth — a model can emit a tool call for a name it was
  * never offered, so we must also fail closed in the executor.
  */
-export const FILE_MUTATING_TOOLS: readonly string[] = ["apply_patch", "write_file"];
+export const FILE_MUTATING_TOOLS: readonly string[] = ["apply_patch"];
 
 /**
  * Union of every tool that mutates persistent state (workspace files or the
@@ -184,10 +187,7 @@ export const FILE_MUTATING_TOOLS: readonly string[] = ["apply_patch", "write_fil
  * {@link FILE_MUTATING_TOOLS} or {@link EXTENDED_MUTATING_TOOLS} without touching
  * either gate.
  */
-const ALL_MUTATING_TOOLS: readonly string[] = [
-  ...FILE_MUTATING_TOOLS,
-  ...EXTENDED_MUTATING_TOOLS,
-];
+export const ALL_MUTATING_TOOLS: readonly string[] = MUTATING_AGENT_TOOL_NAMES;
 
 /**
  * The tool schemas advertised to the model. In read-only mode every mutating
@@ -289,6 +289,14 @@ export type ToolExecutorOptions = {
    * built-in dispatch.
    */
   extraDispatcher?: (call: LLMToolCall, ctx: ToolContext) => Promise<ExecutedTool | null>;
+  /** Dynamic mutators are host-classified and join the built-in deny set. */
+  mutatingToolNames?: readonly string[];
+  /**
+   * Execution-time authorization for every persistent/process-capable tool.
+   * AgentService supplies a single-use approval store; direct executor callers
+   * must make an equally explicit policy choice.
+   */
+  authorizeMutation: (call: LLMToolCall) => MutationAuthorizationResult;
 };
 
 /**
@@ -309,64 +317,31 @@ export function createToolExecutor(
     requestSandboxWriteApproval,
     phase3Ports,
     extraDispatcher,
+    mutatingToolNames,
+    authorizeMutation,
   } = opts;
   const phase3Dispatch = phase3Ports ? createExtendedDispatcher(phase3Ports) : null;
+  const mutatingNames = new Set([...ALL_MUTATING_TOOLS, ...(mutatingToolNames ?? [])]);
 
   return async (call: LLMToolCall): Promise<ExecutedTool> => {
     // Read-only ("instruction") mode: refuse any mutating tool before it can
     // touch the workspace or memory. These tools are also stripped from the
     // advertised schema, but a model can still emit a call for a name it was
     // never offered, so we fail closed here too (defense in depth).
-    if (readOnly && ALL_MUTATING_TOOLS.includes(call.name)) {
+    if (readOnly && mutatingNames.has(call.name)) {
       return err(
         call.name,
         `Tool "${call.name}" is disabled: the agent is in read-only (query) mode and must not modify or delete files or memory. Read and explain instead — propose changes in prose for the user to apply.`,
       );
     }
-    // Phase 3 dispatch: try it first so semantic_search / read_memory /
-    // write_memory / web_search / web_fetch never fall into the unknown-tool
-    // branch when ports are wired. Returns null when the call is not a Phase 3
-    // tool, in which case control falls through to the Phase 1/2 switch below.
-    if (phase3Dispatch && (EXTENDED_AGENT_TOOL_NAMES as readonly string[]).includes(call.name)) {
-      // Gate the call through the installation gate first (parity with
-      // Phase 1/2 dispatch) so degraded mode can refuse network-touching
-      // Phase 3 tools too.
-      if (assertToolAllowed) {
-        try {
-          assertToolAllowed(call.name);
-        } catch (gateErr) {
-          return err(
-            call.name,
-            gateErr instanceof Error ? gateErr.message : String(gateErr),
-          );
-        }
-      }
-      const result = await phase3Dispatch(call, ctx);
-      if (result) return result;
+    if (call.name === "run_command" && !allowShellExecution) {
+      return err(
+        "run_command",
+        "Shell execution is disabled in settings. Ask the user to enable it, or finish without running commands.",
+      );
     }
-    // Extra dispatcher (plugins / future runtimes). Tried before the built-in
-    // switch so a plugin can't be shadowed by a tool name collision. The
-    // dispatcher returns null when it doesn't recognise the call; only then
-    // do we fall through to the Phase 1/2 dispatch.
-    if (extraDispatcher) {
-      // Same installation-gate parity as Phase 3 — degraded mode refuses
-      // plugin tools too.
-      if (assertToolAllowed) {
-        try {
-          assertToolAllowed(call.name);
-        } catch (gateErr) {
-          return err(
-            call.name,
-            gateErr instanceof Error ? gateErr.message : String(gateErr),
-          );
-        }
-      }
-      const handled = await extraDispatcher(call, ctx);
-      if (handled) return handled;
-    }
-    // Installation-gate check FIRST — refuse before we touch the workspace.
-    // Catch + return-error keeps the loop alive: the model sees the failure
-    // and can either stop or pick a different tool.
+    // Installation/capability gate first, before a single-use approval is
+    // consumed. A degraded-mode denial must leave the grant unusable.
     if (assertToolAllowed) {
       try {
         assertToolAllowed(call.name);
@@ -376,6 +351,28 @@ export function createToolExecutor(
           gateErr instanceof Error ? gateErr.message : String(gateErr),
         );
       }
+    }
+    if (mutatingNames.has(call.name)) {
+      const authorization = authorizeMutation(call);
+      if (!authorization.allowed) {
+        return err(call.name, `Mutation authorization denied: ${authorization.reason}`);
+      }
+    }
+    // Phase 3 dispatch: try it first so semantic_search / read_memory /
+    // write_memory / web_search / web_fetch never fall into the unknown-tool
+    // branch when ports are wired. Returns null when the call is not a Phase 3
+    // tool, in which case control falls through to the Phase 1/2 switch below.
+    if (phase3Dispatch && (EXTENDED_AGENT_TOOL_NAMES as readonly string[]).includes(call.name)) {
+      const result = await phase3Dispatch(call, ctx);
+      if (result) return result;
+    }
+    // Extra dispatcher (plugins / future runtimes). Tried before the built-in
+    // switch so a plugin can't be shadowed by a tool name collision. The
+    // dispatcher returns null when it doesn't recognise the call; only then
+    // do we fall through to the Phase 1/2 dispatch.
+    if (extraDispatcher) {
+      const handled = await extraDispatcher(call, ctx);
+      if (handled) return handled;
     }
     const args = isRecord(call.args) ? call.args : {};
     try {
@@ -447,12 +444,6 @@ export function createToolExecutor(
         case "run_command": {
           const command = stringArg(args.command);
           if (!command) return err("run_command", "Missing required argument: command");
-          if (!allowShellExecution) {
-            return err(
-              "run_command",
-              "Shell execution is disabled in settings. Ask the user to enable it, or finish without running commands.",
-            );
-          }
           // LLM-initiated command: any sandbox writes must go through the
           // user approval gate before they reach the real workspace. When no
           // gate is wired (test harnesses), default to "discard" so a

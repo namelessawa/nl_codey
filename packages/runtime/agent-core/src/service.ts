@@ -38,9 +38,13 @@ import {
   AGENT_TOOL_SCHEMAS,
   agentToolSchemas,
   createToolExecutor,
-  FILE_MUTATING_TOOLS,
   type ExecutedTool,
 } from "./tools-registry.js";
+import {
+  AgentMutationAuthorizer,
+  RESERVED_MUTATING_TOOL_NAMES,
+  type AgentMutationDecision,
+} from "./mutation-policy.js";
 import { getReadonlySystemPrompt, getSystemPrompt } from "./prompts.js";
 import { phase1InitContext } from "./nlc-loop/index.js";
 import { getSummarizePrompt } from "./compressor.js";
@@ -121,7 +125,7 @@ export const HOST_RESERVED_TOOL_NAMES: ReadonlySet<string> = new Set([
   ...AGENT_TOOL_SCHEMAS.map((schema) => schema.name),
   ...EXTENDED_AGENT_TOOL_NAMES,
   ...ORCHESTRATOR_TOOL_SCHEMAS.map((schema) => schema.name),
-  ...FILE_MUTATING_TOOLS,
+  ...RESERVED_MUTATING_TOOL_NAMES,
   ...UNSAFE_WITHOUT_SANDBOX_TOOLS,
 ]);
 
@@ -384,7 +388,14 @@ export type RunTaskOptions = {
 type Pending =
   | { kind: "patch"; patch: string; command: string | null }
   | { kind: "command_writeback"; patch: string; command: string }
-  | { kind: "command_confirm"; patch: string; command: string };
+  | { kind: "command_confirm"; patch: string; command: string }
+  | {
+      kind: "mutation";
+      patch: string;
+      command: null;
+      toolName: string;
+      capability: AgentMutationDecision["capability"];
+    };
 type Approval = { resolve: (approved: boolean) => void };
 
 /** GUI-agnostic agent orchestrator. One instance per main process. */
@@ -538,9 +549,16 @@ export class AgentService {
 
   rejectPatch(runId: string): AgentRunDetail {
     const approval = this.approvals.get(runId);
+    const pending = this.pending.get(runId);
     this.pending.delete(runId);
     if (approval) {
-      this.addStep(runId, "message", "Patch rejected by user");
+      const subject =
+        pending?.kind === "mutation"
+          ? `${pending.toolName} (${pending.capability})`
+          : pending?.kind === "command_confirm"
+            ? "command execution"
+            : "workspace write";
+      this.addStep(runId, "message", `[approval] User rejected ${subject}.`);
       this.approvals.delete(runId);
       approval.resolve(false); // loop ends as cancelled
     } else {
@@ -778,9 +796,23 @@ export class AgentService {
       }
       throw new Error("No pending patch to apply");
     }
+    const pending = this.pending.get(runId);
     this.approvals.delete(runId);
     this.pending.delete(runId);
-    this.setStatus(runId, "applying_patch");
+    if (pending?.kind === "mutation") {
+      this.addStep(
+        runId,
+        "message",
+        `[approval] User approved ${pending.toolName} (${pending.capability}).`,
+      );
+      this.setStatus(runId, "tool_use");
+    } else if (pending?.kind === "command_confirm") {
+      this.addStep(runId, "message", "[approval] User approved command execution.");
+      this.setStatus(runId, "tool_use");
+    } else {
+      this.addStep(runId, "message", "[approval] User approved workspace write.");
+      this.setStatus(runId, "applying_patch");
+    }
     approval.resolve(true);
     return this.getDetail(runId);
   }
@@ -872,6 +904,10 @@ export class AgentService {
       this.assertToolAllowed,
       dynamicBundle?.mutatingNames ?? [],
     );
+    const mutationAuthorizer = new AgentMutationAuthorizer({
+      dynamicMutatingNames: dynamicBundle?.mutatingNames ?? [],
+      requireCommandConfirmation: settings.requireConfirmationBeforeCommand,
+    });
     const execute = createToolExecutor({
       ctx,
       storage: this.storage,
@@ -892,6 +928,8 @@ export class AgentService {
       // Dynamic tool dispatcher (plugins / MCP). Tried before the built-in
       // switch so a plugin tool can't be shadowed by a name collision.
       ...(safeBundle ? { extraDispatcher: safeBundle.dispatch } : {}),
+      mutatingToolNames: dynamicBundle?.mutatingNames ?? [],
+      authorizeMutation: (call) => mutationAuthorizer.authorize(call),
     });
     const budget = new BudgetController(this.budgetLimits());
 
@@ -944,12 +982,11 @@ export class AgentService {
         verifyAfterPatch: (_call, result) =>
           this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
         requiresApproval: (call) =>
-          call.name === "apply_patch" ||
-          (call.name === "run_command" && settings.requireConfirmationBeforeCommand),
+          !readOnly &&
+          toolPassesGate(gateAssert, call.name) &&
+          mutationAuthorizer.requiresApproval(call),
         waitForApproval: (call) =>
-          call.name === "run_command"
-            ? this.awaitCommandConfirmation(runId, call)
-            : this.awaitApproval(runId, call),
+          this.waitForMutationApproval(runId, call, mutationAuthorizer),
         onToolCall: (call) => {
           this.safeRunWrite(() => this.storage.addRunUsage(runId, { toolCalls: 1 }));
           this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
@@ -1033,6 +1070,10 @@ export class AgentService {
       this.assertToolAllowed,
       dynamicBundle?.mutatingNames ?? [],
     );
+    const mutationAuthorizer = new AgentMutationAuthorizer({
+      dynamicMutatingNames: dynamicBundle?.mutatingNames ?? [],
+      requireCommandConfirmation: settings.requireConfirmationBeforeCommand,
+    });
 
     const execute = createToolExecutor({
       ctx,
@@ -1045,6 +1086,8 @@ export class AgentService {
         this.awaitWritebackApproval(runId, call, changes),
       ...(phase3Ports ? { phase3Ports } : {}),
       ...(safeBundle ? { extraDispatcher: safeBundle.dispatch } : {}),
+      mutatingToolNames: dynamicBundle?.mutatingNames ?? [],
+      authorizeMutation: (call) => mutationAuthorizer.authorize(call),
     });
 
     const baseSchemas: ToolSchema[] = agentToolSchemas({
@@ -1112,12 +1155,11 @@ export class AgentService {
             return "cancel";
           },
           requiresApproval: (call) =>
-            call.name === "apply_patch" ||
-            (call.name === "run_command" && settings.requireConfirmationBeforeCommand),
+            !readOnly &&
+            toolPassesGate(gateAssert, call.name) &&
+            mutationAuthorizer.requiresApproval(call),
           waitForApproval: (call) =>
-            call.name === "run_command"
-              ? this.awaitCommandConfirmation(runId, call)
-              : this.awaitApproval(runId, call),
+            this.waitForMutationApproval(runId, call, mutationAuthorizer),
           verifyAfterPatch: (_call, result) =>
             this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
           onChunk: (chunk) => {
@@ -1351,6 +1393,61 @@ export class AgentService {
       signal,
     });
     return out.text.trim();
+  }
+
+  private async waitForMutationApproval(
+    runId: string,
+    call: LLMToolCall,
+    authorizer: AgentMutationAuthorizer,
+  ): Promise<boolean> {
+    const decision = authorizer.classify(call);
+    if (!decision || decision.control !== "per_call_approval") {
+      return false;
+    }
+    const approved =
+      call.name === "apply_patch"
+        ? await this.awaitApproval(runId, call)
+        : call.name === "run_command"
+          ? await this.awaitCommandConfirmation(runId, call)
+          : await this.awaitGenericMutationApproval(runId, call, decision);
+    if (approved) authorizer.grant(call);
+    return approved;
+  }
+
+  /**
+   * Reuse the existing patch approval card for non-patch persistent mutations.
+   * The preview intentionally excludes raw args because plugin/memory payloads
+   * can contain secrets; the durable tool_call step already records a bounded
+   * argument summary.
+   */
+  private awaitGenericMutationApproval(
+    runId: string,
+    call: LLMToolCall,
+    decision: AgentMutationDecision,
+  ): Promise<boolean> {
+    const preview =
+      `# Mutation approval required\n` +
+      `tool: ${call.name}\n` +
+      `capability: ${decision.capability}\n` +
+      `source: ${decision.source}`;
+    this.addStep(
+      runId,
+      "message",
+      `[approval] Waiting for user approval of ${call.name} (${decision.capability}).`,
+    );
+    this.addStep(runId, "diff", preview);
+    this.emit({ kind: "patch_ready", runId, patch: preview });
+    this.pending.set(runId, {
+      kind: "mutation",
+      patch: preview,
+      command: null,
+      toolName: call.name,
+      capability: decision.capability,
+    });
+    this.setStatus(runId, "waiting_for_user_approval");
+    return new Promise<boolean>((resolve) => {
+      this.approvals.set(runId, { resolve });
+    });
   }
 
   /** Park the loop until the user approves/rejects the pending patch. */
@@ -1619,6 +1716,18 @@ function patchApplied(resultText: string): boolean {
   try {
     const parsed: unknown = JSON.parse(resultText);
     return typeof parsed === "object" && parsed !== null && (parsed as { applied?: unknown }).applied === true;
+  } catch {
+    return false;
+  }
+}
+
+function toolPassesGate(
+  assertToolAllowed: ((toolName: string) => void) | undefined,
+  toolName: string,
+): boolean {
+  try {
+    assertToolAllowed?.(toolName);
+    return true;
   } catch {
     return false;
   }

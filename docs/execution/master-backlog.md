@@ -8,7 +8,7 @@ committed implementation plus the named reproducible evidence.
 | ID | Work | Acceptance evidence | State |
 | --- | --- | --- | --- |
 | SEC-PLUGIN-001 | Replace host-user Node plugin execution with a restricted, default-off runner; read-only workspace, network off, no Home/SSH/Git credentials, CPU/memory/process/file/time limits | Adversarial plugin integration tests prove denied host file, secret, network and process access; changes return as approval-gated diffs | Open |
-| SEC-APPROVAL-001 | Trace every mutation path (built-in, sandbox writeback, plugin, MCP, multi-agent, Git, proactive, fine-tune, TUI key/command) through one capability/approval/audit contract | Machine-readable mutation inventory and denial/approval tests for every path | Open |
+| SEC-APPROVAL-001 | Trace every mutation path (built-in, sandbox writeback, plugin, MCP, multi-agent, Git, proactive, fine-tune, TUI key/command) through one capability/approval/audit contract | Machine-readable mutation inventory and denial/approval tests for every path | Done in Batch 9; 31 generated entries and single-use runtime grants |
 | SEC-SECRET-001 | Apply one bounded redaction contract to provider/tool/plugin/sandbox/SQLite/JSONL/TUI errors | Regression fixtures cover keys, bearer headers, user-home paths and sensitive URLs | Open |
 
 Dynamic tool schema/classification/dispatch hardening is merged on the baseline

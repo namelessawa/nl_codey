@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { FileSnapshot, LLMToolCall } from "@nlc/shared";
 import {
@@ -6,6 +8,11 @@ import {
   agentToolSchemas,
   createToolExecutor,
 } from "./tools-registry.js";
+import {
+  AgentMutationAuthorizer,
+  authorizeMutation,
+  type MutationControl,
+} from "./mutation-policy.js";
 
 const noopStorage = {
   addSnapshot(): FileSnapshot {
@@ -14,11 +21,15 @@ const noopStorage = {
   setSnapshotAfter(): void {},
 };
 
+const denyMutation = () =>
+  ({ allowed: false, reason: "test did not grant mutation capability" }) as const;
+
 function executor(allowShellExecution: boolean) {
   return createToolExecutor({
     ctx: { workspaceRoot: process.cwd(), runId: "test-run" },
     storage: noopStorage,
     allowShellExecution,
+    authorizeMutation: denyMutation,
   });
 }
 
@@ -70,6 +81,7 @@ describe("createToolExecutor read-only guard", () => {
       storage: noopStorage,
       allowShellExecution: true,
       readOnly: true,
+      authorizeMutation: denyMutation,
     });
   }
 
@@ -128,6 +140,7 @@ describe("createToolExecutor assertToolAllowed gate", () => {
       ctx: { workspaceRoot: process.cwd(), runId: "test-run" },
       storage: noopStorage,
       allowShellExecution: true,
+      authorizeMutation: denyMutation,
       assertToolAllowed: (toolName: string) => {
         if (blockedTools.has(toolName)) {
           throw new Error(`Tool "${toolName}" is disabled in degraded mode`);
@@ -164,3 +177,117 @@ describe("createToolExecutor assertToolAllowed gate", () => {
     expect(res.isError).toBe(false);
   });
 });
+
+describe("unified mutation authorization", () => {
+  it("classifies built-in and dynamic mutations and consumes approval once", () => {
+    const policy = new AgentMutationAuthorizer({
+      dynamicMutatingNames: ["plugin__demo__write"],
+      requireCommandConfirmation: true,
+    });
+    const patch = call("apply_patch", {});
+    const memory = call("write_memory", {});
+    const dynamic = call("plugin__demo__write", {});
+
+    expect(policy.requiresApproval(patch)).toBe(true);
+    expect(policy.requiresApproval(memory)).toBe(true);
+    expect(policy.requiresApproval(dynamic)).toBe(true);
+    expect(policy.authorize(patch).allowed).toBe(false);
+
+    policy.grant(patch);
+    expect(policy.authorize(patch).allowed).toBe(true);
+    expect(policy.authorize(patch).allowed).toBe(false);
+  });
+
+  it("treats the explicit shell setting as a capability grant only when confirmation is off", () => {
+    const confirmed = new AgentMutationAuthorizer({
+      requireCommandConfirmation: true,
+    });
+    const delegated = new AgentMutationAuthorizer({
+      requireCommandConfirmation: false,
+    });
+    const command = call("run_command", { command: "pnpm test" });
+
+    expect(confirmed.requiresApproval(command)).toBe(true);
+    expect(confirmed.authorize(command).allowed).toBe(false);
+    expect(delegated.requiresApproval(command)).toBe(false);
+    expect(delegated.authorize(command).allowed).toBe(true);
+  });
+
+  it.each<MutationControl>([
+    "per_call_approval",
+    "sandbox_writeback_approval",
+    "explicit_user_action",
+    "explicit_modal_confirmation",
+    "capability_grant",
+    "feature_flag",
+    "trusted_recovery",
+  ])("denies %s without an audit record", (control) => {
+    expect(
+      authorizeMutation(control, {
+        approved: true,
+        explicitUserAction: true,
+        capabilityGranted: true,
+        featureEnabled: true,
+        trustedRuntime: true,
+      }).allowed,
+    ).toBe(false);
+  });
+
+  it("applies denial/allow proofs to every machine-inventoried mutation path", () => {
+    const inventoryPath = path.resolve(
+      process.cwd(),
+      "docs/security/mutation-inventory.json",
+    );
+    const inventory = JSON.parse(fs.readFileSync(inventoryPath, "utf8")) as {
+      entries: Array<{
+        id: string;
+        control: MutationControl;
+        source: string[];
+        denialEvidence: string;
+        approvalEvidence: string | null;
+      }>;
+    };
+    const ids = new Set<string>();
+    const fullProof = {
+      approved: true,
+      explicitUserAction: true,
+      capabilityGranted: true,
+      featureEnabled: true,
+      trustedRuntime: true,
+      auditRecorded: true,
+    };
+
+    expect(inventory.entries.length).toBeGreaterThanOrEqual(30);
+    for (const item of inventory.entries) {
+      expect(ids.has(item.id), item.id).toBe(false);
+      ids.add(item.id);
+      expect(
+        authorizeMutation(item.control, {
+          ...fullProof,
+          auditRecorded: false,
+        }).allowed,
+        `${item.id} must deny without audit`,
+      ).toBe(false);
+      expect(fs.existsSync(evidenceFile(item.denialEvidence)), item.id).toBe(true);
+      for (const source of item.source) {
+        expect(fs.existsSync(path.resolve(process.cwd(), source)), item.id).toBe(true);
+      }
+
+      const permanentlyDenied =
+        item.control === "role_denied" || item.control === "default_off";
+      expect(authorizeMutation(item.control, fullProof).allowed, item.id).toBe(
+        !permanentlyDenied,
+      );
+      if (permanentlyDenied) {
+        expect(item.approvalEvidence, item.id).toBeNull();
+      } else {
+        expect(item.approvalEvidence, item.id).toBeTypeOf("string");
+        expect(fs.existsSync(evidenceFile(item.approvalEvidence!)), item.id).toBe(true);
+      }
+    }
+  });
+});
+
+function evidenceFile(reference: string): string {
+  return path.resolve(process.cwd(), reference.split("#", 1)[0]!);
+}

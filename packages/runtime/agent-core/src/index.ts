@@ -32,6 +32,18 @@ export {
   type ToolExecutorOptions,
 } from "./tools-registry.js";
 export {
+  AgentMutationAuthorizer,
+  MUTATING_AGENT_TOOL_NAMES,
+  RESERVED_MUTATING_TOOL_NAMES,
+  authorizeMutation,
+  type AgentMutationDecision,
+  type AgentMutationPolicyOptions,
+  type MutationAuthorizationProof,
+  type MutationAuthorizationResult,
+  type MutationCapability,
+  type MutationControl,
+} from "./mutation-policy.js";
+export {
   SYSTEM_PROMPT,
   READONLY_SYSTEM_PROMPT,
   getReadonlySystemPrompt,

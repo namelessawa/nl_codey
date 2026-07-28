@@ -261,7 +261,9 @@ async function runPlanner(
     // chooses what to call — if it ever emits a mutating name the host gates
     // are the last line of defense. Forward them instead of hard-wiring no-op
     // gates that would silently let such a call through.
-    requiresApproval: deps.requiresApproval ?? (() => false),
+    requiresApproval: (call) =>
+      toolAccess.allowedToolNames.has(call.name) &&
+      (deps.requiresApproval?.(call) ?? false),
     waitForApproval: deps.waitForApproval ?? (async () => true),
     ...(deps.onChunk ? { onChunk: deps.onChunk } : {}),
     ...(deps.onAssistant ? { onAssistant: deps.onAssistant } : {}),
@@ -362,7 +364,9 @@ async function runCoder(
     // does need the host's approval gates. Default to permissive no-ops only
     // when the host didn't wire them (test harnesses) so existing tests stay
     // green.
-    requiresApproval: deps.requiresApproval ?? (() => false),
+    requiresApproval: (call) =>
+      toolAccess.allowedToolNames.has(call.name) &&
+      (deps.requiresApproval?.(call) ?? false),
     waitForApproval: deps.waitForApproval ?? (async () => true),
     ...(deps.onChunk ? { onChunk: deps.onChunk } : {}),
     ...(deps.onAssistant ? { onAssistant: deps.onAssistant } : {}),
@@ -472,7 +476,9 @@ async function runReviewer(
     // command-confirmation gate. Forward the host gates instead of hard-wiring
     // no-ops — otherwise the reviewer silently bypasses approval that the
     // single-agent and coder paths already honor.
-    requiresApproval: deps.requiresApproval ?? (() => false),
+    requiresApproval: (call) =>
+      toolAccess.allowedToolNames.has(call.name) &&
+      (deps.requiresApproval?.(call) ?? false),
     waitForApproval: deps.waitForApproval ?? (async () => true),
     ...(deps.onChunk ? { onChunk: deps.onChunk } : {}),
     onAssistant: (text, toolCalls, usage) => {

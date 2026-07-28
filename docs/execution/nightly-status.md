@@ -16,7 +16,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 | 6 | `codex/p0-storage-abi-gate` | Node/Electron ABI + migration gates | Ready for draft review | Node migration/lifecycle 4/4; Electron load before/after restore passed |
 | 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Ready for draft review | 12 serial + 8 concurrent abort soak passed below 1500 ms; descendant PID cleanup proved |
 | 8 | `codex/p0-run-session-recovery` | Startup reconciliation and Run/Session linkage | Ready for draft review | Dead-owner recovery, Desktop wiring and approval-crash ConPTY restart passed |
-| 9 | `codex/p0-unified-approval` | Mutation inventory and common approval enforcement | Pending | Whole graph not yet proved |
+| 9 | `codex/p0-unified-approval` | Mutation inventory and common approval enforcement | Ready for draft review | 31 paths inventoried; single-use mutation grants and denial/approval contract passed |
 | 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Pending | Must follow preceding P0 gates |
 
 ## Work log
@@ -170,12 +170,40 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 - All recovery tests use the deterministic mock provider and isolated roots.
   `custom.txt` was not read and no network/model call occurred.
 
+### 2026-07-29 - Unified mutation authorization
+
+- Added one executable mutation contract for workspace writes, process
+  execution, memory writes and dynamic mutators. The executor now requires an
+  authorization decision for every classified mutation; per-call grants bind
+  tool-call id and name and are consumed exactly once.
+- Closed the concrete dynamic-tool and `write_memory` bypass: both single-agent
+  and multi-agent service paths now request approval before dispatch. Read-only,
+  degraded-mode and role-denied calls fail before an approval prompt.
+- Kept configurable command confirmation as an explicit capability grant, while
+  Docker/WSL host writeback retains its separate staged-diff approval.
+- Generated a 31-entry machine-readable inventory covering built-in tools,
+  sandbox writeback, plugin/MCP, multi-agent roles, CLI/TUI/Desktop, Git,
+  proactive, fine-tune, plugin lifecycle and startup recovery. The default test
+  gate checks generator freshness, source/evidence existence and denial/allow
+  proofs for every entry.
+- Non-patch approval previews omit raw arguments. `write_file` is now explicitly
+  reserved-only; MCP remains default-off. Full plugin process isolation remains
+  the next P0 batch.
+- The first full default run hit one existing ConPTY cleanup timing failure:
+  the deliberately killed approval fixture did not report exit within 10
+  seconds and held its temp directory. The restorative ABI `finally` passed.
+  An immediate isolated rerun passed all 5 workflows (including crash recovery
+  in 14.5 seconds), and the following Storage/integration matrix passed 5 + 19
+  assertions with Electron ABI restored. A second complete `pnpm test` then
+  passed end-to-end in 135 seconds, including both restorative ABI matrices.
+- All verification remains deterministic and offline. `custom.txt` was not read
+  and no network/model call occurred.
+
 ## Current blockers
 
 1. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
-2. A unified mutation approval boundary is not yet proved.
-3. Historical migration coverage still needs more fixtures plus
+2. Historical migration coverage still needs more fixtures plus
    backup-before-upgrade/failure-recovery behavior.
-4. Full Node plugin execution remains outside an OS-enforced capability
+3. Full Node plugin execution remains outside an OS-enforced capability
    boundary.
