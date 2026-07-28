@@ -23,6 +23,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; CI/TUI/PRODUCT WORK REM
 | 13 | `codex/p0-storage-migration-backup` | Historical SQLite migration backup and recovery | Ready for draft review; DATA-MIG-001 closed | Full default gate, 10 Storage and 19 integration assertions pass |
 | 14 | `codex/p0-rollback-recovery` | Durable single/many/partial/restart rollback | Ready for draft review; REC-ROLLBACK-001 closed; default red on known ConPTY cleanup flake | 13 restorative recovery assertions and 19 integration assertions pass; exact bytes/existence/Run state proved |
 | 15 | `codex/p1-tui-crash-cleanup` | Deterministic loaded ConPTY crash cleanup | Ready for draft review; default gate restored green | Awaited Windows tree termination; clean 5/5 targeted and loaded TUI E2E passes with immediate temp cleanup |
+| 16 | `codex/p1-live-smoke-gate` | Explicit custom.txt live-model gate | Ready for draft review; CI-LIVE-001 closed | Custom provider streamed a real read_memory tool round-trip in 4.7s; default 629-unit slice remained offline |
 
 ## Work log
 
@@ -398,9 +399,33 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; CI/TUI/PRODUCT WORK REM
   environment-gated skips, then restored the Electron ABI. No live LLM call
   occurred and `custom.txt` was not read.
 
+### 2026-07-29 - Explicit custom.txt live-model gate
+
+- Replaced the ambient DeepSeek-key real-model test with one dedicated
+  `pnpm test:llm:live` gate. Its Vitest config is the only place that sets the
+  opt-in flag; default unit/integration discovery continues to exclude
+  `*.integration.test.ts`.
+- Added a bounded parser for the ignored repository-root `custom.txt`. It
+  accepts exactly `CUSTOM_API_KEY`, `CUSTOM_BASE_URL` and `CUSTOM_MODEL`,
+  rejects malformed/duplicate/unknown fields and unsafe URLs, and emits only
+  field names/line numbers in diagnostics. Five synthetic parser assertions
+  prove configured secret values are absent from failure messages.
+- The live smoke uses the generic OpenAI-compatible `custom` provider in
+  read-only mode with no Storage/JSONL/workspace writes. The model emitted a
+  streamed `read_memory` tool call, the deterministic port returned its fixture,
+  and both live assertions passed in 4.7 seconds. Configuration came only from
+  `custom.txt`; no value or key was printed, committed or persisted.
+- The subsequent default gate passed all slices, including 629 unit assertions,
+  80 Desktop-main assertions, both ConPTY lifecycle checks, all 5 TUI E2E
+  workflows and 13 recovery assertions. The real-model file was not selected,
+  so this run made no live call and did not read `custom.txt`.
+- `pnpm typecheck`, `pnpm build`, 10 Storage and 19 integration assertions
+  passed; every Node-native stage restored the Electron ABI. Added
+  `docs/testing/live-llm-smoke.md` as the operator contract.
+
 ## Current blockers
 
-1. `CI-LIVE-001` and `CI-RELEASE-001` still need explicit opt-in live-smoke and
-   clean Windows release workflow evidence.
+1. `CI-RELEASE-001` still needs clean Windows release workflow evidence with
+   named Node/Storage/build/package/CodeQL/dependency/CLI gates.
 2. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.

@@ -27,6 +27,7 @@
     "test:storage:abi": "pnpm test:storage:node",
     "test:sandbox:abort:soak": "node scripts/test-sandbox-abort-soak.mjs",
     "test:plugin:restricted": "node scripts/test-restricted-plugin.mjs",
+    "test:llm:live": "vitest run --config vitest.live-llm.config.ts",
     "test:integration": "pnpm test:storage:abi && vitest run --config vitest.integration.config.ts",
     "test:all": "pnpm test && pnpm test:integration",
     "test:watch": "vitest --config vitest.unit.config.ts",

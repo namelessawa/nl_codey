@@ -31,7 +31,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | --- | --- | --- | --- |
 | CI-CLI-001 | Restore the missing CLI build script and a real installed-artifact help smoke | `pnpm --filter nlc build` and packaged `nlc --help` pass | Done in Batch 2 |
 | CI-SPLIT-001 | Add formal unit/desktop-main/renderer/preload/CLI/TUI/integration configs and named root scripts | Each command selects at least one intended test and fails on zero matches | Done in Batches 2-4 |
-| CI-LIVE-001 | Remove debug/live suites from default test discovery unless explicitly enabled | Default tests make zero network/model calls; explicit smoke loads ignored `custom.txt` | Open |
+| CI-LIVE-001 | Remove debug/live suites from default test discovery unless explicitly enabled | Default tests make zero network/model calls; explicit smoke loads ignored `custom.txt` | Done in Batch 16; dedicated custom-provider smoke passed and the 629-assertion default unit slice remained offline |
 | SBOX-ABORT-001 | Fix/characterize Windows process-tree abort without timeout inflation | Repeated isolated and loaded runs stop promptly, leave no child and preserve AbortError | Done in Batch 7 |
 | CI-RELEASE-001 | Add Node-version/Windows/build/package/CodeQL/dependency/CLI smoke gates | Required checks all green; no blanket production-test exclusion | Open |
 

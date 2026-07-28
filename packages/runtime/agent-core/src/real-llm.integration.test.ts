@@ -1,19 +1,18 @@
 /**
  * Real-LLM integration smoke test.
  *
- * Drives the autonomous tool loop against a real LLM (DeepSeek today; trivial
- * to extend) and asserts that the Phase 3 tool wiring actually reaches the
+ * Drives the autonomous tool loop against the OpenAI-compatible custom
+ * provider configured in ignored repository-root custom.txt and asserts that
+ * the Phase 3 tool wiring actually reaches the
  * model. We do not assert specific response text — that's too brittle against
  * model drift — only that the model called the read_memory tool we exposed,
  * proving the schema + dispatch round-trip works end-to-end.
  *
- * Skipped cleanly when DEEPSEEK_API_KEY is unset, so `pnpm test` keeps
- * passing for contributors who don't want to spend API tokens. To run:
- *
- *   $env:DEEPSEEK_API_KEY = "sk-..."  # PowerShell
- *   pnpm exec vitest run packages/agent-core/src/real-llm.integration.test.ts
+ * The dedicated Vitest config is the only supported opt-in:
+ *   pnpm test:llm:live
  */
 
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type {
   ChatLLMProvider,
@@ -29,9 +28,10 @@ import { BudgetController } from "./budget.js";
 import { runToolLoop } from "./loop.js";
 import { agentToolSchemas, createToolExecutor } from "./tools-registry.js";
 import { type ExtendedAgentPorts } from "./extended-tools.js";
+import { loadLiveLLMConfig } from "./live-llm-config.js";
 
-const HAS_KEY = !!process.env.DEEPSEEK_API_KEY;
-const describeReal = HAS_KEY ? describe : describe.skip;
+const LIVE_ENABLED = process.env.NLC_RUN_LIVE_LLM_SMOKE === "1";
+const describeReal = LIVE_ENABLED ? describe : describe.skip;
 
 function buildPorts(): {
   ports: ExtendedAgentPorts;
@@ -84,19 +84,12 @@ function buildPorts(): {
   return { ports, callLog };
 }
 
-describeReal("real-LLM smoke (DeepSeek)", () => {
+describeReal("real-LLM smoke (custom.txt)", () => {
   it(
     "drives a Phase 3 tool call through the real model",
     async () => {
-      const llm: ChatLLMProvider = createLLMProvider({
-        provider: "deepseek",
-        apiKey: process.env.DEEPSEEK_API_KEY!,
-        baseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com",
-        model: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
-        temperature: 0,
-        maxTokens: 2048,
-        timeoutSeconds: 120,
-      });
+      const config = loadLiveLLMConfig(path.resolve(process.cwd(), "custom.txt"));
+      const llm: ChatLLMProvider = createLLMProvider(config);
 
       const { ports, callLog } = buildPorts();
       const ctx = {
@@ -181,19 +174,19 @@ describeReal("real-LLM smoke (DeepSeek)", () => {
 });
 
 // Always-on placeholder so the file shows up cleanly in test runs even when
-// the real test is skipped. Documents the env var.
+// the real test is skipped. Documents the dedicated command.
 describe("real-LLM smoke (preflight)", () => {
-  it("reports skip reason when DEEPSEEK_API_KEY is unset", () => {
-    if (HAS_KEY) {
-      expect(HAS_KEY).toBe(true);
+  it("reports the explicit opt-in command without reading custom.txt", () => {
+    if (LIVE_ENABLED) {
+      expect(LIVE_ENABLED).toBe(true);
     } else {
       // Visible in vitest output so contributors see why the real test ran 0
       // assertions on their machine.
       // eslint-disable-next-line no-console
       console.log(
-        "[real-llm] Skipped: set DEEPSEEK_API_KEY to enable the real-model smoke test.",
+        "[real-llm] Skipped: run pnpm test:llm:live for the explicit custom.txt smoke.",
       );
-      expect(HAS_KEY).toBe(false);
+      expect(LIVE_ENABLED).toBe(false);
     }
   });
 });
