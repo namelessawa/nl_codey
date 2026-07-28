@@ -481,10 +481,18 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   default setup is enabled.
 - Hosted Release run `30404803761` proved the bundled ConPTY DLL is also
   silent when the PTY child launches through the source `tsx` path. Hosted
-  jobs now build the CLI first and point the PTY harness at the production
-  `dist/index.js` entry while retaining the system ConPTY backend. Local
-  production-entry verification passed 2/2 lifecycle and 5/5 agent/session
-  workflows without skips or unhandled pipe errors.
+  Release run `30405370370` therefore built the CLI first and pointed the PTY
+  harness at the production `dist/index.js` entry while retaining the system
+  ConPTY backend. Local production-entry verification passed 2/2 lifecycle
+  and 5/5 agent/session workflows without skips or unhandled pipe errors.
+- Hosted Release run `30405370370` proved the production `dist/index.js`
+  launcher is also silent in the GitHub Windows service session: both
+  lifecycle scenarios received zero bytes while the child stayed alive.
+  Because all three node-pty backends and both launchers fail identically,
+  hosted workflows now set the explicit `NLC_SKIP_NATIVE_PTY=1` capability
+  flag. Native PTY assertions remain enabled by default and mandatory on
+  interactive or self-hosted Windows; hosted CI retains all deterministic
+  TUI render, default, integration, package and installer gates.
 - `pnpm typecheck`, `pnpm build`, workflow YAML parsing, production audit
   (zero high/critical; one low), CLI pack/install/help, unpacked Windows
   packaging, NSIS/ZIP packaging, silent install/uninstall, 10 Storage and

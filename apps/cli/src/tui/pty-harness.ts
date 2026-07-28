@@ -9,7 +9,6 @@ import stripAnsi from "strip-ansi";
 const require = createRequire(import.meta.url);
 const tsxCli = require.resolve("tsx/cli");
 const cliEntry = fileURLToPath(new URL("../index.ts", import.meta.url));
-const cliBundleEntry = fileURLToPath(new URL("../../dist/index.js", import.meta.url));
 
 export type PtyExit = {
   exitCode: number;
@@ -54,11 +53,7 @@ export class TuiPtyHarness {
     const useConptyDll =
       process.platform === "win32" &&
       ptyBackend === "conpty-dll";
-    const cliArgs =
-      process.env.NLC_TUI_PTY_ENTRY === "bundle"
-        ? [cliBundleEntry, ...options.args]
-        : [tsxCli, cliEntry, ...options.args];
-    this.pty = spawn(process.execPath, cliArgs, {
+    this.pty = spawn(process.execPath, [tsxCli, cliEntry, ...options.args], {
       name: "xterm-256color",
       cwd: options.cwd,
       cols,

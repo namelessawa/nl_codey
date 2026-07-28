@@ -5,11 +5,20 @@ Gate: `pnpm test:tui:e2e`
 Provider: deterministic `mock`; ambient provider keys explicitly cleared
 Credential file: `custom.txt` was not read
 
-The gate launches the bundled CLI through the real Windows ConPTY path in an
-isolated temporary workspace and data root. Because the TUI opens SQLite, the
-test runs inside the restorative Storage ABI matrix: Electron ABI is verified,
-the cached host-Node binary is selected, the test runs, and Electron ABI is
+The gate launches the CLI through the real Windows ConPTY path in an isolated
+temporary workspace and data root. Because the TUI opens SQLite, the test runs
+inside the restorative Storage ABI matrix: Electron ABI is verified, the
+cached host-Node binary is selected, the test runs, and Electron ABI is
 restored and verified in `finally`.
+
+Native PTY assertions run by default on interactive Windows. GitHub-hosted
+Windows runners execute as non-interactive service sessions and have produced
+no output bytes with system ConPTY, the bundled ConPTY DLL, or winpty. The
+hosted workflows therefore set the explicit `NLC_SKIP_NATIVE_PTY=1` capability
+flag. They still run the deterministic TUI unit/render suites and every other
+default, integration, package, and installer gate. Interactive and self-hosted
+Windows validation must leave the flag unset so all seven native PTY scenarios
+remain mandatory.
 
 | Document scenario | Evidence in the current gate | Result |
 | --- | --- | --- |

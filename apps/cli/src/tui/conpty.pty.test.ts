@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnTuiPty, type TuiPtyHarness } from "./pty-harness.js";
 
-const describeWindows = process.platform === "win32" ? describe : describe.skip;
+const canRunNativePty =
+  process.platform === "win32" &&
+  process.env.NLC_SKIP_NATIVE_PTY !== "1";
+const describeWindows = canRunNativePty ? describe : describe.skip;
 const sessions: TuiPtyHarness[] = [];
 const tempRoots: string[] = [];
 
