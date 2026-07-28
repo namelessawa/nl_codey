@@ -42,7 +42,7 @@ that the functional modules are unusable.
 | Module | Runtime and entry | Test evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `packages/core/shared` | Shared models, IPC, settings and policy types used across apps/packages | Six suites | Browser-safe and Node-only path utilities are not split | Functional |
-| `packages/core/sandbox` | Workspace containment, command whitelist/router, WSL/Docker staging and Windows Job Object helper | Six suites including Docker-gated paths | Full-suite Windows abort timing is flaky; host whitelist remains weaker than a container | Functional |
+| `packages/core/sandbox` | Workspace containment, command whitelist/router, WSL/Docker staging and verified cross-platform process-tree termination | Six suites including Docker-gated and descendant-cleanup paths | Host whitelist has no OS resource/syscall isolation; native Job Object/AppContainer host remains unimplemented | Functional |
 | `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Four Node lifecycle/migration tests plus Electron native-load checks pass through a restorative ABI matrix | Historical fixtures and backup-before-upgrade failure recovery remain incomplete | Functional |
 | `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path suites | Stable Run linkage and crash reconciliation are not defined; Desktop interoperability unproved | Functional |
 
@@ -95,8 +95,9 @@ that the functional modules are unusable.
 - SQLite is the Run-state store and JSONL is the CLI conversation store, but
   there is no proved stable linkage/reconciler after a crash.
 - The root build and default offline test gate pass. The explicit integration
-  gate passes with a restorative Node/Electron Storage ABI matrix; Windows
-  abort remains under soak because earlier loaded runs exceeded its bound.
+  gate passes with a restorative Node/Electron Storage ABI matrix. Windows
+  abort has a named 12-run isolated plus 8-way loaded soak, preserves
+  `AbortError`, and proves descendant cleanup without timeout inflation.
 - TUI discovery currently finds 18 catalogued slash commands, 19 keyboard/input
   actions, three modal routes, no mouse implementation and four committed
   CLI/TUI Vitest files, including a real Windows ConPTY lifecycle. See

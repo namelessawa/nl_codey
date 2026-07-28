@@ -1,5 +1,10 @@
 import { spawn } from "node:child_process";
-import { assertCommandAllowed, filteredEnv, truncateOutput } from "@nlc/sandbox";
+import {
+  assertCommandAllowed,
+  filteredEnv,
+  terminateProcessTree,
+  truncateOutput,
+} from "@nlc/sandbox";
 import {
   type AgentTool,
   type RunCommandInput,
@@ -25,22 +30,30 @@ export const runCommandTool: AgentTool<RunCommandInput, RunCommandOutput> = {
         shell: true,
         env: filteredEnv(process.env),
         windowsHide: true,
+        detached: process.platform !== "win32",
       });
 
       let stdout = "";
       let stderr = "";
       let timedOut = false;
+      let terminationStarted = false;
       const cap = TOOL_LIMITS.maxCommandOutputBytes;
+      const terminate = (): void => {
+        if (terminationStarted) return;
+        terminationStarted = true;
+        terminateProcessTree(child);
+      };
 
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill();
+        terminate();
       }, timeoutMs);
 
       const onAbort = (): void => {
-        child.kill();
+        terminate();
       };
       ctx.signal?.addEventListener("abort", onAbort);
+      if (ctx.signal?.aborted) onAbort();
 
       child.stdout?.on("data", (c: Buffer) => {
         if (Buffer.byteLength(stdout) < cap) stdout += c.toString("utf8");

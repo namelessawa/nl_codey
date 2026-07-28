@@ -285,9 +285,8 @@ SQLite 数据库位于 `<userData>/data/workspace-state.db`。
 
 - **`whitelist`**（默认,最安全）—— 精确匹配的允许列表,会被危险
   模式（命令链、命令替换、重定向、`rm -rf`、`powershell` 等）
-  筛查,最终在宿主机上 spawn,cwd 锁定到工作区根。子进程被分配到一个
-  Windows **Job Object**(`KILL_ON_JOB_CLOSE` + 内存/CPU/进程数上限),
-  Electron 退出或运行取消时整棵进程树原子化销毁。
+  筛查,最终在宿主机上 spawn,cwd 锁定到工作区根。取消或超时时会终止
+  整棵进程树；它仍是宿主进程,没有内存/CPU/系统调用隔离。
 - **`wsl`** —— 在 WSL Ubuntu 实例中运行，针对工作区的副本。
 - **`docker`** —— 在临时容器中运行，工作区以绑定挂载方式注入。
   推荐生产使用,见上节"安装 Docker"。
@@ -306,8 +305,10 @@ WSL/Docker 运行默认 **无网络出口**，除非某条命令明确开启；�
 ## 测试
 
 ```powershell
-pnpm test          # packages + desktop main；不含 CLI/preload/renderer
-pnpm typecheck     # tsc --noEmit 跨所有 workspace 项目
+pnpm test                         # 默认离线单元/桌面/renderer/preload/CLI/TUI 门
+pnpm test:integration             # Storage ABI + 沙箱/Docker 集成门
+pnpm test:sandbox:abort:soak      # Windows 取消：串行与并发压力门
+pnpm typecheck                    # tsc --noEmit 跨所有 workspace 项目
 ```
 
 覆盖范围包括：路径隔离（含 symlink 逃逸）、命令白名单 + 注入拒绝 +
@@ -315,16 +316,14 @@ pnpm typecheck     # tsc --noEmit 跨所有 workspace 项目
 失败不破坏文件）、工具调用循环 / 预算 / verifier / 回归守卫 /
 压缩器 / eval 测评框架、记忆检索器、语义索引、Planner 图/调度器、
 Orchestrator 消息总线 / 锁 / 角色、Git 集成、Web 工具、LLM provider
-（流式 chat、重试），以及存储生命周期的测试定义。当前真实存储生命周期
-测试受 ABI 问题阻塞；CLI、preload 和 renderer 也尚未进入常规 Vitest
-质量门。
+（流式 chat、重试），以及真实存储生命周期/迁移、CLI、preload、
+renderer、TUI render 和 Windows ConPTY 生命周期。
 
 > **原生模块注意：** `pnpm test` 在裸 Node 下运行，而 `better-sqlite3`
-> 在 `pnpm dev`/`build` 流程中是按 Electron 的 ABI 重建的。因此唯一
-> 真正打开 DB 的测试（`packages/core/storage/src/storage.test.ts`）在 Node
-> 下会因 ABI 不匹配失败 —— 这是工具链层面的现象,不是代码回归。
-> 当前 release workflow 直接排除了该文件，因此不能声称存储集成测试
-> 已通过。详见 [`docs/execution/nightly-baseline.md`](docs/execution/nightly-baseline.md)。
+> 在 `pnpm dev`/`build` 流程中是按 Electron 的 ABI 重建的。
+> `pnpm test:storage:abi` 会暂存当前 Electron 二进制、切换到精确 Node ABI
+> 运行真实数据库测试，并在 `finally` 中恢复后再次验证 Electron 加载；
+> 不要绕过这个可恢复矩阵手工覆盖原生模块。
 
 ## 安全模型
 

@@ -14,7 +14,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 | 4 | `codex/p1-tui-pty-harness` | Windows ConPTY + resize/key/cleanup primitives | Ready for draft review | 2 real ConPTY lifecycle assertions passed |
 | 5 | `codex/p1-tui-core-workflows` | Core approval/reject/stop/session/recovery scenarios | Pending | Depends on PTY harness |
 | 6 | `codex/p0-storage-abi-gate` | Node/Electron ABI + migration gates | Ready for draft review | Node migration/lifecycle 4/4; Electron load before/after restore passed |
-| 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Pending soak | Latest isolated integration run passed at 1171 ms; prior loaded runs exceeded 3 s |
+| 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Ready for draft review | 12 serial + 8 concurrent abort soak passed below 1500 ms; descendant PID cleanup proved |
 | 8 | `codex/p0-run-session-recovery` | Startup reconciliation and Run/Session linkage | Pending | No current E2E contract |
 | 9 | `codex/p0-unified-approval` | Mutation inventory and common approval enforcement | Pending | Whole graph not yet proved |
 | 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Pending | Must follow preceding P0 gates |
@@ -107,15 +107,29 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 - Sandbox abort remains open for a repeated loaded soak because historical
   runs measured 1936-3147 ms despite the latest isolated 1171 ms result.
 
+### 2026-07-29 - Windows sandbox abort stability
+
+- Removed the synchronous PowerShell Job Object shim after proving its Win32
+  handle was created in a process that exited before assignment. Handles are
+  process-local, so the later assign/close helpers could not enforce the
+  advertised limits and added seconds of startup latency.
+- Added one shared process-tree terminator: Windows uses `taskkill /T /F`;
+  POSIX uses a dedicated process group with TERM and a bounded KILL fallback.
+  Both the default whitelist runner and WSL/Docker runner use the same path for
+  cancellation and timeout.
+- Added a race-safe already-aborted check, preserved `AbortError`, and proved a
+  spawned descendant PID is promptly gone after the aborted command settles.
+- The named `pnpm test:sandbox:abort:soak` gate passed 12 serial cancellations
+  plus 8 concurrent cancellations, with every duration below the unchanged
+  1500 ms bound. No LLM provider or network path was constructed.
+
 ## Current blockers
 
-1. Windows child-process abort has historical loaded-run failures above its
-   documented 1500 ms bound and needs a repeatable soak.
-2. Remaining TUI editing keys and end-to-end mutation/session workflows still
+1. Remaining TUI editing keys and end-to-end mutation/session workflows still
    lack committed coverage.
-3. Run/Session crash reconciliation and a unified mutation approval boundary
+2. Run/Session crash reconciliation and a unified mutation approval boundary
    are not yet proved.
-4. Historical migration coverage still needs more fixtures plus
+3. Historical migration coverage still needs more fixtures plus
    backup-before-upgrade/failure-recovery behavior.
-5. Full Node plugin execution remains outside an OS-enforced capability
+4. Full Node plugin execution remains outside an OS-enforced capability
    boundary.

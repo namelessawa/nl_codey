@@ -21,6 +21,7 @@
     "test:storage:node": "node scripts/test-storage-abi-matrix.mjs --node",
     "test:storage:electron": "node scripts/test-storage-abi-matrix.mjs --electron-only",
     "test:storage:abi": "pnpm test:storage:node",
+    "test:sandbox:abort:soak": "node scripts/test-sandbox-abort-soak.mjs",
     "test:integration": "pnpm test:storage:abi && vitest run --config vitest.integration.config.ts",
     "test:all": "pnpm test && pnpm test:integration",
     "test:watch": "vitest --config vitest.unit.config.ts",
