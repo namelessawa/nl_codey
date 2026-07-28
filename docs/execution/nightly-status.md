@@ -24,7 +24,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 14 | `codex/p0-rollback-recovery` | Durable single/many/partial/restart rollback | Ready for draft review; REC-ROLLBACK-001 closed; default red on known ConPTY cleanup flake | 13 restorative recovery assertions and 19 integration assertions pass; exact bytes/existence/Run state proved |
 | 15 | `codex/p1-tui-crash-cleanup` | Deterministic loaded ConPTY crash cleanup | Ready for draft review; default gate restored green | Awaited Windows tree termination; clean 5/5 targeted and loaded TUI E2E passes with immediate temp cleanup |
 | 16 | `codex/p1-live-smoke-gate` | Explicit custom.txt live-model gate | Ready for draft review; CI-LIVE-001 closed | Custom provider streamed a real read_memory tool round-trip in 4.7s; default 629-unit slice remained offline |
-| 17 | `codex/p1-release-ci-gates` | Required CI, CLI package and Windows install gates | Ready for draft review; hosted Release rerun and main-target required checks remain | Node 22/24, CodeQL/dependency/audit workflows wired; local CLI install, NSIS install/uninstall and full named gates pass |
+| 17 | `codex/p1-release-ci-gates` | Required CI, CLI package and Windows install gates | Ready for draft review; hosted Release green; main-target required checks remain | Run 30405876544 passed clean install, tests, integration, builds, CLI/NSIS smoke and artifact upload |
 
 ## Work log
 
@@ -493,6 +493,13 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   flag. Native PTY assertions remain enabled by default and mandatory on
   interactive or self-hosted Windows; hosted CI retains all deterministic
   TUI render, default, integration, package and installer gates.
+- Hosted Release run `30405876544` passed the complete clean Windows release
+  path: frozen install, typecheck, deterministic defaults, Storage ABI and
+  integration, all production builds, packed CLI install/help, NSIS/ZIP
+  packaging, artifact verification, silent install/uninstall and artifact
+  upload. The seven native PTY scenarios were explicitly reported as skipped
+  in the non-interactive hosted session; the same commit passed 2/2 lifecycle
+  and 5/5 agent/session scenarios locally with the flag unset.
 - `pnpm typecheck`, `pnpm build`, workflow YAML parsing, production audit
   (zero high/critical; one low), CLI pack/install/help, unpacked Windows
   packaging, NSIS/ZIP packaging, silent install/uninstall, 10 Storage and
@@ -506,9 +513,9 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 
 ## Current blockers
 
-1. `CI-RELEASE-001` still needs a clean hosted Release rerun after the
-   native/runtime upgrades and the required jobs on a main-target GitHub PR.
-   Local Windows evidence is green, but hosted CodeQL/dependency/Node-matrix
-   results must not be inferred.
+1. `CI-MAIN-001` still needs the required Node 22/24, package,
+   dependency-review and audit jobs on a main-target GitHub PR. The clean
+   hosted Release workflow and branch CodeQL checks are green, but the
+   main-target event contract must not be inferred from them.
 2. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
