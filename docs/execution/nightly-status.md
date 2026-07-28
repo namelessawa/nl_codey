@@ -2,7 +2,7 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - INTEGRATION GREEN; DEFAULT RED ON CONPTY CLEANUP FLAKE; P0 WORK REMAINS**
+Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 
 ## Batch board
 
@@ -19,6 +19,7 @@ Overall state: **ACTIVE - INTEGRATION GREEN; DEFAULT RED ON CONPTY CLEANUP FLAKE
 | 9 | `codex/p0-unified-approval` | Mutation inventory and common approval enforcement | Ready for draft review | 31 paths inventoried; single-use mutation grants and denial/approval contract passed |
 | 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Ready for draft review; default gate red on existing loaded ConPTY cleanup flake | Real Docker adversarial gate denied host/workspace secrets, network, process, rootfs and oversized-file access |
 | 11 | `codex/p0-secret-redaction` | Shared secret-redaction contract and primary persistence/display boundaries | Ready for draft review; SEC-SECRET-001 remains open for secondary tails | Provider/tool/verifier/SQLite/JSONL/TUI fixtures and integration gate pass |
+| 12 | `codex/p0-secret-redaction-tails` | Semantic/eval/fine-tune/Desktop/CLI redaction tails | Ready for draft review; SEC-SECRET-001 closed | Full default gate, 7 Storage and 19 integration assertions pass |
 
 ## Work log
 
@@ -284,12 +285,40 @@ Overall state: **ACTIVE - INTEGRATION GREEN; DEFAULT RED ON CONPTY CLEANUP FLAKE
   still have local/raw paths and require a second bounded tail audit. No LLM
   was called and `custom.txt` was not read.
 
+### 2026-07-29 - Secret-redaction tail closure
+
+- Replaced the semantic embedding provider's local key substitution with the
+  shared bounded contract. Non-2xx bodies now remove active keys, bearer/query
+  credentials and local user-home paths before an exception leaves the
+  provider.
+- Redacted evaluation `errorMessage` and fine-tune `gateReasons` at their
+  SQLite store boundaries. This covers both Desktop training stderr and the
+  optional LoRA trainer without changing successful artifacts or task data.
+- Applied the same contract to Docker probe/launcher errors, thrown Desktop IPC
+  errors, and failed direct-command stdout/stderr before renderer display.
+  Successful direct-command data remains byte-for-byte untouched.
+- Routed the top-level CLI catch and existing run/workspace/task error paths
+  through one bounded stderr writer. Final Ink error rows continue to use the
+  display boundary added in Batch 11.
+- Synthetic fixtures cover semantic errors, advanced SQLite rows, Docker
+  status/start results, thrown IPC envelopes, failed direct-command results and
+  the shared CLI stderr path. They assert placeholders, hard bounds and absence
+  of keys, bearer/query values and user names.
+- `pnpm typecheck`, `pnpm build`, 624 unit assertions, 80 Desktop-main
+  assertions, 4 CLI assertions and 7 restorative Storage assertions passed.
+- The full default gate passed end to end, including mutation inventory,
+  renderer/preload surfaces, 9 TUI render assertions, 2 real ConPTY lifecycle
+  checks, all 5 real TUI workflows and final recovery. Both ABI-restorative
+  stages verified Electron 33.4.11 / modules 130 after Node tests.
+- `pnpm test:integration` passed 7 Storage plus 19 integration assertions with
+  environment-gated skips and restored the Electron ABI. No live LLM call
+  occurred and `custom.txt` was not read.
+
 ## Current blockers
 
 1. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
 2. Historical migration coverage still needs more fixtures plus
    backup-before-upgrade/failure-recovery behavior.
-3. The shared redaction contract now covers primary provider/tool/verifier/
-   SQLite/JSONL/TUI paths; semantic embedding, evaluation/fine-tune, Desktop
-   IPC and top-level CLI error tails remain open.
+3. Rollback still needs many-change, partial-change and restart evidence before
+   its P0 data-integrity item can close.

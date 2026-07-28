@@ -1,6 +1,6 @@
 /** Embedding providers: OpenAI-compatible (real) and a deterministic mock. */
 
-import type { EmbeddingProvider } from "@nlc/shared";
+import { redactSensitiveText, type EmbeddingProvider } from "@nlc/shared";
 
 const DEFAULT_MODEL = "text-embedding-3-small";
 const DEFAULT_DIMENSIONS = 1536;
@@ -53,7 +53,12 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 
       if (!res.ok) {
         const detail = await res.text().catch(() => "");
-        throw new Error(redact(`Embedding request failed (HTTP ${res.status}): ${detail}`, this.apiKey));
+        throw new Error(
+          redactSensitiveText(
+            `Embedding request failed (HTTP ${res.status}): ${detail}`,
+            { secrets: [this.apiKey], maxLength: 4_000 },
+          ),
+        );
       }
 
       const json = (await res.json()) as EmbeddingResponse;
@@ -62,8 +67,13 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
       if (controller.signal.aborted) {
         throw new Error(`Embedding request timed out after ${REQUEST_TIMEOUT_SECONDS}s`);
       }
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(redact(message, this.apiKey));
+      throw new Error(
+        redactSensitiveText(err, {
+          secrets: [this.apiKey],
+          maxLength: 4_000,
+          fallback: "Embedding request failed",
+        }),
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -89,13 +99,6 @@ function parseEmbeddingResponse(json: EmbeddingResponse, expected: number): numb
     }
     return item.embedding;
   });
-}
-
-function redact(text: string, apiKey: string): string {
-  if (apiKey && apiKey.length >= 4) {
-    return text.split(apiKey).join("***");
-  }
-  return text;
 }
 
 /**

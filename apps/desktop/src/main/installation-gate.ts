@@ -22,6 +22,7 @@ import {
   DEFAULT_DOCKER_STATUS,
   DEFAULT_INSTALLATION_GATE,
   DOCKER_INSTALL_URL,
+  redactSensitiveText,
   UNSAFE_WITHOUT_SANDBOX_TOOLS,
   type AgentEvent,
   type DockerStartResult,
@@ -107,7 +108,13 @@ export class InstallationGate {
       version: probe.version,
       daemonRunning: probe.daemonRunning,
       lastCheckedAt: Date.now(),
-      error: probe.error,
+      error:
+        probe.error === null
+          ? null
+          : redactSensitiveText(probe.error, {
+              maxLength: 4_000,
+              fallback: "Docker probe failed",
+            }),
     };
     const status = this.status();
     this.emit({ kind: "installation_status", status });
@@ -218,7 +225,17 @@ export class InstallationGate {
     try {
       const launch = await this.launchDocker();
       if (!launch.ok) {
-        return { ok: false, error: launch.error ?? "launch_failed", status: this.status() };
+        return {
+          ok: false,
+          error:
+            launch.error === null
+              ? "launch_failed"
+              : redactSensitiveText(launch.error, {
+                  maxLength: 4_000,
+                  fallback: "launch_failed",
+                }),
+          status: this.status(),
+        };
       }
 
       const deadline = monotonicNow() + this.pollTimeoutMs;
@@ -290,8 +307,10 @@ function monotonicNow(): number {
 }
 
 function asMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+  return redactSensitiveText(err, {
+    maxLength: 4_000,
+    fallback: "Docker Desktop launch failed",
+  });
 }
 
 /**

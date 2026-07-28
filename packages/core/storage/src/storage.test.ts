@@ -139,6 +139,67 @@ describe("Storage", () => {
     storage.close();
   });
 
+  it("redacts evaluation and fine-tune failures before advanced-store persistence", () => {
+    const storage = new Storage(":memory:");
+    const secret =
+      "Authorization: Bearer advanced-secret\n" +
+      "C:\\Users\\alice\\.cache?token=query-secret " +
+      "x".repeat(5_000);
+    storage.evaluation.upsertEvalTask({
+      id: "eval-redaction",
+      level: "L1",
+      title: "redaction",
+      description: "safe fixture",
+      frozen: false,
+      verifyCommand: "pnpm test",
+      expectedNodes: 1,
+    });
+
+    const evaluation = storage.evaluation.recordEvalRun({
+      taskId: "eval-redaction",
+      modelId: "model-1",
+      pass: false,
+      corrections: 0,
+      transferHits: 0,
+      costUsd: 0,
+      durationMs: 1,
+      errorMessage: secret,
+    });
+    const job = storage.finetune.createFinetuneJob({
+      name: "redaction",
+      baseModel: "base",
+      datasetId: "dataset",
+      method: "lora",
+    });
+    const failed = storage.finetune.updateFinetuneJob(job.id, {
+      status: "failed",
+      evalResult: {
+        baselineScore: 0,
+        candidateScore: 0,
+        delta: 0,
+        perTaskRegressions: [],
+        holdoutScore: 0,
+        holdoutBaselineScore: 0,
+        gatePassed: false,
+        gateReasons: [secret],
+      },
+    })!;
+    const values = [
+      evaluation.errorMessage!,
+      storage.evaluation.listEvalRuns()[0]!.errorMessage!,
+      failed.evalResult!.gateReasons[0]!,
+      storage.finetune.getFinetuneJob(job.id)!.evalResult!.gateReasons[0]!,
+    ];
+
+    for (const value of values) {
+      expect(value).toContain("[REDACTED]");
+      expect(value).toContain("[USER_HOME]");
+      expect(value).not.toMatch(/advanced-secret|query-secret|alice/);
+      expect(value.length).toBeLessThanOrEqual(4_000);
+    }
+    storage.close();
+  });
+
   it("[recovery] marks dead and legacy owners once without replaying writes", () => {
     const storage = new Storage(":memory:");
     const workspaceRoot = path.join(

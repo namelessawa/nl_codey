@@ -2,6 +2,8 @@
  * Minimal ANSI color helpers — opt-out via NO_COLOR or --no-color, opt out
  * automatically when stdout isn't a TTY. No external dependency.
  */
+import { redactSensitiveText } from "@nlc/shared";
+
 const SUPPORTS_COLOR =
   typeof process !== "undefined" &&
   process.stdout &&
@@ -30,5 +32,13 @@ export function writeLine(s: string): void {
 }
 
 export function writeErrLine(s: string): void {
-  process.stderr.write(s.endsWith("\n") ? s : `${s}\n`);
+  const safe = formatErrorOutput(s);
+  process.stderr.write(safe.endsWith("\n") ? safe : `${safe}\n`);
+}
+
+export function formatErrorOutput(value: unknown): string {
+  return redactSensitiveText(value, {
+    maxLength: 4_000,
+    fallback: "Unknown CLI error",
+  });
 }

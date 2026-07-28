@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { colorDisabled, parseArgv } from "../lib/argv.js";
+import { formatErrorOutput } from "../lib/format.js";
 import {
   COMMANDS,
   matchCommands,
@@ -87,5 +88,18 @@ describe("[cli] argv", () => {
 
   it("honours the explicit no-color flag", () => {
     expect(colorDisabled(parseArgv(["--no-color"]))).toBe(true);
+  });
+
+  it("redacts bounded stderr text used by every top-level CLI command", () => {
+    const result = formatErrorOutput(
+      "Authorization: Bearer cli-secret\n" +
+        "C:\\Users\\alice\\.npmrc?token=query-secret " +
+        "x".repeat(5_000),
+    );
+
+    expect(result).toContain("[REDACTED]");
+    expect(result).toContain("[USER_HOME]");
+    expect(result).not.toMatch(/cli-secret|query-secret|alice/);
+    expect(result.length).toBeLessThanOrEqual(4_000);
   });
 });

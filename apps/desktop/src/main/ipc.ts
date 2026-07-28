@@ -10,7 +10,7 @@ import { scanFiles } from "@nlc/project-indexer";
 import { testLLMConnection } from "@nlc/llm";
 import { readFileTool } from "@nlc/tools";
 import type { Services } from "./services.js";
-import { handle } from "./ipc-handle.js";
+import { handle, redactCommandErrorOutput } from "./ipc-handle.js";
 import { registerMemoryIpc } from "./ipc/memory-ipc.js";
 import { registerSemanticIpc } from "./ipc/semantic-ipc.js";
 import { registerTaskIpc } from "./ipc/task-ipc.js";
@@ -122,7 +122,9 @@ export function registerIpc(services: Services): void {
     // Installation gate: refuse if Docker is missing and the user skipped.
     // Throws a readable error which the renderer surfaces in the run detail.
     installationGate.assertToolAllowed("run_command");
-    return agent.runCommandDirect(workspaceId, command);
+    return redactCommandErrorOutput(
+      await agent.runCommandDirect(workspaceId, command),
+    );
   });
 
   handle(IPC.getSettings, () => settingsPayload());

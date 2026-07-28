@@ -76,15 +76,32 @@ describe("OpenAIEmbeddingProvider", () => {
     expect((call[1] as RequestInit).method).toBe("POST");
   });
 
-  it("redacts the api key from error messages on non-2xx", async () => {
+  it("applies shared redaction to non-2xx provider errors", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response("invalid api key sk-secret", { status: 401 }),
+      new Response(
+        "invalid api key sk-secret\n" +
+          "Authorization: Bearer embed-bearer\n" +
+          "C:\\Users\\alice\\.config?token=query-secret",
+        { status: 401 },
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     const provider = new OpenAIEmbeddingProvider({ apiKey: "sk-secret" });
-    await expect(provider.embed(["x"])).rejects.toThrow(/\*\*\*/);
-    await expect(provider.embed(["x"])).rejects.not.toThrow(/sk-secret/);
+    let caught: unknown;
+    try {
+      await provider.embed(["x"]);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    const message = (caught as Error).message;
+    expect(message).toContain("[REDACTED]");
+    expect(message).toContain("[USER_HOME]");
+    expect(message).not.toMatch(
+      /sk-secret|embed-bearer|query-secret|alice/,
+    );
   });
 
   it("returns an empty array without calling fetch for empty input", async () => {
