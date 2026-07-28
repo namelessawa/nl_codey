@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import type {
   AgentEvent,
   AgentRun,
@@ -19,7 +20,12 @@ import type {
   ToolContext,
   ToolSchema,
 } from "@nlc/shared";
-import { clampBudgetLimits, contextWindowFor, DEFAULT_BUDGET_LIMITS } from "@nlc/shared";
+import {
+  clampBudgetLimits,
+  contextWindowFor,
+  DEFAULT_BUDGET_LIMITS,
+  UNSAFE_WITHOUT_SANDBOX_TOOLS,
+} from "@nlc/shared";
 import type { FileChange } from "@nlc/sandbox";
 import type { Storage } from "@nlc/storage";
 import { detectProject } from "@nlc/project-indexer";
@@ -31,6 +37,7 @@ import {
   AGENT_TOOL_SCHEMAS,
   agentToolSchemas,
   createToolExecutor,
+  FILE_MUTATING_TOOLS,
   type ExecutedTool,
 } from "./tools-registry.js";
 import { getReadonlySystemPrompt, getSystemPrompt } from "./prompts.js";
@@ -101,11 +108,20 @@ export type DynamicToolBundleFn = () => DynamicToolBundle | null;
 
 const MAX_INITIAL_FILES = 200;
 const MAX_STEP_CONTENT = 4000;
+const STEP_TRUNCATION_MARKER = "…(truncated)";
 const DYNAMIC_TOOL_NAME = /^[a-z][a-z0-9_-]*$/;
-const RESERVED_DYNAMIC_TOOL_NAMES = new Set<string>([
+
+/**
+ * Every host-owned name that an untrusted dynamic source must never shadow.
+ * This is the single collision boundary for agent schemas, Phase 3 extensions,
+ * orchestrator schemas, file mutators, and degraded-mode dangerous tools.
+ */
+export const HOST_RESERVED_TOOL_NAMES: ReadonlySet<string> = new Set([
   ...AGENT_TOOL_SCHEMAS.map((schema) => schema.name),
   ...EXTENDED_AGENT_TOOL_NAMES,
   ...ORCHESTRATOR_TOOL_SCHEMAS.map((schema) => schema.name),
+  ...FILE_MUTATING_TOOLS,
+  ...UNSAFE_WITHOUT_SANDBOX_TOOLS,
 ]);
 
 function isRecord(input: unknown): input is Record<string, unknown> {
@@ -150,7 +166,7 @@ export function validateDynamicToolBundle(input: unknown): DynamicToolBundleVali
     ) {
       return { ok: false, reason: `schemas[${index}] is not a valid tool schema` };
     }
-    if (RESERVED_DYNAMIC_TOOL_NAMES.has(schema.name)) {
+    if (HOST_RESERVED_TOOL_NAMES.has(schema.name)) {
       return {
         ok: false,
         reason: `dynamic tool "${schema.name}" conflicts with a built-in tool`,
@@ -199,7 +215,7 @@ export function validateDynamicToolBundle(input: unknown): DynamicToolBundleVali
         // Built-in calls must fall through to the built-in dispatcher. Every
         // other name is an undeclared dynamic call and is refused here,
         // before the source dispatcher can see it.
-        if (RESERVED_DYNAMIC_TOOL_NAMES.has(call.name)) return null;
+        if (HOST_RESERVED_TOOL_NAMES.has(call.name)) return null;
         return {
           name: call.name,
           resultText: JSON.stringify({
@@ -433,11 +449,7 @@ export class AgentService {
     try {
       candidate = this.getDynamicTools();
     } catch (err) {
-      this.addStep(
-        runId,
-        "error",
-        `[security] Dynamic tools disabled: bundle factory failed (${asMessage(err)}).`,
-      );
+      this.addStep(runId, "error", formatDynamicBundleFactoryFailureStep(err));
       return null;
     }
     if (candidate === null) return null;
@@ -1677,7 +1689,90 @@ function summarizeArgs(call: LLMToolCall): string {
 }
 
 function truncateStep(text: string): string {
-  return text.length > MAX_STEP_CONTENT ? `${text.slice(0, MAX_STEP_CONTENT)}…(truncated)` : text;
+  return limitStepContent(text);
+}
+
+/**
+ * Format an untrusted dynamic-source failure for SQLite and renderer audit
+ * surfaces. Only the sanitized, bounded message is returned; stacks and raw
+ * exception objects never cross this boundary.
+ */
+export function formatDynamicBundleFactoryFailureStep(err: unknown): string {
+  const detail = sanitizeDynamicSourceError(err);
+  return limitStepContent(
+    `[security] Dynamic tools disabled: bundle factory failed (${detail}).`,
+  );
+}
+
+function sanitizeDynamicSourceError(err: unknown): string {
+  let message: string;
+  try {
+    const raw = err instanceof Error ? err.message : err;
+    message = typeof raw === "string" ? raw : String(raw);
+  } catch {
+    message = "Unknown dynamic source error";
+  }
+
+  let sanitized = message
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!sanitized) sanitized = "Unknown dynamic source error";
+
+  sanitized = redactLocalUserDirectories(sanitized)
+    .replace(
+      /\b([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]+:[^@\s/]+@/gi,
+      "$1[REDACTED]@",
+    )
+    .replace(
+      /([?&](?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password)=)[^&#\s]*/gi,
+      "$1[REDACTED]",
+    )
+    .replace(
+      /\bAuthorization\s*[:=]\s*[^,;]+/gi,
+      "Authorization: [REDACTED]",
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(
+      /\b(api[\s_-]?key|apikey|access[\s_-]?token|auth[\s_-]?token|token|secret|password)\b\s*[:=]\s*[^\s,;]+/gi,
+      "$1=[REDACTED]",
+    );
+
+  return sanitized;
+}
+
+function redactLocalUserDirectories(message: string): string {
+  const candidates = new Set(
+    [homedir(), process.env.USERPROFILE, process.env.HOME].filter(
+      (value): value is string => typeof value === "string" && value.length >= 3,
+    ),
+  );
+  let redacted = message;
+  for (const candidate of candidates) {
+    redacted = replaceLiteralInsensitive(redacted, candidate, "[USER_HOME]");
+    redacted = replaceLiteralInsensitive(
+      redacted,
+      candidate.replaceAll("\\", "/"),
+      "[USER_HOME]",
+    );
+  }
+  return redacted;
+}
+
+function replaceLiteralInsensitive(
+  input: string,
+  literal: string,
+  replacement: string,
+): string {
+  if (!literal) return input;
+  const escaped = literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return input.replace(new RegExp(escaped, "gi"), replacement);
+}
+
+function limitStepContent(text: string): string {
+  if (text.length <= MAX_STEP_CONTENT) return text;
+  const contentLength = MAX_STEP_CONTENT - STEP_TRUNCATION_MARKER.length;
+  return `${text.slice(0, contentLength)}${STEP_TRUNCATION_MARKER}`;
 }
 
 function formatCommandOutput(out: RunCommandOutput): string {

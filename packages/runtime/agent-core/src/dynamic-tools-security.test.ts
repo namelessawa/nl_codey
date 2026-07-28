@@ -11,6 +11,7 @@ import type {
   ChatLLMProvider,
   LLMChunk,
   LLMChatInput,
+  LLMMessage,
   ToolSchema,
 } from "@nlc/shared";
 import { DEFAULT_SETTINGS } from "@nlc/shared";
@@ -18,6 +19,7 @@ import type { Storage } from "@nlc/storage";
 import {
   AgentService,
   filterDynamicBundleForReadOnly,
+  formatDynamicBundleFactoryFailureStep,
   type DynamicToolBundle,
   validateDynamicToolBundle,
 } from "./service.js";
@@ -130,6 +132,19 @@ describe("validateDynamicToolBundle", () => {
     });
   });
 
+  it("rejects write_file as a reserved host tool name", () => {
+    expect(
+      validateDynamicToolBundle({
+        schemas: [{ ...WRITE_SCHEMA, name: "write_file" }],
+        dispatch: vi.fn(),
+        mutatingNames: [],
+      }),
+    ).toEqual({
+      ok: false,
+      reason: 'dynamic tool "write_file" conflicts with a built-in tool',
+    });
+  });
+
   it("accepts an explicitly read-only bundle", () => {
     const result = validateDynamicToolBundle({
       schemas: [READ_SCHEMA],
@@ -211,6 +226,74 @@ describe("dynamic tool read-only boundary", () => {
     expect(execution?.isError).toBe(true);
     expect(execution?.resultText).toContain("read-only");
     expect(sourceDispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("dynamic bundle factory failure audit", () => {
+  it("caps an overlong error at the persisted step limit", () => {
+    const content = formatDynamicBundleFactoryFailureStep(
+      new Error(`plugin failed: ${"x".repeat(10_000)}`),
+    );
+
+    expect(content.length).toBeLessThanOrEqual(4_000);
+    expect(content).toContain("truncated");
+  });
+
+  it("redacts Bearer tokens and Authorization header values", () => {
+    const content = formatDynamicBundleFactoryFailureStep(
+      new Error(
+        "Bearer demo-bearer-value; Authorization: Basic demo-authorization-value; " +
+          "X-API-Key: demo-api-key-value",
+      ),
+    );
+
+    expect(content).toContain("[REDACTED]");
+    expect(content.includes("demo-bearer-value")).toBe(false);
+    expect(content.includes("demo-authorization-value")).toBe(false);
+    expect(content.includes("demo-api-key-value")).toBe(false);
+  });
+
+  it("redacts URL credentials and sensitive query parameters", () => {
+    const content = formatDynamicBundleFactoryFailureStep(
+      new Error(
+        "request https://demo-user:demo-password@example.test/plugin" +
+          "?token=demo-token&api_key=demo-api-key failed",
+      ),
+    );
+
+    expect(content).toContain("example.test/plugin");
+    expect(content).toContain("[REDACTED]");
+    expect(content.includes("demo-user")).toBe(false);
+    expect(content.includes("demo-password")).toBe(false);
+    expect(content.includes("demo-token")).toBe(false);
+    expect(content.includes("demo-api-key")).toBe(false);
+  });
+
+  it("normalizes multiline and control-character content", () => {
+    const content = formatDynamicBundleFactoryFailureStep(
+      new Error("plugin registry\nline two\r\nline three\u0000done"),
+    );
+
+    expect(content).toContain("plugin registry line two line three done");
+    expect(content).not.toMatch(/[\r\n\u0000]/);
+  });
+
+  it("keeps a short ordinary error actionable", () => {
+    expect(
+      formatDynamicBundleFactoryFailureStep(
+        new Error("plugin database unavailable"),
+      ),
+    ).toContain("plugin database unavailable");
+  });
+
+  it("does not expose the complete local user directory", () => {
+    const home = os.homedir();
+    const content = formatDynamicBundleFactoryFailureStep(
+      new Error(path.join(home, "plugins", "registry.json")),
+    );
+
+    expect(content).toContain("[USER_HOME]");
+    expect(content.includes(home)).toBe(false);
   });
 });
 
@@ -350,21 +433,137 @@ describe("AgentService dynamic tool integration", () => {
   });
 });
 
-type ScriptedLLM = ChatLLMProvider & { seenTools: string[][] };
+describe("multi-agent dynamic tool role boundary", () => {
+  it("rejects a Planner-forged dynamic read tool before shared dispatch", async () => {
+    const sourceDispatch = vi.fn();
+    const llm = scriptedLLM([
+      toolTurn(READ_SCHEMA.name),
+      stopTurn("no plan"),
+    ]);
+    const harness = createServiceHarness({
+      llm,
+      readOnly: false,
+      multiAgentEnabled: true,
+      dynamicFactory: () => ({
+        schemas: [READ_SCHEMA],
+        dispatch: sourceDispatch,
+        mutatingNames: [],
+      }),
+    });
+
+    await runAndWait(harness);
+
+    expectRoleSchemaHidden(llm, "PLANNER role", READ_SCHEMA.name);
+    expect(sourceDispatch).not.toHaveBeenCalled();
+    expectRoleDeniedResult(llm, "planner", READ_SCHEMA.name);
+  });
+
+  it("rejects a Planner-forged dynamic mutating tool before shared dispatch", async () => {
+    const sourceDispatch = vi.fn();
+    const llm = scriptedLLM([
+      toolTurn(WRITE_SCHEMA.name),
+      stopTurn("no plan"),
+    ]);
+    const harness = createServiceHarness({
+      llm,
+      readOnly: false,
+      multiAgentEnabled: true,
+      dynamicFactory: () => ({
+        schemas: [WRITE_SCHEMA],
+        dispatch: sourceDispatch,
+        mutatingNames: [WRITE_SCHEMA.name],
+      }),
+    });
+
+    await runAndWait(harness);
+
+    expectRoleSchemaHidden(llm, "PLANNER role", WRITE_SCHEMA.name);
+    expect(sourceDispatch).not.toHaveBeenCalled();
+    expectRoleDeniedResult(llm, "planner", WRITE_SCHEMA.name);
+  });
+
+  it("rejects a Reviewer-forged dynamic mutating tool before shared dispatch", async () => {
+    const sourceDispatch = vi.fn();
+    const llm = scriptedLLM([
+      toolTurn("propose_task_breakdown", singleNodeBreakdown()),
+      stopTurn("plan ready"),
+      toolTurn("request_review", reviewRequest()),
+      stopTurn("ready for review"),
+      toolTurn(WRITE_SCHEMA.name),
+      stopTurn(approvedReview()),
+    ]);
+    const harness = createServiceHarness({
+      llm,
+      readOnly: false,
+      multiAgentEnabled: true,
+      autoApprovePlan: true,
+      dynamicFactory: () => ({
+        schemas: [WRITE_SCHEMA],
+        dispatch: sourceDispatch,
+        mutatingNames: [WRITE_SCHEMA.name],
+      }),
+    });
+
+    const detail = await runAndWait(harness);
+
+    expect(detail.run.status).toBe("done");
+    expectRoleSchemaHidden(llm, "REVIEWER role", WRITE_SCHEMA.name);
+    expect(sourceDispatch).not.toHaveBeenCalled();
+    expectRoleDeniedResult(llm, "reviewer", WRITE_SCHEMA.name);
+  });
+
+  it("rejects a Coder-forged unauthorized dynamic tool before shared dispatch", async () => {
+    const sourceDispatch = vi.fn();
+    const llm = scriptedLLM([
+      toolTurn("propose_task_breakdown", singleNodeBreakdown()),
+      stopTurn("plan ready"),
+      toolTurn(READ_SCHEMA.name),
+      toolTurn("request_review", reviewRequest()),
+      stopTurn("ready for review"),
+      stopTurn(approvedReview()),
+    ]);
+    const harness = createServiceHarness({
+      llm,
+      readOnly: false,
+      multiAgentEnabled: true,
+      autoApprovePlan: true,
+      dynamicFactory: () => ({
+        schemas: [READ_SCHEMA],
+        dispatch: sourceDispatch,
+        mutatingNames: [],
+      }),
+    });
+
+    const detail = await runAndWait(harness);
+
+    expect(detail.run.status).toBe("done");
+    expectRoleSchemaHidden(llm, "CODER role", READ_SCHEMA.name);
+    expect(sourceDispatch).not.toHaveBeenCalled();
+    expectRoleDeniedResult(llm, "coder", READ_SCHEMA.name);
+  });
+});
+
+type ScriptedLLM = ChatLLMProvider & {
+  seenTools: string[][];
+  seenMessages: LLMMessage[][];
+};
 
 function scriptedLLM(turns: LLMChunk[][]): ScriptedLLM {
   const queue = [...turns];
   const seenTools: string[][] = [];
+  const seenMessages: LLMMessage[][] = [];
   return {
     name: "dynamic-security-test",
     model: "dynamic-security-test",
     contextWindow: 100_000,
     seenTools,
+    seenMessages,
     async complete() {
       return { text: "unused" };
     },
     async *chat(input: LLMChatInput) {
       seenTools.push((input.tools ?? []).map((schema) => schema.name));
+      seenMessages.push(input.messages.map((message) => ({ ...message })));
       for (const chunk of queue.shift() ?? stopTurn("finished")) {
         yield chunk;
       }
@@ -372,9 +571,9 @@ function scriptedLLM(turns: LLMChunk[][]): ScriptedLLM {
   };
 }
 
-function toolTurn(name: string): LLMChunk[] {
+function toolTurn(name: string, args: unknown = {}): LLMChunk[] {
   return [
-    { type: "tool_call", id: `call-${name}`, name, args: {} },
+    { type: "tool_call", id: `call-${name}`, name, args },
     { type: "finish", reason: "tool_use", usage: ZERO_USAGE },
   ];
 }
@@ -395,6 +594,7 @@ function createServiceHarness(options: {
   llm: ChatLLMProvider;
   readOnly: boolean;
   multiAgentEnabled?: boolean;
+  autoApprovePlan?: boolean;
   dynamicFactory: () => DynamicToolBundle | null;
   assertToolAllowed?: (toolName: string) => void;
 }): ServiceHarness {
@@ -410,18 +610,103 @@ function createServiceHarness(options: {
     readOnly: options.readOnly,
     multiAgentEnabled: options.multiAgentEnabled ?? false,
   };
+  let service: AgentService;
+  const emit = vi.fn<(event: AgentEvent) => void>((event) => {
+    if (options.autoApprovePlan && event.kind === "task_updated") {
+      queueMicrotask(() => service.resolvePlanApproval(event.runId, true));
+    }
+  });
   const deps: ConstructorParameters<typeof AgentService>[0] = {
     storage,
     resolveLLM: () => options.llm,
     getAgentSettings: () => settings,
     getLanguage: () => "en-US",
     getDynamicTools: options.dynamicFactory,
-    emit: vi.fn<(event: AgentEvent) => void>(),
+    emit,
     ...(options.assertToolAllowed
       ? { assertToolAllowed: options.assertToolAllowed }
       : {}),
   };
-  return { service: new AgentService(deps), storage };
+  service = new AgentService(deps);
+  return { service, storage };
+}
+
+function singleNodeBreakdown() {
+  return {
+    root: "task-1",
+    tasks: [
+      {
+        id: "task-1",
+        title: "Security boundary test",
+        description: "Exercise a role-specific execution boundary.",
+        dependsOn: [],
+      },
+    ],
+  };
+}
+
+function reviewRequest() {
+  return {
+    taskNodeId: "task-1",
+    diff: "diff --git a/example.ts b/example.ts",
+    testOutput: "passed",
+  };
+}
+
+function approvedReview(): string {
+  return JSON.stringify({
+    correctness: "pass",
+    scope_compliance: "pass",
+    regression_risk: "low",
+    style_consistency: "pass",
+    comments: [],
+    verdict: "approved",
+  });
+}
+
+function expectRoleSchemaHidden(
+  llm: ScriptedLLM,
+  rolePromptMarker: string,
+  toolName: string,
+): void {
+  const roleSchemaSets = llm.seenMessages.flatMap((messages, index) => {
+    const system = messages.find((message) => message.role === "system");
+    return system?.content.includes(rolePromptMarker) ? [llm.seenTools[index] ?? []] : [];
+  });
+  expect(roleSchemaSets.length).toBeGreaterThan(0);
+  for (const schemaNames of roleSchemaSets) {
+    expect(schemaNames).not.toContain(toolName);
+  }
+}
+
+function expectRoleDeniedResult(
+  llm: ScriptedLLM,
+  role: "planner" | "coder" | "reviewer",
+  toolName: string,
+): void {
+  const structuredResults = llm.seenMessages
+    .flat()
+    .filter(
+      (message): message is Extract<LLMMessage, { role: "tool" }> =>
+        message.role === "tool",
+    )
+    .flatMap((message) => {
+      try {
+        return [JSON.parse(message.content) as Record<string, unknown>];
+      } catch {
+        return [];
+      }
+    });
+  const denial = structuredResults.find(
+    (result) =>
+      result.code === "role_tool_denied" &&
+      result.role === role &&
+      result.toolName === toolName,
+  );
+
+  expect(denial).toBeDefined();
+  expect(denial?.error).toContain(role);
+  expect(denial?.error).toContain(toolName);
 }
 
 function createMemoryStorage(workspaceRoot: string): Storage {
