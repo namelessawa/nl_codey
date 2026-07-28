@@ -594,11 +594,37 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - Rollback removes the Mock error scenario and its PTY/unit assertions; shared
   production redaction boundaries are unchanged.
 
+### 2026-07-29 - Native TUI large output and scrollback
+
+- Added an opt-in offline Mock scenario that returns exactly 80 numbered lines
+  and stops without any tool call. Default Mock behavior is unchanged.
+- The real ConPTY workflow requires the total terminal buffer to retain lines
+  1 and 80 in order, the bottom viewport to show the tail but not the head, and
+  more than 50 native scrollback lines. It then scrolls xterm to the top,
+  requires line 1 to re-enter the viewport, restores the bottom, and proves
+  `/help` remains usable.
+- SQLite and append-only JSONL must each retain the complete 80-line assistant
+  response, proving that display scrollback and durable conversation history
+  agree. The scenario uses no network or provider key, and `custom.txt` was not
+  read.
+- The first loaded target gate passed the new scrollback scenario but exposed
+  a provider-fixture race: `ctrl+u` could arrive before the modal input effect,
+  appending the fixture URL to the preset URL. The PTY driver now retries only
+  until the editable URL line is visibly cleared, then writes and confirms the
+  replacement value.
+- The focused Mock suite passed 3 assertions, the repaired restorative PTY
+  gate passed all 11 E2E workflows, and `pnpm typecheck` passed. The complete
+  offline `pnpm test` gate passed 632 unit, 80 Desktop-main, 10 TUI render,
+  2 PTY lifecycle, 11 TUI E2E and 13 recovery assertions; both ABI matrices
+  restored Electron 33.4.11 / modules 130.
+- Rollback removes the large-output Mock branch, PTY assertion and three
+  harness scroll helpers; production TUI rendering is unchanged.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. Remaining TUI crash-tail and large-output scenarios still lack full ConPTY
-   coverage.
+2. The remaining TUI crash-tail stability gate still lacks its final bounded
+   ConPTY soak evidence.

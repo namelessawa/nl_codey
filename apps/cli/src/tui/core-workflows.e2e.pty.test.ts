@@ -220,6 +220,34 @@ async function pressModalEnter(
   await session.waitForScreen(advanced, 1);
 }
 
+async function replaceProviderUrl(
+  session: TuiPtyHarness,
+  previousUrl: string,
+  nextUrl: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    session.write("\x15");
+    try {
+      await session.waitForScreen(
+        (screen) => !screen.includes(`base URL: ${previousUrl}`),
+        1_000,
+      );
+      session.write(nextUrl);
+      await session.waitForScreen(
+        (screen) => screen.includes(`base URL: ${nextUrl}`),
+        2_000,
+      );
+      return;
+    } catch {
+      // Retry only while the old URL still occupies the editable input line.
+    }
+  }
+  await session.waitForScreen(
+    (screen) => screen.includes(`base URL: ${nextUrl}`),
+    1,
+  );
+}
+
 describeWindows("[tui-e2e] core agent workflows", () => {
   it("submits, previews, approves, and rolls back a real patch", async () => {
     const fixture = createFixture();
@@ -392,9 +420,11 @@ describeWindows("[tui-e2e] core agent workflows", () => {
         screen.includes("https://api.openai.com/v1"),
     );
 
-    session.write("\x15");
-    session.write(configuredUrl);
-    await session.waitForScreen((screen) => screen.includes(configuredUrl));
+    await replaceProviderUrl(
+      session,
+      "https://api.openai.com/v1",
+      configuredUrl,
+    );
     await pressModalEnter(
       session,
       (screen) => screen.includes("[provider] API key"),
@@ -491,6 +521,58 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     expect(sessionText).toContain("[USER_HOME]");
     expect(sessionText).not.toContain(secret);
     expect(sessionText).not.toContain("redaction-user");
+
+    await enter(session, "/help");
+    await session.waitForBuffer((output) => output.includes("/rollback"));
+    await exit(session);
+  });
+
+  it("retains and navigates large agent output in terminal scrollback", async () => {
+    const fixture = createFixture();
+    const session = start(fixture, {
+      NLC_MOCK_SCENARIO: "large-output",
+    });
+
+    await session.waitForScreen((screen) => screen.includes("(idle)"));
+    await enter(session, "fill the terminal scrollback");
+    const buffer = await session.waitForBuffer(
+      (output) =>
+        output.includes("scrollback-line-001") &&
+        output.includes("scrollback-line-080") &&
+        output.includes("done"),
+      20_000,
+    );
+    expect(buffer.indexOf("scrollback-line-001")).toBeLessThan(
+      buffer.indexOf("scrollback-line-080"),
+    );
+    expect(session.scrollbackLineCount()).toBeGreaterThan(50);
+    expect(session.viewport()).toContain("scrollback-line-080");
+    expect(session.viewport()).not.toContain("scrollback-line-001");
+
+    session.scrollLines(-1_000);
+    expect(session.viewport()).toContain("scrollback-line-001");
+    session.scrollToBottom();
+    expect(session.viewport()).toContain("scrollback-line-080");
+
+    const audit = readOnlyRunAudit(fixture);
+    expect(audit.status).toBe("done");
+    const outputStep = audit.steps.find(
+      (step) =>
+        step.type === "message" &&
+        step.content.includes("scrollback-line-001"),
+    );
+    expect(outputStep?.content.split("\n")).toHaveLength(80);
+    expect(outputStep?.content).toContain("scrollback-line-080");
+
+    const [sessionPath] = await waitForSessionFiles(fixture.dataRoot, 1);
+    const assistant = readSession(sessionPath!).find(
+      (line) =>
+        line.type === "message" &&
+        line.role === "assistant" &&
+        line.content?.includes("scrollback-line-001"),
+    );
+    expect(assistant?.content?.split("\n")).toHaveLength(80);
+    expect(assistant?.content).toContain("scrollback-line-080");
 
     await enter(session, "/help");
     await session.waitForBuffer((output) => output.includes("/rollback"));

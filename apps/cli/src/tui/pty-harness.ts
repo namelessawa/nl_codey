@@ -89,6 +89,18 @@ export class TuiPtyHarness {
     this.pty.resize(cols, rows);
   }
 
+  scrollLines(lines: number): void {
+    this.terminal.scrollLines(lines);
+  }
+
+  scrollToBottom(): void {
+    this.terminal.scrollToBottom();
+  }
+
+  scrollbackLineCount(): number {
+    return this.terminal.buffer.active.baseY;
+  }
+
   viewport(): string {
     const buffer = this.terminal.buffer.active;
     const lines: string[] = [];

@@ -17,6 +17,28 @@ async function collect(iterable: AsyncIterable<LLMChunk>): Promise<LLMChunk[]> {
 }
 
 describe("MockLLMProvider deterministic scenarios", () => {
+  it("emits numbered large output and stops without tools", async () => {
+    vi.stubEnv("NLC_MOCK_SCENARIO", "large-output");
+    const provider = new MockLLMProvider();
+
+    const chunks = await collect(
+      provider.chat({
+        messages: [{ role: "user", content: "exercise scrollback" }],
+        tools: TOOLS,
+      }),
+    );
+    const text = chunks
+      .filter((chunk) => chunk.type === "text_delta")
+      .map((chunk) => (chunk.type === "text_delta" ? chunk.text : ""))
+      .join("");
+
+    expect(text.split("\n")).toHaveLength(80);
+    expect(text).toContain("scrollback-line-001");
+    expect(text).toContain("scrollback-line-080");
+    expect(chunks.some((chunk) => chunk.type === "tool_call")).toBe(false);
+    expect(chunks.at(-1)).toMatchObject({ type: "finish", reason: "stop" });
+  });
+
   it("emits a raw synthetic provider error for downstream redaction gates", async () => {
     const secret = "sk-" + "native-redaction-fixture-1234";
     vi.stubEnv("NLC_MOCK_SCENARIO", "redacted-error");
