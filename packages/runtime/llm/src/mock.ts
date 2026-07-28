@@ -29,6 +29,8 @@ const MOCK_MODEL = "mock-model";
  * Deterministic test scenarios can opt in through `NLC_MOCK_SCENARIO`.
  * `command-confirmation` requests one whitelisted command and then stops,
  * allowing approval surfaces to prove both execution and rejection offline.
+ * `redacted-error` emits one raw, synthetic credential-bearing provider error
+ * so downstream persistence and display boundaries can prove redaction.
  */
 export class MockLLMProvider implements ChatLLMProvider {
   readonly name = "mock";
@@ -59,6 +61,18 @@ export class MockLLMProvider implements ChatLLMProvider {
 
     const task = firstUserText(input.messages);
     const turn = input.messages.filter((m) => m.role === "assistant").length;
+
+    if (process.env["NLC_MOCK_SCENARIO"] === "redacted-error") {
+      const secret =
+        process.env["NLC_MOCK_ERROR_SECRET"] ?? "sk-missing-redaction-fixture";
+      yield {
+        type: "error",
+        message:
+          `Mock provider failure\nAuthorization: Bearer ${secret}\n` +
+          `at C:\\Users\\redaction-user\\.nlc\\config.json?token=${secret}`,
+      };
+      return;
+    }
 
     if (
       process.env["NLC_MOCK_SCENARIO"] === "command-confirmation" &&

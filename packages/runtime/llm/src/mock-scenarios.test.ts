@@ -17,6 +17,25 @@ async function collect(iterable: AsyncIterable<LLMChunk>): Promise<LLMChunk[]> {
 }
 
 describe("MockLLMProvider deterministic scenarios", () => {
+  it("emits a raw synthetic provider error for downstream redaction gates", async () => {
+    const secret = "sk-" + "native-redaction-fixture-1234";
+    vi.stubEnv("NLC_MOCK_SCENARIO", "redacted-error");
+    vi.stubEnv("NLC_MOCK_ERROR_SECRET", secret);
+    const provider = new MockLLMProvider();
+
+    const chunks = await collect(
+      provider.chat({
+        messages: [{ role: "user", content: "exercise redaction" }],
+        tools: TOOLS,
+      }),
+    );
+    const error = chunks.find((chunk) => chunk.type === "error");
+
+    expect(error).toMatchObject({ type: "error" });
+    expect(error?.type === "error" ? error.message : "").toContain(secret);
+    expect(chunks.some((chunk) => chunk.type === "tool_call")).toBe(false);
+  });
+
   it("requests one whitelisted command and then stops", async () => {
     vi.stubEnv("NLC_MOCK_SCENARIO", "command-confirmation");
     const provider = new MockLLMProvider();

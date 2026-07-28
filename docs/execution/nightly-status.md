@@ -573,11 +573,32 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - Rollback removes the provider PTY case and its modal-enter handshake helper;
   production provider storage and picker behavior are unchanged.
 
+### 2026-07-29 - Native TUI redacted provider error
+
+- Added an opt-in offline Mock scenario that emits one raw provider error
+  containing a synthetic `sk-...` credential, Bearer authorization header,
+  sensitive query value and Windows user-home path. Default Mock behavior is
+  unchanged.
+- The real ConPTY workflow requires the rendered error row, SQLite `error`
+  step and append-only JSONL system message to contain `[REDACTED]` and
+  `[USER_HOME]`, never the credential or fixture user name. It also requires a
+  persisted `failed` Run and a usable prompt afterward.
+- The scenario uses no network and no real provider configuration. Ambient
+  provider keys are cleared, the synthetic value exists only in the test
+  process, and `custom.txt` was not read.
+- The focused Mock test passed 2 assertions, the restorative PTY gate passed
+  all 10 E2E workflows, and `pnpm typecheck` passed. The complete offline
+  `pnpm test` gate passed 631 unit, 80 Desktop-main, 10 TUI render, 2 PTY
+  lifecycle, 10 TUI E2E and 13 recovery assertions; both ABI matrices restored
+  Electron 33.4.11 / modules 130.
+- Rollback removes the Mock error scenario and its PTY/unit assertions; shared
+  production redaction boundaries are unchanged.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. Remaining TUI crash-tail, redaction and large-output scenarios still lack
-   full ConPTY coverage.
+2. Remaining TUI crash-tail and large-output scenarios still lack full ConPTY
+   coverage.

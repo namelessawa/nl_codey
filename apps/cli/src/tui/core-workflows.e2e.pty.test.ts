@@ -455,6 +455,48 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await exit(restarted);
   });
 
+  it("redacts a provider error in the TUI, SQLite audit, and session log", async () => {
+    const fixture = createFixture();
+    const secret = "sk-" + "native-redaction-fixture-1234";
+    const session = start(fixture, {
+      NLC_MOCK_SCENARIO: "redacted-error",
+      NLC_MOCK_ERROR_SECRET: secret,
+    });
+
+    await session.waitForScreen((screen) => screen.includes("(idle)"));
+    await enter(session, "surface the provider failure safely");
+    const buffer = await session.waitForBuffer(
+      (output) =>
+        output.includes("[REDACTED]") &&
+        output.includes("[USER_HOME]") &&
+        output.includes("failed"),
+      20_000,
+    );
+    expect(buffer).not.toContain(secret);
+    expect(buffer).not.toContain("redaction-user");
+
+    const audit = readOnlyRunAudit(fixture);
+    expect(audit.status).toBe("failed");
+    expect(audit.exitReason).toBe("failed");
+    const errorSteps = audit.steps.filter((step) => step.type === "error");
+    expect(errorSteps).toHaveLength(1);
+    expect(errorSteps[0]?.content).toContain("[REDACTED]");
+    expect(errorSteps[0]?.content).toContain("[USER_HOME]");
+    expect(errorSteps[0]?.content).not.toContain(secret);
+    expect(errorSteps[0]?.content).not.toContain("redaction-user");
+
+    const [sessionPath] = await waitForSessionFiles(fixture.dataRoot, 1);
+    const sessionText = fs.readFileSync(sessionPath!, "utf8");
+    expect(sessionText).toContain("[REDACTED]");
+    expect(sessionText).toContain("[USER_HOME]");
+    expect(sessionText).not.toContain(secret);
+    expect(sessionText).not.toContain("redaction-user");
+
+    await enter(session, "/help");
+    await session.waitForBuffer((output) => output.includes("/rollback"));
+    await exit(session);
+  });
+
   it("cancels a streaming run and returns control to the prompt", async () => {
     const fixture = createFixture();
     const notesPath = path.join(fixture.workspaceRoot, "AGENT_NOTES.md");
