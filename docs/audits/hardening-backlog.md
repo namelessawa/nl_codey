@@ -1,5 +1,8 @@
 # Hardening backlog after dynamic-tool P0 — 2026-07-28
 
+> Historical security-slice backlog. The current whole-product priority and
+> acceptance ledger is `docs/execution/master-backlog.md`.
+
 ## Completed in this P0
 
 - Make `DynamicToolBundle.mutatingNames` mandatory.

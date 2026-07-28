@@ -7,6 +7,7 @@
     "dev": "pnpm --filter @nlc/desktop dev",
     "build": "pnpm -r --filter \"./packages/*/*\" build && pnpm --filter @nlc/desktop build",
     "build:packages": "pnpm -r --filter \"./packages/*/*\" build",
+    "docs:tui-actions": "node scripts/generate-tui-action-inventory.mjs",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
