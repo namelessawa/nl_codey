@@ -43,7 +43,7 @@ that the functional modules are unusable.
 | --- | --- | --- | --- | --- |
 | `packages/core/shared` | Shared models, IPC, settings and policy types used across apps/packages | Six suites | Browser-safe and Node-only path utilities are not split | Functional |
 | `packages/core/sandbox` | Workspace containment, command whitelist/router, WSL/Docker staging and verified cross-platform process-tree termination | Six suites including Docker-gated and descendant-cleanup paths | Host whitelist has no OS resource/syscall isolation; native Job Object/AppContainer host remains unimplemented | Functional |
-| `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Four Node lifecycle/migration tests plus Electron native-load checks pass through a restorative ABI matrix | Historical fixtures and backup-before-upgrade failure recovery remain incomplete | Functional |
+| `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Ten Node lifecycle/migration tests plus Electron native-load checks pass through a restorative ABI matrix | Multi/partial-change rollback and automated backup-retention policy remain incomplete | Functional |
 | `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path suites | Stable Run linkage and crash reconciliation are not defined; Desktop interoperability unproved | Functional |
 
 ## Runtime

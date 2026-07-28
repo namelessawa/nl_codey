@@ -20,7 +20,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | ID | Work | Acceptance evidence | State |
 | --- | --- | --- | --- |
 | DATA-ABI-001 | Split Node and Electron storage native-module gates with deterministic rebuild ordering | `test:storage:node`, `test:storage:electron`, and migrations all green on clean CI | Done in Batch 6; clean-CI workflow wiring remains under CI-RELEASE-001 |
-| DATA-MIG-001 | Add supported historical migration fixtures, backup-before-upgrade and documented failure recovery | Real-file fixtures pass; failed migration leaves a recoverable backup | Open |
+| DATA-MIG-001 | Add supported historical migration fixtures, backup-before-upgrade and documented failure recovery | Real-file fixtures pass; failed migration leaves a recoverable backup | Done in Batch 13; v1 upgrade, consistent backup and failure recovery fixtures pass |
 | REC-RUN-001 | Add startup reconciler for non-terminal Runs and interrupted tool/apply windows | Desktop and TUI restart tests mark/recover interrupted Runs without replaying writes | Done in Batch 8 |
 | REC-LINK-001 | Define and persist stable SQLite Run ↔ JSONL Session linkage | Branch/resume/restart lineage E2E proves no cross-session delta or orphan Run | Done in Batch 8 |
 | REC-ROLLBACK-001 | Prove rollback after one/many/partial changes and restart | Real workspace + storage fixtures restore exact bytes and state | Open |

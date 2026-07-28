@@ -22,7 +22,7 @@ are labeled honestly.
 | Area | Required outcome | Current evidence | Status |
 | --- | --- | --- | --- |
 | Security | No known P0/P1 boundary failure, escape, unapproved mutation, or secret leak | Dynamic tools fail closed; full Node plugin process is not OS-confined | Blocked |
-| Storage | Real migrations and run lifecycle pass under Node and Electron ABIs | Test definitions exist; Node execution currently loads an Electron ABI binary | Blocked |
+| Storage | Real migrations and run lifecycle pass under Node and Electron ABIs | Restorative ABI gate passes; v1 upgrade, pre-migration backup and failed-upgrade recovery fixtures pass | In progress |
 | Recovery | Desktop and TUI reconcile interrupted Runs with JSONL Sessions | No startup reconciler or cross-store E2E contract | Blocked |
 | Unified approval | Every built-in, sandbox, plugin, MCP, multi-agent, Git, proactive, fine-tune, TUI command and shortcut mutation is gated/audited | Dynamic tool dispatch is hardened; whole mutation graph is not proved | Blocked |
 | CI | Named unit/integration/desktop/renderer/preload/CLI/TUI/sandbox/plugin/recovery/eval/E2E gates are green | Root test mixes debug/live/native suites; CLI build entry is broken | Blocked |

@@ -114,6 +114,19 @@ export type ReconcileInterruptedRunOptions = {
   isProcessAlive?: (pid: number) => boolean;
 };
 
+export class StorageMigrationError extends Error {
+  readonly backupPath: string;
+
+  constructor(backupPath: string, cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Storage migration failed; the pre-migration backup is preserved at ${backupPath}. ${detail}`,
+    );
+    this.name = "StorageMigrationError";
+    this.backupPath = backupPath;
+  }
+}
+
 /** Thin synchronous persistence layer over SQLite. Construction runs the schema. */
 export class Storage {
   private readonly db: Database.Database;
@@ -133,23 +146,41 @@ export class Storage {
       fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     }
     this.db = new Database(dbPath);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("foreign_keys = ON");
-    // Detect whether this is a fresh DB (no `workspaces` table yet) BEFORE
-    // we run SCHEMA_SQL, so we can stamp schema_meta straight to the latest
-    // version on first install instead of pretending it's a v1 legacy DB
-    // that needs the structural rewrite.
-    const isFreshDb = !this.hasTable("workspaces");
-    // Order matters: create tables, then add columns to pre-existing tables,
-    // then run structural-version migrations, then create indexes. The
-    // structural migrations rebuild constrained tables (FK CASCADEs), which
-    // must wait for any additive columns from COLUMN_MIGRATIONS so the rebuild
-    // copies the full row shape; indexes have to come last because some
-    // reference columns added by either migration step.
-    this.db.exec(SCHEMA_SQL);
-    this.migrate();
-    this.applyStructuralMigrations(isFreshDb);
-    this.db.exec(INDEX_SQL);
+    let backupPath: string | null = null;
+    try {
+      // Detect any pre-existing product table before SCHEMA_SQL creates the
+      // latest set. Old Phase-1/2 databases do not always contain workspaces,
+      // so checking that table alone can misclassify a real legacy database as
+      // a fresh install and skip its structural migration.
+      const isFreshDb = !this.hasAnyUserTable();
+      if (
+        dbPath !== ":memory:" &&
+        !isFreshDb &&
+        this.requiresMigration()
+      ) {
+        backupPath = this.createMigrationBackup(dbPath);
+      }
+      this.db.pragma("journal_mode = WAL");
+      this.db.pragma("foreign_keys = ON");
+      // Order matters: create tables, then add columns to pre-existing tables,
+      // then run structural-version migrations, then create indexes. The
+      // structural migrations rebuild constrained tables (FK CASCADEs), which
+      // must wait for any additive columns from COLUMN_MIGRATIONS so the rebuild
+      // copies the full row shape; indexes have to come last because some
+      // reference columns added by either migration step.
+      this.db.exec(SCHEMA_SQL);
+      this.migrate();
+      this.applyStructuralMigrations(isFreshDb);
+      this.db.exec(INDEX_SQL);
+    } catch (err) {
+      try {
+        this.db.close();
+      } catch {
+        // Preserve the original migration error; close is best-effort here.
+      }
+      if (backupPath) throw new StorageMigrationError(backupPath, err);
+      throw err;
+    }
     this.kg = new KgStore(this.db);
     this.style = new StyleStore(this.db);
     this.learning = new LearningStore(this.db);
@@ -178,6 +209,68 @@ export class Storage {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
       .get(name) as { name: string } | undefined;
     return row !== undefined;
+  }
+
+  /** True when the file already contains any non-SQLite table. */
+  private hasAnyUserTable(): boolean {
+    const row = this.db
+      .prepare(
+        "SELECT name FROM sqlite_master " +
+          "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1",
+      )
+      .get() as { name: string } | undefined;
+    return row !== undefined;
+  }
+
+  /** Read-only preflight used before any schema or pragma mutation. */
+  private requiresMigration(): boolean {
+    const version = this.hasTable("schema_meta")
+      ? this.readSchemaVersion()
+      : 1;
+    if (version > SCHEMA_VERSION) {
+      throw new Error(
+        `Database schema version ${version} is newer than supported version ${SCHEMA_VERSION}`,
+      );
+    }
+    if (version < SCHEMA_VERSION) return true;
+    for (const statement of COLUMN_MIGRATIONS) {
+      const match =
+        /^ALTER TABLE\s+([A-Za-z0-9_]+)\s+ADD COLUMN\s+([A-Za-z0-9_]+)/i.exec(
+          statement,
+        );
+      if (!match) continue;
+      const table = match[1]!;
+      const column = match[2]!;
+      if (!this.hasColumn(table, column)) return true;
+    }
+    return false;
+  }
+
+  private hasColumn(table: string, column: string): boolean {
+    if (!this.hasTable(table)) return true;
+    const rows = this.db.pragma(`table_info(${table})`) as Array<{
+      name: string;
+    }>;
+    return rows.some((row) => row.name.toLowerCase() === column.toLowerCase());
+  }
+
+  /**
+   * Create a transactionally consistent, immutable recovery point before the
+   * first migration write. VACUUM INTO includes committed WAL content and does
+   * not mutate the source database.
+   */
+  private createMigrationBackup(dbPath: string): string {
+    const absolute = path.resolve(dbPath);
+    const backupPath =
+      `${absolute}.pre-migration-v${this.readLegacySchemaVersion()}` +
+      `-to-v${SCHEMA_VERSION}-${Date.now()}-${randomUUID().slice(0, 8)}.sqlite`;
+    const quoted = backupPath.replaceAll("'", "''");
+    this.db.exec(`VACUUM INTO '${quoted}'`);
+    return backupPath;
+  }
+
+  private readLegacySchemaVersion(): number {
+    return this.hasTable("schema_meta") ? this.readSchemaVersion() : 1;
   }
 
   /** Read the on-disk schema version, defaulting to 1 for legacy installs. */

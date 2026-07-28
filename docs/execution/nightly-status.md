@@ -20,6 +20,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 | 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Ready for draft review; default gate red on existing loaded ConPTY cleanup flake | Real Docker adversarial gate denied host/workspace secrets, network, process, rootfs and oversized-file access |
 | 11 | `codex/p0-secret-redaction` | Shared secret-redaction contract and primary persistence/display boundaries | Ready for draft review; SEC-SECRET-001 remains open for secondary tails | Provider/tool/verifier/SQLite/JSONL/TUI fixtures and integration gate pass |
 | 12 | `codex/p0-secret-redaction-tails` | Semantic/eval/fine-tune/Desktop/CLI redaction tails | Ready for draft review; SEC-SECRET-001 closed | Full default gate, 7 Storage and 19 integration assertions pass |
+| 13 | `codex/p0-storage-migration-backup` | Historical SQLite migration backup and recovery | Ready for draft review; DATA-MIG-001 closed | Full default gate, 10 Storage and 19 integration assertions pass |
 
 ## Work log
 
@@ -313,6 +314,35 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 - `pnpm test:integration` passed 7 Storage plus 19 integration assertions with
   environment-gated skips and restored the Electron ABI. No live LLM call
   occurred and `custom.txt` was not read.
+
+### 2026-07-29 - Historical migration backup and recovery
+
+- Replaced the old `workspaces`-only fresh-database test with a read-only
+  preflight over all user tables. Early databases containing only Run or
+  snapshot tables can no longer skip the structural migration.
+- Existing files that have an older schema version or a missing additive column
+  now receive a unique, same-directory `VACUUM INTO` snapshot before any WAL,
+  schema, column, table-rebuild or index write. Fresh/current databases create
+  no backup.
+- A failed post-backup initialization closes its SQLite handle and throws a
+  `StorageMigrationError` carrying the retained backup path. The source file is
+  left in place for diagnosis; automatic destructive restore is not attempted.
+- The real v1 fixture proves original rows, new columns, schema version and
+  cascade FK constraints after upgrade, while its backup retains the original
+  row/column shape and passes `quick_check`. A malformed historical fixture
+  proves the failed source is unlocked and the backup remains readable.
+- Added `docs/storage/migration-recovery.md` with stop, preserve, verify and
+  restore guidance plus the backup's sensitive-data warning.
+- The restorative Storage gate passed all 10 assertions and verified Electron
+  33.4.11 / modules 130 after the Node run. No LLM was called and `custom.txt`
+  was not read.
+- `pnpm typecheck`, `pnpm build` and the full default gate passed, including
+  624 unit assertions, 80 Desktop-main assertions, renderer/preload/CLI/TUI
+  surfaces, 2 real ConPTY lifecycle checks, all 5 TUI E2E workflows and the
+  final 10-assertion recovery run.
+- `pnpm test:integration` passed the same 10 Storage assertions plus 19
+  integration assertions with environment-gated skips. Every Node-native stage
+  restored and verified the Electron ABI.
 
 ## Current blockers
 

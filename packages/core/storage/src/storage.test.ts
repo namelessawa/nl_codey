@@ -4,14 +4,31 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
-import { Storage } from "./storage.js";
+import { Storage, StorageMigrationError } from "./storage.js";
 import { SCHEMA_SQL } from "./schema.js";
+
+function migrationBackups(dbPath: string): string[] {
+  const dir = path.dirname(dbPath);
+  const prefix = `${path.basename(dbPath)}.pre-migration-`;
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .filter((name) => name.startsWith(prefix) && name.endsWith(".sqlite"))
+    .map((name) => path.join(dir, name));
+}
 
 describe("Storage", () => {
   const tempDbPaths: string[] = [];
 
   afterEach(() => {
     for (const p of tempDbPaths.splice(0)) {
+      for (const backup of migrationBackups(p)) {
+        try {
+          fs.rmSync(backup);
+        } catch {
+          // best-effort cleanup
+        }
+      }
       for (const suffix of ["", "-wal", "-shm"]) {
         try {
           fs.rmSync(`${p}${suffix}`);
@@ -30,6 +47,50 @@ describe("Storage", () => {
     storage.close();
   });
 
+  it("does not create migration backups for fresh or current-schema files", () => {
+    const dbPath = path.join(
+      os.tmpdir(),
+      `coding-agent-current-${randomUUID()}.db`,
+    );
+    tempDbPaths.push(dbPath);
+
+    const fresh = new Storage(dbPath);
+    fresh.close();
+    expect(migrationBackups(dbPath)).toEqual([]);
+
+    const current = new Storage(dbPath);
+    current.close();
+    expect(migrationBackups(dbPath)).toEqual([]);
+  });
+
+  it("rejects a newer schema without mutating or backing up the file", () => {
+    const dbPath = path.join(
+      os.tmpdir(),
+      `coding-agent-future-${randomUUID()}.db`,
+    );
+    tempDbPaths.push(dbPath);
+    const future = new Database(dbPath);
+    future.exec(`
+      CREATE TABLE schema_meta (
+        id INTEGER PRIMARY KEY,
+        version INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE future_marker (value TEXT NOT NULL);
+      INSERT INTO schema_meta VALUES (1, 999, 1);
+      INSERT INTO future_marker VALUES ('untouched');
+    `);
+    future.close();
+
+    expect(() => new Storage(dbPath)).toThrow(/newer than supported/i);
+    expect(migrationBackups(dbPath)).toEqual([]);
+    const unchanged = new Database(dbPath, { readonly: true });
+    expect(unchanged.prepare("SELECT value FROM future_marker").get()).toEqual({
+      value: "untouched",
+    });
+    unchanged.close();
+  });
+
   it("upgrades a pre-Phase-2 db whose file_snapshots lacks the iteration column", () => {
     // Arrange: a legacy DB created before the `iteration` column existed. The
     // index idx_snapshots_run_iter references that column, so it must only be
@@ -39,6 +100,11 @@ describe("Storage", () => {
     tempDbPaths.push(dbPath);
     const legacy = new Database(dbPath);
     legacy.exec(`
+      CREATE TABLE workspaces (
+        id TEXT PRIMARY KEY,
+        root_path TEXT NOT NULL,
+        opened_at INTEGER NOT NULL
+      );
       CREATE TABLE file_snapshots (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
@@ -55,14 +121,102 @@ describe("Storage", () => {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
+      INSERT INTO workspaces VALUES ('ws-legacy', 'C:/legacy', 10);
+      INSERT INTO agent_runs
+        VALUES ('run-legacy', 'ws-legacy', 'legacy task', 'idle', 10, 10);
+      INSERT INTO file_snapshots
+        VALUES ('snapshot-legacy', 'run-legacy', 'old.txt', 'before', 'after', 10);
     `);
     legacy.close();
 
-    // Act + Assert: opening the legacy DB must migrate cleanly.
-    expect(() => {
-      const storage = new Storage(dbPath);
-      storage.close();
-    }).not.toThrow();
+    const storage = new Storage(dbPath);
+    expect(storage.listSnapshots("run-legacy")).toMatchObject([
+      {
+        id: "snapshot-legacy",
+        filePath: "old.txt",
+        beforeContent: "before",
+        afterContent: "after",
+        iteration: 0,
+      },
+    ]);
+    storage.close();
+    const migrated = new Database(dbPath, { readonly: true });
+    expect(
+      migrated.prepare("SELECT version FROM schema_meta WHERE id = 1").get(),
+    ).toEqual({ version: 2 });
+    expect(
+      (
+        migrated.prepare("PRAGMA table_info(file_snapshots)").all() as Array<{
+          name: string;
+        }>
+      ).map((column) => column.name),
+    ).toEqual(expect.arrayContaining(["iteration", "snapshot_type"]));
+    expect(
+      migrated
+        .prepare("PRAGMA foreign_key_list(file_snapshots)")
+        .all(),
+    ).toEqual([
+      expect.objectContaining({
+        table: "agent_runs",
+        from: "run_id",
+        on_delete: "CASCADE",
+      }),
+    ]);
+    migrated.close();
+
+    const [backup] = migrationBackups(dbPath);
+    expect(backup).toBeTruthy();
+    const original = new Database(backup!, { readonly: true });
+    const legacyColumns = original
+      .prepare("PRAGMA table_info(file_snapshots)")
+      .all() as Array<{ name: string }>;
+    expect(legacyColumns.map((column) => column.name)).not.toContain("iteration");
+    expect(
+      original.prepare("SELECT before_content FROM file_snapshots").get(),
+    ).toEqual({ before_content: "before" });
+    expect(original.pragma("quick_check", { simple: true })).toBe("ok");
+    original.close();
+  });
+
+  it("closes a failed upgrade and preserves a readable pre-migration backup", () => {
+    const dbPath = path.join(
+      os.tmpdir(),
+      `coding-agent-failed-migration-${randomUUID()}.db`,
+    );
+    tempDbPaths.push(dbPath);
+    const malformed = new Database(dbPath);
+    malformed.exec(`
+      CREATE TABLE workspaces (
+        id TEXT PRIMARY KEY,
+        root_path TEXT NOT NULL
+      );
+      INSERT INTO workspaces VALUES ('ws-before-failure', 'C:/recover-me');
+    `);
+    malformed.close();
+
+    let caught: unknown;
+    try {
+      new Storage(dbPath);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(StorageMigrationError);
+    const [backup] = migrationBackups(dbPath);
+    expect((caught as StorageMigrationError).backupPath).toBe(backup);
+    const recovery = new Database(backup!, { readonly: true });
+    expect(recovery.pragma("quick_check", { simple: true })).toBe("ok");
+    expect(recovery.prepare("SELECT * FROM workspaces").get()).toEqual({
+      id: "ws-before-failure",
+      root_path: "C:/recover-me",
+    });
+    recovery.close();
+
+    // Constructor failure must release the source handle so support tooling can
+    // inspect or move the failed database immediately.
+    const failedSource = new Database(dbPath, { readonly: true });
+    expect(failedSource.pragma("quick_check", { simple: true })).toBe("ok");
+    failedSource.close();
   });
 
   it("persists a full run lifecycle: workspace -> run -> steps -> snapshot", () => {
