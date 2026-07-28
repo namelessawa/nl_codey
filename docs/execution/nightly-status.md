@@ -25,6 +25,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 15 | `codex/p1-tui-crash-cleanup` | Deterministic loaded ConPTY crash cleanup | Ready for draft review; default gate restored green | Awaited Windows tree termination; clean 5/5 targeted and loaded TUI E2E passes with immediate temp cleanup |
 | 16 | `codex/p1-live-smoke-gate` | Explicit custom.txt live-model gate | Ready for draft review; CI-LIVE-001 closed | Custom provider streamed a real read_memory tool round-trip in 4.7s; default 629-unit slice remained offline |
 | 17 | `codex/p1-release-ci-gates` | Required CI, CLI package and Windows install gates | Ready for draft review; hosted Release green; main-target required checks remain | Run 30405876544 passed clean install, tests, integration, builds, CLI/NSIS smoke and artifact upload |
+| 18 | `codex/p1-tui-command-approval` | Native TUI command confirmation and rejection | Ready for draft review; command scenarios closed | 630 unit, 10 render, 2 lifecycle, 7 E2E and 13 recovery assertions passed |
 
 ## Work log
 
@@ -511,11 +512,33 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   removed by their smoke scripts, and the installer uninstall completed, so no
   application or user-data state remains from this batch.
 
+### 2026-07-29 - Native TUI command confirmation
+
+- Added an explicit offline Mock scenario that requests one whitelist-approved
+  `tsc --noEmit` command and then stops; default Mock behavior is unchanged.
+- The TUI approval card now labels `$ ...` previews as pending commands and
+  says `y` will run them instead of presenting command execution as a patch.
+- Added real ConPTY workflows for both decisions. Approval must persist a
+  command step with exit output; rejection must reach `cancelled` without any
+  command step. The fixture enables shell execution only in its isolated
+  settings root and uses no provider key or network.
+- The first probe used `pnpm test`, which stayed alive in an empty temporary
+  workspace; the bounded scenario now uses the equally whitelisted
+  `tsc --noEmit`. The first modal keystroke can also race the card's input
+  effect, so the PTY driver retries only while the card remains unconsumed.
+- `pnpm typecheck` and the complete offline `pnpm test` gate passed: 630 unit,
+  80 Desktop, 10 TUI render, 2 PTY lifecycle, 7 TUI E2E and 13 recovery
+  assertions. Both restorative ABI runs returned to Electron successfully.
+  No live LLM call occurred and `custom.txt` was not read.
+- Rollback removes the explicit Mock scenario, command-specific approval copy
+  and the two PTY cases; all settings, command output and files were confined
+  to disposable test roots.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
-   large-output scenarios still lack full ConPTY coverage.
+2. Remaining TUI budget, provider, crash-tail, redaction and large-output
+   scenarios still lack full ConPTY coverage.

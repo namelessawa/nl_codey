@@ -17,7 +17,7 @@ no output bytes with system ConPTY, the bundled ConPTY DLL, or winpty. The
 hosted workflows therefore set the explicit `NLC_SKIP_NATIVE_PTY=1` capability
 flag. They still run the deterministic TUI unit/render suites and every other
 default, integration, package, and installer gate. Interactive and self-hosted
-Windows validation must leave the flag unset so all seven native PTY scenarios
+Windows validation must leave the flag unset so all nine native PTY scenarios
 remain mandatory.
 
 | Document scenario | Evidence in the current gate | Result |
@@ -25,6 +25,7 @@ remain mandatory.
 | 1. First launch / mock / restart | A task is persisted, the process exits, and two later processes replay the latest valid session without running tools | Pass |
 | 3. Patch approve + rollback | The patch is absent before `y`, appears after approval, and is removed by `/rollback` from persisted snapshots | Pass |
 | 4. Patch reject | `n` reaches `cancelled`; the target file never appears and the prompt remains usable | Pass |
+| Command approve / reject | A whitelisted command stays pending until `y`, then persists command/exit audit output; `n` reaches `cancelled` with no command step | Pass |
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
 | 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted | Pass |
 | 11. Resize | Covered by `pnpm test:tui:pty`: resize below 80 columns hides the trace pane and exits cleanly | Pass |
@@ -35,7 +36,6 @@ only after driving public TUI input, to assert the session header and message
 parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
-Still open from the document's 14-scenario matrix: command approval/rejection,
-budget exhaustion, provider configuration, redacted error display, and
-large-output/scrollback behavior. These remain explicit blockers rather than
-inferred coverage.
+Still open from the document's 14-scenario matrix: budget exhaustion, provider
+configuration, redacted error display, and large-output/scrollback behavior.
+These remain explicit blockers rather than inferred coverage.

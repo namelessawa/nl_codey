@@ -76,6 +76,37 @@ function start(fixture: Fixture, env: Record<string, string> = {}): TuiPtyHarnes
   return session;
 }
 
+function enableCommandConfirmation(fixture: Fixture): void {
+  fs.writeFileSync(
+    path.join(fixture.dataRoot, "settings.json"),
+    JSON.stringify({
+      agent: {
+        allowShellExecution: true,
+        requireConfirmationBeforeCommand: true,
+      },
+    }),
+    "utf8",
+  );
+}
+
+function readOnlyRunAudit(fixture: Fixture): {
+  status: string;
+  steps: ReturnType<Storage["listSteps"]>;
+} {
+  const storage = new Storage(
+    path.join(fixture.dataRoot, "data", "workspace-state.db"),
+  );
+  try {
+    const workspace = storage.listWorkspaces(1)[0];
+    if (!workspace) throw new Error("command fixture did not create a workspace");
+    const run = storage.listRuns(workspace.id)[0];
+    if (!run) throw new Error("command fixture did not create a run");
+    return { status: run.status, steps: storage.listSteps(run.id) };
+  } finally {
+    storage.close();
+  }
+}
+
 async function waitForFile(filePath: string, present: boolean): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (fs.existsSync(filePath) !== present) {
@@ -137,6 +168,23 @@ async function exit(session: TuiPtyHarness): Promise<void> {
   expect(result.exitCode).toBe(0);
 }
 
+async function pressCommandDecision(
+  session: TuiPtyHarness,
+  key: "y" | "n",
+  consumed: (screen: string) => boolean,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    session.write(key);
+    try {
+      await session.waitForScreen(consumed, 2_000);
+      return;
+    } catch {
+      // The approval card can paint one tick before its useInput effect mounts.
+    }
+  }
+  await session.waitForScreen(consumed, 1);
+}
+
 describeWindows("[tui-e2e] core agent workflows", () => {
   it("submits, previews, approves, and rolls back a real patch", async () => {
     const fixture = createFixture();
@@ -184,6 +232,71 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     expect(fs.existsSync(notesPath)).toBe(false);
     await enter(session, "/help");
     await session.waitForBuffer((buffer) => buffer.includes("/rollback"));
+
+    await exit(session);
+  });
+
+  it("confirms a command before execution and persists its audit output", async () => {
+    const fixture = createFixture();
+    enableCommandConfirmation(fixture);
+    const session = start(fixture, {
+      NLC_MOCK_SCENARIO: "command-confirmation",
+    });
+
+    await session.waitForScreen((screen) => screen.includes("(idle)"));
+    await enter(session, "approve the command fixture");
+    await session.waitForBuffer(
+      (buffer) =>
+        buffer.includes("[verify] pending command") &&
+        buffer.includes("$ tsc --noEmit") &&
+        buffer.includes("to run"),
+      20_000,
+    );
+
+    await pressCommandDecision(
+      session,
+      "y",
+      (screen) => !screen.includes("[verify] pending command"),
+    );
+    await session.waitForScreen((screen) => screen.includes("done"), 30_000);
+    const audit = readOnlyRunAudit(fixture);
+    expect(audit.status).toBe("done");
+    expect(
+      audit.steps.some(
+        (step) =>
+          step.type === "command" &&
+          step.content.includes("$ tsc --noEmit") &&
+          step.content.includes("exit:"),
+      ),
+    ).toBe(true);
+
+    await exit(session);
+  });
+
+  it("rejects a command before execution and records no command step", async () => {
+    const fixture = createFixture();
+    enableCommandConfirmation(fixture);
+    const session = start(fixture, {
+      NLC_MOCK_SCENARIO: "command-confirmation",
+    });
+
+    await session.waitForScreen((screen) => screen.includes("(idle)"));
+    await enter(session, "reject the command fixture");
+    await session.waitForBuffer(
+      (buffer) =>
+        buffer.includes("[verify] pending command") &&
+        buffer.includes("$ tsc --noEmit"),
+      20_000,
+    );
+
+    await pressCommandDecision(
+      session,
+      "n",
+      (screen) => screen.includes("cancelled"),
+    );
+    const audit = readOnlyRunAudit(fixture);
+    expect(audit.status).toBe("cancelled");
+    expect(audit.steps.some((step) => step.type === "command")).toBe(false);
 
     await exit(session);
   });

@@ -25,6 +25,10 @@ const MOCK_MODEL = "mock-model";
  * - Turn 2: if a prior tool result reported a failing command, emit a repair
  *   `apply_patch` (drives the verifier loop); otherwise finish with a summary.
  * - Later turns: finish with a summary.
+ *
+ * Deterministic test scenarios can opt in through `NLC_MOCK_SCENARIO`.
+ * `command-confirmation` requests one whitelisted command and then stops,
+ * allowing approval surfaces to prove both execution and rejection offline.
  */
 export class MockLLMProvider implements ChatLLMProvider {
   readonly name = "mock";
@@ -55,6 +59,28 @@ export class MockLLMProvider implements ChatLLMProvider {
 
     const task = firstUserText(input.messages);
     const turn = input.messages.filter((m) => m.role === "assistant").length;
+
+    if (
+      process.env["NLC_MOCK_SCENARIO"] === "command-confirmation" &&
+      input.tools?.some((tool) => tool.name === "run_command")
+    ) {
+      if (turn === 0) {
+        const text = "Requesting a deterministic validation command.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_command_1",
+          name: "run_command",
+          args: { command: "tsc --noEmit" },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      const summary = "Command confirmation scenario completed.";
+      yield* emitText(summary, input.signal);
+      yield finish("stop", input.messages, summary);
+      return;
+    }
 
     if (turn === 0) {
       const text = `Exploring the project for task: ${firstLine(task)}`;

@@ -102,6 +102,24 @@ describe("[tui-render] interactive inputs", () => {
     });
   });
 
+  it("labels command confirmation without presenting it as a patch", () => {
+    const view = render(
+      <ThemeProvider>
+        <Approval
+          patch="$ tsc --noEmit"
+          onApprove={vi.fn()}
+          onReject={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    const frame = plain(view.lastFrame());
+    expect(frame).toContain("[verify] pending command");
+    expect(frame).toContain("$ tsc --noEmit");
+    expect(frame).toContain("to run");
+    expect(frame).not.toContain("pending patch");
+  });
+
   it("navigates both directions in the skill picker", async () => {
     const onPick = vi.fn();
     const skillDown = render(
