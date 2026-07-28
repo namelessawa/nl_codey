@@ -2,7 +2,7 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
+Overall state: **ACTIVE - DEFAULT RED ON KNOWN CONPTY CLEANUP FLAKE; INTEGRATION GREEN**
 
 ## Batch board
 
@@ -21,6 +21,7 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 | 11 | `codex/p0-secret-redaction` | Shared secret-redaction contract and primary persistence/display boundaries | Ready for draft review; SEC-SECRET-001 remains open for secondary tails | Provider/tool/verifier/SQLite/JSONL/TUI fixtures and integration gate pass |
 | 12 | `codex/p0-secret-redaction-tails` | Semantic/eval/fine-tune/Desktop/CLI redaction tails | Ready for draft review; SEC-SECRET-001 closed | Full default gate, 7 Storage and 19 integration assertions pass |
 | 13 | `codex/p0-storage-migration-backup` | Historical SQLite migration backup and recovery | Ready for draft review; DATA-MIG-001 closed | Full default gate, 10 Storage and 19 integration assertions pass |
+| 14 | `codex/p0-rollback-recovery` | Durable single/many/partial/restart rollback | Ready for draft review; REC-ROLLBACK-001 closed; default red on known ConPTY cleanup flake | 13 restorative recovery assertions and 19 integration assertions pass; exact bytes/existence/Run state proved |
 
 ## Work log
 
@@ -344,11 +345,43 @@ Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
   integration assertions with environment-gated skips. Every Node-native stage
   restored and verified the Electron ABI.
 
+### 2026-07-29 - Durable rollback recovery
+
+- Added explicit `before_existed` and `after_existed` snapshot state. New
+  apply-patch, write-file and sandbox-writeback snapshots now distinguish a
+  created file from a pre-existing empty file; historical ambiguous rows
+  migrate conservatively as pre-existing so rollback cannot delete them.
+- Rollback now preflights every canonical workspace path and current byte
+  sequence before its first mutation, collapses repeated edits to the earliest
+  state, and restores through same-directory temporary files. A mid-rollback
+  failure compensates already-touched paths to the bytes observed at rollback
+  start instead of reporting unconditional success.
+- Successful filesystem restore atomically persists Run status `cancelled` and
+  exit reason `rolled_back`. Preflight failure leaves both fields unchanged and
+  records an error step.
+- Added a dedicated restorative recovery config. Real workspace + file-backed
+  SQLite fixtures prove a pre-existing empty file remains present, repeated
+  edits restore BOM/CRLF/UTF-8 bytes, deleted files return, created files
+  disappear, an interrupted snapshot without `after` state restores, and the
+  same behavior survives Storage/service restart.
+- `pnpm typecheck`, `pnpm build`, 624 unit assertions, the 13-assertion
+  restorative recovery gate, 10 Storage assertions and 19 integration
+  assertions passed. Every Node-native stage restored and verified Electron
+  33.4.11 / modules 130.
+- The full default gate passed mutation inventory, unit, Desktop,
+  renderer/preload, CLI/TUI render and both ConPTY lifecycle checks. Four of
+  five TUI E2E workflows passed; the known approval-crash cleanup case again
+  failed because its killed PTY did not report exit within 10 seconds and held
+  its temporary directory. The test runner later released the process and the
+  ABI restoration passed, but the default gate remains red and no retry is
+  counted as replacement evidence.
+- No live LLM call occurred and `custom.txt` was not read or printed.
+
 ## Current blockers
 
-1. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
+1. The approval-crash ConPTY fixture intermittently fails to reap its killed
+   process within 10 seconds and leaves a locked temporary directory.
+2. `CI-LIVE-001` and `CI-RELEASE-001` still need explicit opt-in live-smoke and
+   clean Windows release workflow evidence.
+3. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
-2. Historical migration coverage still needs more fixtures plus
-   backup-before-upgrade/failure-recovery behavior.
-3. Rollback still needs many-change, partial-change and restart evidence before
-   its P0 data-integrity item can close.

@@ -89,7 +89,9 @@ CREATE TABLE IF NOT EXISTS file_snapshots (
   run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
   file_path TEXT NOT NULL,
   before_content TEXT NOT NULL,
+  before_existed INTEGER NOT NULL DEFAULT 1,
   after_content TEXT,
+  after_existed INTEGER,
   created_at INTEGER NOT NULL,
   iteration INTEGER NOT NULL DEFAULT 0,
   snapshot_type TEXT NOT NULL DEFAULT 'before_run'
@@ -432,6 +434,10 @@ export const COLUMN_MIGRATIONS: readonly string[] = [
   "ALTER TABLE agent_runs ADD COLUMN owner_pid INTEGER",
   "ALTER TABLE file_snapshots ADD COLUMN iteration INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE file_snapshots ADD COLUMN snapshot_type TEXT NOT NULL DEFAULT 'before_run'",
+  // Old rows are ambiguous when before_content is empty. Preserve the file
+  // instead of risking deletion; all new snapshots record exact existence.
+  "ALTER TABLE file_snapshots ADD COLUMN before_existed INTEGER NOT NULL DEFAULT 1",
+  "ALTER TABLE file_snapshots ADD COLUMN after_existed INTEGER",
   // Phase 3: link sub-runs to parent run + task node.
   "ALTER TABLE agent_runs ADD COLUMN parent_run_id TEXT",
   "ALTER TABLE agent_runs ADD COLUMN task_node_id TEXT",
@@ -559,12 +565,21 @@ export const STRUCTURAL_MIGRATIONS: readonly StructuralMigration[] = [
          run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
          file_path TEXT NOT NULL,
          before_content TEXT NOT NULL,
+         before_existed INTEGER NOT NULL DEFAULT 1,
          after_content TEXT,
+         after_existed INTEGER,
          created_at INTEGER NOT NULL,
          iteration INTEGER NOT NULL DEFAULT 0,
          snapshot_type TEXT NOT NULL DEFAULT 'before_run'
        )`,
-      `INSERT INTO file_snapshots_v2 SELECT * FROM file_snapshots`,
+      `INSERT INTO file_snapshots_v2 (
+         id, run_id, file_path, before_content, before_existed,
+         after_content, after_existed, created_at, iteration, snapshot_type
+       )
+       SELECT
+         id, run_id, file_path, before_content, before_existed,
+         after_content, after_existed, created_at, iteration, snapshot_type
+       FROM file_snapshots`,
       `DROP TABLE file_snapshots`,
       `ALTER TABLE file_snapshots_v2 RENAME TO file_snapshots`,
     ],

@@ -77,7 +77,9 @@ type SnapshotRow = {
   run_id: string;
   file_path: string;
   before_content: string;
+  before_existed: number;
   after_content: string | null;
+  after_existed: number | null;
   created_at: number;
   iteration: number;
   snapshot_type: string;
@@ -456,6 +458,23 @@ export class Storage {
     return run;
   }
 
+  /** Atomically persist the terminal state after filesystem rollback succeeds. */
+  completeRunRollback(runId: string): AgentRun {
+    const complete = this.db.transaction(() => {
+      const updatedAt = Date.now();
+      const result = this.db
+        .prepare(
+          "UPDATE agent_runs SET status = 'cancelled', exit_reason = 'rolled_back', updated_at = ? WHERE id = ?",
+        )
+        .run(updatedAt, runId);
+      if (result.changes !== 1) throw new Error(`Run not found: ${runId}`);
+      const run = this.getRun(runId);
+      if (!run) throw new Error(`Run not found: ${runId}`);
+      return run;
+    });
+    return complete();
+  }
+
   getRun(runId: string): AgentRun | null {
     const row = this.db.prepare("SELECT * FROM agent_runs WHERE id = ?").get(runId) as
       | RunRow
@@ -661,35 +680,55 @@ export class Storage {
     runId: string,
     filePath: string,
     beforeContent: string,
-    iteration = 0,
-    snapshotType: SnapshotType = "before_run",
+    options: {
+      beforeExisted?: boolean;
+      iteration?: number;
+      snapshotType?: SnapshotType;
+    } = {},
   ): FileSnapshot {
+    const beforeExisted = options.beforeExisted ?? true;
+    const iteration = options.iteration ?? 0;
+    const snapshotType = options.snapshotType ?? "before_run";
     const snap: FileSnapshot = {
       id: randomUUID(),
       runId,
       filePath,
       beforeContent,
+      beforeExisted,
       createdAt: Date.now(),
       iteration,
       snapshotType,
     };
     this.db
       .prepare(
-        "INSERT INTO file_snapshots (id, run_id, file_path, before_content, after_content, created_at, iteration, snapshot_type) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)",
+        "INSERT INTO file_snapshots (id, run_id, file_path, before_content, before_existed, after_content, after_existed, created_at, iteration, snapshot_type) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)",
       )
-      .run(snap.id, snap.runId, snap.filePath, snap.beforeContent, snap.createdAt, iteration, snapshotType);
+      .run(
+        snap.id,
+        snap.runId,
+        snap.filePath,
+        snap.beforeContent,
+        beforeExisted ? 1 : 0,
+        snap.createdAt,
+        iteration,
+        snapshotType,
+      );
     return snap;
   }
 
-  setSnapshotAfter(snapshotId: string, afterContent: string): void {
+  setSnapshotAfter(snapshotId: string, afterContent: string, afterExisted = true): void {
     this.db
-      .prepare("UPDATE file_snapshots SET after_content = ? WHERE id = ?")
-      .run(afterContent, snapshotId);
+      .prepare(
+        "UPDATE file_snapshots SET after_content = ?, after_existed = ? WHERE id = ?",
+      )
+      .run(afterContent, afterExisted ? 1 : 0, snapshotId);
   }
 
   listSnapshots(runId: string): FileSnapshot[] {
     const rows = this.db
-      .prepare("SELECT * FROM file_snapshots WHERE run_id = ? ORDER BY created_at ASC")
+      .prepare(
+        "SELECT * FROM file_snapshots WHERE run_id = ? ORDER BY created_at ASC, rowid ASC",
+      )
       .all(runId) as SnapshotRow[];
     return rows.map(toSnapshot);
   }
@@ -698,7 +737,7 @@ export class Storage {
   listSnapshotsByType(runId: string, snapshotType: SnapshotType): FileSnapshot[] {
     const rows = this.db
       .prepare(
-        "SELECT * FROM file_snapshots WHERE run_id = ? AND snapshot_type = ? ORDER BY created_at ASC",
+        "SELECT * FROM file_snapshots WHERE run_id = ? AND snapshot_type = ? ORDER BY created_at ASC, rowid ASC",
       )
       .all(runId, snapshotType) as SnapshotRow[];
     return rows.map(toSnapshot);
@@ -708,7 +747,7 @@ export class Storage {
   listSnapshotsByIteration(runId: string, iteration: number): FileSnapshot[] {
     const rows = this.db
       .prepare(
-        "SELECT * FROM file_snapshots WHERE run_id = ? AND iteration = ? ORDER BY created_at ASC",
+        "SELECT * FROM file_snapshots WHERE run_id = ? AND iteration = ? ORDER BY created_at ASC, rowid ASC",
       )
       .all(runId, iteration) as SnapshotRow[];
     return rows.map(toSnapshot);
@@ -1061,7 +1100,9 @@ function toSnapshot(r: SnapshotRow): FileSnapshot {
     runId: r.run_id,
     filePath: r.file_path,
     beforeContent: r.before_content,
+    beforeExisted: r.before_existed !== 0,
     ...(r.after_content !== null ? { afterContent: r.after_content } : {}),
+    ...(r.after_existed !== null ? { afterExisted: r.after_existed !== 0 } : {}),
     createdAt: r.created_at,
     iteration: r.iteration,
     snapshotType: r.snapshot_type as SnapshotType,

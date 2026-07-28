@@ -78,7 +78,14 @@ export type FileSnapshot = {
   runId: string;
   filePath: string;
   beforeContent: string;
+  /**
+   * Whether the path existed before the mutation. Legacy snapshots omit this
+   * field and are treated conservatively as pre-existing files.
+   */
+  beforeExisted?: boolean;
   afterContent?: string;
+  /** Whether the path existed after the mutation; absent means unknown. */
+  afterExisted?: boolean;
   createdAt: number;
   /** Repair-loop iteration this snapshot belongs to (0 = before first patch). */
   iteration?: number;

@@ -52,11 +52,13 @@ export async function applyPatchTool(
   const changedFiles: string[] = [];
   const applied: PlannedChange[] = [];
   for (const change of planned) {
-    const snap = store.addSnapshot(input.runId, change.relPath, change.before);
+    const snap = store.addSnapshot(input.runId, change.relPath, change.before, {
+      beforeExisted: change.existed,
+    });
     try {
       if (change.op === "delete") {
         if (change.existed) await fs.rm(change.absPath, { force: true });
-        store.setSnapshotAfter(snap.id, "");
+        store.setSnapshotAfter(snap.id, "", false);
       } else {
         await fs.mkdir(dirOf(change.absPath), { recursive: true });
         await fs.writeFile(change.absPath, change.after, "utf8");

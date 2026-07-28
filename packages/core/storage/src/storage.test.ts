@@ -135,6 +135,7 @@ describe("Storage", () => {
         id: "snapshot-legacy",
         filePath: "old.txt",
         beforeContent: "before",
+        beforeExisted: true,
         afterContent: "after",
         iteration: 0,
       },
@@ -150,7 +151,14 @@ describe("Storage", () => {
           name: string;
         }>
       ).map((column) => column.name),
-    ).toEqual(expect.arrayContaining(["iteration", "snapshot_type"]));
+    ).toEqual(
+      expect.arrayContaining([
+        "iteration",
+        "snapshot_type",
+        "before_existed",
+        "after_existed",
+      ]),
+    );
     expect(
       migrated
         .prepare("PRAGMA foreign_key_list(file_snapshots)")
@@ -238,11 +246,17 @@ describe("Storage", () => {
     storage.addStep(run.id, "tool_call", "list_files");
     expect(storage.listSteps(run.id)).toHaveLength(2);
 
-    const snap = storage.addSnapshot(run.id, "src/a.ts", "before");
+    const snap = storage.addSnapshot(run.id, "src/a.ts", "before", {
+      beforeExisted: true,
+    });
     storage.setSnapshotAfter(snap.id, "after");
     const snaps = storage.listSnapshots(run.id);
     expect(snaps).toHaveLength(1);
-    expect(snaps[0]?.afterContent).toBe("after");
+    expect(snaps[0]).toMatchObject({
+      beforeExisted: true,
+      afterContent: "after",
+      afterExisted: true,
+    });
 
     expect(storage.listRuns(ws.id)).toHaveLength(1);
     storage.close();

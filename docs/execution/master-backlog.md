@@ -23,7 +23,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | DATA-MIG-001 | Add supported historical migration fixtures, backup-before-upgrade and documented failure recovery | Real-file fixtures pass; failed migration leaves a recoverable backup | Done in Batch 13; v1 upgrade, consistent backup and failure recovery fixtures pass |
 | REC-RUN-001 | Add startup reconciler for non-terminal Runs and interrupted tool/apply windows | Desktop and TUI restart tests mark/recover interrupted Runs without replaying writes | Done in Batch 8 |
 | REC-LINK-001 | Define and persist stable SQLite Run ↔ JSONL Session linkage | Branch/resume/restart lineage E2E proves no cross-session delta or orphan Run | Done in Batch 8 |
-| REC-ROLLBACK-001 | Prove rollback after one/many/partial changes and restart | Real workspace + storage fixtures restore exact bytes and state | Open |
+| REC-ROLLBACK-001 | Prove rollback after one/many/partial changes and restart | Real workspace + storage fixtures restore exact bytes and state | Done in Batch 14; single/many/partial/restart fixtures restore exact bytes, existence and terminal Run state |
 
 ## P0/P1 - broken gates and flakes
 

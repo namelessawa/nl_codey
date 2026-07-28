@@ -596,7 +596,8 @@ export class AgentService {
       addStep: (type, content) => this.addStep(runId, type, content),
     });
     this.pending.delete(runId);
-    this.setStatus(runId, "cancelled");
+    const rolledBackRun = this.storage.completeRunRollback(runId);
+    this.emit({ kind: "run_updated", run: rolledBackRun });
     return this.getDetail(runId);
   }
 

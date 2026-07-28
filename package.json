@@ -21,7 +21,7 @@
     "test:tui:render": "vitest run --config vitest.tui-render.config.ts",
     "test:tui:pty": "vitest run --config vitest.tui-pty.config.ts",
     "test:tui:e2e": "pnpm --filter nlc build && node scripts/test-storage-abi-matrix.mjs --node-vitest vitest.tui-e2e.config.ts",
-    "test:recovery": "node scripts/test-storage-abi-matrix.mjs --node",
+    "test:recovery": "node scripts/test-storage-abi-matrix.mjs --node-vitest vitest.recovery.config.ts",
     "test:storage:node": "node scripts/test-storage-abi-matrix.mjs --node",
     "test:storage:electron": "node scripts/test-storage-abi-matrix.mjs --electron-only",
     "test:storage:abi": "pnpm test:storage:node",
