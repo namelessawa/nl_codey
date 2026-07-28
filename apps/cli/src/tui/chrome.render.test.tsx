@@ -5,6 +5,7 @@ import stripAnsi from "strip-ansi";
 import { Footer } from "./footer.js";
 import { Header } from "./header.js";
 import { LiveAgent } from "./live-agent.js";
+import { MessageStream } from "./message-stream.js";
 import { ThemeProvider } from "./theme-context.js";
 import { Trace } from "./trace.js";
 import type { TraceItem } from "./use-loop.js";
@@ -92,5 +93,29 @@ describe("[tui-render] chrome and live state", () => {
     expect(frame).not.toContain("operation-0");
     expect(frame).toContain("operation-7");
     expect(frame).toContain("[agent] streaming answer");
+  });
+
+  it("redacts error rows at the final TUI render boundary", () => {
+    const view = render(
+      <ThemeProvider initial="mono">
+        <MessageStream
+          items={[
+            {
+              id: "error-1",
+              role: "error",
+              label: "error",
+              text:
+                "Authorization: Bearer tui-secret\nat " +
+                "C:\\Users\\alice\\.ssh\\id_rsa",
+            },
+          ]}
+        />
+      </ThemeProvider>,
+    );
+
+    const frame = plain(view.lastFrame());
+    expect(frame).toContain("[REDACTED]");
+    expect(frame).toContain("[USER_HOME]");
+    expect(frame).not.toMatch(/tui-secret|alice/);
   });
 });

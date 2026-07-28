@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type {
   AgentEvent,
@@ -25,6 +24,7 @@ import {
   clampBudgetLimits,
   contextWindowFor,
   DEFAULT_BUDGET_LIMITS,
+  redactSensitiveText,
   UNSAFE_WITHOUT_SANDBOX_TOOLS,
 } from "@nlc/shared";
 import type { FileChange } from "@nlc/sandbox";
@@ -994,12 +994,15 @@ export class AgentService {
         executeTool: async (call) => {
           const res = await execute(call);
           if (res.command) this.addStep(runId, "command", formatCommandOutput(res.command));
+          const resultText = res.isError
+            ? redactToolErrorResult(res.resultText)
+            : res.resultText;
           this.addStep(
             runId,
             res.isError ? "error" : "tool_result",
-            truncateStep(res.resultText),
+            truncateStep(resultText),
           );
-          return res.resultText;
+          return resultText;
         },
       });
       } catch (loopErr) {
@@ -1824,75 +1827,22 @@ function truncateStep(text: string): string {
  * exception objects never cross this boundary.
  */
 export function formatDynamicBundleFactoryFailureStep(err: unknown): string {
-  const detail = sanitizeDynamicSourceError(err);
+  const detail = redactSensitiveText(err, {
+    maxLength: 3_500,
+    fallback: "Unknown dynamic source error",
+  })
+    .replace(/\s+/g, " ")
+    .trim();
   return limitStepContent(
     `[security] Dynamic tools disabled: bundle factory failed (${detail}).`,
   );
 }
 
-function sanitizeDynamicSourceError(err: unknown): string {
-  let message: string;
-  try {
-    const raw = err instanceof Error ? err.message : err;
-    message = typeof raw === "string" ? raw : String(raw);
-  } catch {
-    message = "Unknown dynamic source error";
-  }
-
-  let sanitized = message
-    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!sanitized) sanitized = "Unknown dynamic source error";
-
-  sanitized = redactLocalUserDirectories(sanitized)
-    .replace(
-      /\b([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]+:[^@\s/]+@/gi,
-      "$1[REDACTED]@",
-    )
-    .replace(
-      /([?&](?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password)=)[^&#\s]*/gi,
-      "$1[REDACTED]",
-    )
-    .replace(
-      /\bAuthorization\s*[:=]\s*[^,;]+/gi,
-      "Authorization: [REDACTED]",
-    )
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-    .replace(
-      /\b(api[\s_-]?key|apikey|access[\s_-]?token|auth[\s_-]?token|token|secret|password)\b\s*[:=]\s*[^\s,;]+/gi,
-      "$1=[REDACTED]",
-    );
-
-  return sanitized;
-}
-
-function redactLocalUserDirectories(message: string): string {
-  const candidates = new Set(
-    [homedir(), process.env.USERPROFILE, process.env.HOME].filter(
-      (value): value is string => typeof value === "string" && value.length >= 3,
-    ),
-  );
-  let redacted = message;
-  for (const candidate of candidates) {
-    redacted = replaceLiteralInsensitive(redacted, candidate, "[USER_HOME]");
-    redacted = replaceLiteralInsensitive(
-      redacted,
-      candidate.replaceAll("\\", "/"),
-      "[USER_HOME]",
-    );
-  }
-  return redacted;
-}
-
-function replaceLiteralInsensitive(
-  input: string,
-  literal: string,
-  replacement: string,
-): string {
-  if (!literal) return input;
-  const escaped = literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return input.replace(new RegExp(escaped, "gi"), replacement);
+export function redactToolErrorResult(resultText: string): string {
+  return redactSensitiveText(resultText, {
+    maxLength: MAX_STEP_CONTENT,
+    fallback: "Unknown tool error",
+  });
 }
 
 function limitStepContent(text: string): string {

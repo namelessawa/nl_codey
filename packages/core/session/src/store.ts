@@ -20,6 +20,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { redactSensitiveText } from "@nlc/shared";
 import { encodeProjectFolder } from "./path-encoder.js";
 import { newEventId, newMessageId, newSessionId } from "./ids.js";
 import {
@@ -122,13 +123,20 @@ export class SessionWriter {
     this.#assertOpen();
     const id = input.id ?? newMessageId();
     const parentId = input.parentId === undefined ? this.#lastMessageId : input.parentId;
+    const persistedContent =
+      input.role === "system"
+        ? redactSensitiveText(input.content, {
+            maxLength: 4_000,
+            fallback: "Unknown system error",
+          })
+        : input.content;
     const record: SessionMessage = {
       type: "message",
       id,
       parentId,
       timestamp: input.timestamp ?? this.#now(),
       role: input.role,
-      content: input.content,
+      content: persistedContent,
     };
     if (input.toolCalls && input.toolCalls.length > 0) record.toolCalls = input.toolCalls;
     if (typeof input.toolCallId === "string") record.toolCallId = input.toolCallId;

@@ -18,6 +18,7 @@ Overall state: **ACTIVE - INTEGRATION GREEN; DEFAULT RED ON CONPTY CLEANUP FLAKE
 | 8 | `codex/p0-run-session-recovery` | Startup reconciliation and Run/Session linkage | Ready for draft review | Dead-owner recovery, Desktop wiring and approval-crash ConPTY restart passed |
 | 9 | `codex/p0-unified-approval` | Mutation inventory and common approval enforcement | Ready for draft review | 31 paths inventoried; single-use mutation grants and denial/approval contract passed |
 | 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Ready for draft review; default gate red on existing loaded ConPTY cleanup flake | Real Docker adversarial gate denied host/workspace secrets, network, process, rootfs and oversized-file access |
+| 11 | `codex/p0-secret-redaction` | Shared secret-redaction contract and primary persistence/display boundaries | Ready for draft review; SEC-SECRET-001 remains open for secondary tails | Provider/tool/verifier/SQLite/JSONL/TUI fixtures and integration gate pass |
 
 ## Work log
 
@@ -245,11 +246,50 @@ Overall state: **ACTIVE - INTEGRATION GREEN; DEFAULT RED ON CONPTY CLEANUP FLAKE
   The default gate remains explicitly red until the loaded ConPTY cleanup is
   fixed; isolated success is not counted as a replacement.
 
+### 2026-07-29 - Shared secret-redaction foundation
+
+- Replaced separate provider and dynamic-plugin regular expressions with one
+  browser-safe `redactSensitiveText` contract in `@nlc/shared`. It removes
+  terminal controls, exact caller-supplied secrets, authorization/API-key
+  headers, bearer and common token forms, URL credentials and sensitive query
+  values, private-key blocks, and Windows/macOS/Linux user-home paths, then
+  applies a caller-selected hard length bound.
+- Applied the contract before LLM provider errors leave the provider, before
+  failed tool results or verifier feedback return to the model, and before
+  error/command audit steps enter SQLite.
+- Applied the same boundary to JSONL system messages and final TUI error-row
+  rendering. User/assistant prose, successful tool data, source files and
+  patches remain byte-for-byte untouched.
+- Added synthetic regression fixtures for exact keys, bearer/header values,
+  sensitive URLs, common token forms, hostile string conversion, terminal
+  controls, home paths and bounds. Added boundary fixtures proving model
+  feedback, SQLite rows, JSONL lines and TUI frames contain placeholders but
+  not the synthetic secrets.
+- Primary targeted evidence passed: 51 shared/provider/agent/verifier/session
+  assertions, 9 TUI render assertions, and 6 real SQLite assertions through the
+  restorative Node/Electron ABI wrapper.
+- `pnpm typecheck` and the production `pnpm build` passed. After fixing a
+  dynamic-audit compatibility edge at its own boundary, the unit gate passed
+  all 624 assertions.
+- The full default gate passed all earlier slices and 4/5 real ConPTY workflows,
+  then hit the same loaded approval-crash cleanup failure: the killed PTY did
+  not report exit within 10 seconds and held its temporary directory. The
+  restorative ABI `finally` passed; no retry is counted as replacement
+  evidence, so the default gate remains red.
+- `pnpm test:integration` passed 6 Storage assertions and 19 integration
+  assertions with environment-gated skips, then verified the Electron ABI was
+  restored.
+- This batch does not close `SEC-SECRET-001`: semantic embedding errors,
+  evaluation/fine-tune persistence, Desktop IPC errors and top-level CLI stderr
+  still have local/raw paths and require a second bounded tail audit. No LLM
+  was called and `custom.txt` was not read.
+
 ## Current blockers
 
 1. Remaining TUI command-approval, budget, provider, crash-tail, redaction and
    large-output scenarios still lack full ConPTY coverage.
 2. Historical migration coverage still needs more fixtures plus
    backup-before-upgrade/failure-recovery behavior.
-3. One bounded cross-surface secret-redaction contract and its persistence/TUI
-   regression fixtures remain open.
+3. The shared redaction contract now covers primary provider/tool/verifier/
+   SQLite/JSONL/TUI paths; semantic embedding, evaluation/fine-tune, Desktop
+   IPC and top-level CLI error tails remain open.

@@ -55,6 +55,23 @@ describe("SessionStore", () => {
     expect(loaded.messages.map((m) => m.id)).toEqual([a.id, b.id, c.id]);
   });
 
+  it("redacts system errors before JSONL persistence without rewriting user prose", () => {
+    const writer = store.createSession("E:\\proj\\foo");
+    const secret =
+      "error: Authorization: Bearer jsonl-secret\nat C:\\Users\\alice\\.npmrc";
+    const system = writer.appendMessage({ role: "system", content: secret });
+    const userText = "please explain token=example without treating this prose as an error";
+    const user = writer.appendMessage({ role: "user", content: userText });
+    const raw = fs.readFileSync(writer.filePath, "utf8");
+
+    expect(system.content).toContain("[REDACTED]");
+    expect(system.content).toContain("[USER_HOME]");
+    expect(system.content).not.toMatch(/jsonl-secret|alice/);
+    expect(user.content).toBe(userText);
+    expect(raw).not.toContain("jsonl-secret");
+    expect(store.openSession(writer.filePath).messages[1]!.content).toBe(userText);
+  });
+
   it("appends state events without disturbing the message chain", () => {
     const writer = store.createSession("E:\\proj\\foo");
     const a = writer.appendMessage({ role: "user", content: "hi" });

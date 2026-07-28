@@ -43,4 +43,22 @@ describe("evaluateVerification", () => {
     expect(result.message).toContain("src/foo.ts:12");
     expect(result.message).toContain("apply_patch");
   });
+
+  it("redacts secrets and user-home paths before verifier feedback reaches the model", () => {
+    const result = evaluateVerification(
+      out({
+        command: "pnpm test https://example.test/?api_key=command-secret",
+        exitCode: 1,
+        stderr:
+          "Authorization: Bearer verifier-secret\n" +
+          "C:\\Users\\alice\\project\\src\\a.ts(2,1): error TS1: token=log-secret",
+      }),
+    );
+
+    expect(result.message).toContain("[REDACTED]");
+    expect(result.message).toContain("[USER_HOME]");
+    expect(result.message).not.toMatch(
+      /command-secret|verifier-secret|log-secret|alice/,
+    );
+  });
 });

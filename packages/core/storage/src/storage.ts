@@ -24,6 +24,7 @@ import type {
   TaskNodeStatus,
   Workspace,
 } from "@nlc/shared";
+import { redactSensitiveText } from "@nlc/shared";
 import {
   COLUMN_MIGRATIONS,
   INDEX_SQL,
@@ -496,11 +497,19 @@ export class Storage {
   // --- steps ---
 
   addStep(runId: string, type: AgentStepType, content: string): AgentStep {
+    const persistedContent =
+      type === "error" || type === "command"
+        ? redactSensitiveText(content, {
+            maxLength: 4_000,
+            fallback:
+              type === "error" ? "Unknown error" : "Command output unavailable",
+          })
+        : content;
     const step: AgentStep = {
       id: randomUUID(),
       runId,
       type,
-      content,
+      content: persistedContent,
       createdAt: Date.now(),
     };
     this.db

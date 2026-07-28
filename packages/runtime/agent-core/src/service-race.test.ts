@@ -6,6 +6,7 @@ import {
   buildMultiAgentSummary,
   isStaleRunStorageError,
   loopErrorToOutcome,
+  redactToolErrorResult,
 } from "./service.js";
 
 describe("isStaleRunStorageError", () => {
@@ -28,6 +29,19 @@ describe("isStaleRunStorageError", () => {
     expect(isStaleRunStorageError(null)).toBe(false);
     expect(isStaleRunStorageError(undefined)).toBe(false);
     expect(isStaleRunStorageError("string")).toBe(false);
+  });
+});
+
+describe("tool error redaction boundary", () => {
+  it("removes credentials and local user paths before feedback returns to the model", () => {
+    const result = redactToolErrorResult(
+      '{"error":"Authorization: Bearer tool-secret; ' +
+        'request C:\\\\Users\\\\alice\\\\.ssh\\\\id_rsa?token=query-secret"}',
+    );
+
+    expect(result).toContain("[REDACTED]");
+    expect(result).toContain("[USER_HOME]");
+    expect(result).not.toMatch(/tool-secret|query-secret|alice/);
   });
 });
 

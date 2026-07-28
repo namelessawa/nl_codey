@@ -28,3 +28,4 @@ export * from "./evaluation-types.js";
 export * from "./advanced-settings-types.js";
 export * from "./installation.js";
 export * from "./paths.js";
+export * from "./redaction.js";

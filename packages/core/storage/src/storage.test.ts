@@ -112,6 +112,33 @@ describe("Storage", () => {
     storage.close();
   });
 
+  it("redacts and bounds persisted error/command steps without rewriting messages", () => {
+    const storage = new Storage(":memory:");
+    const workspace = storage.upsertWorkspace("E:\\workspace");
+    const run = storage.createRun(workspace.id, "redaction");
+    const secret =
+      "Authorization: Bearer sqlite-secret\nC:\\Users\\alice\\.ssh\\id_rsa " +
+      "x".repeat(5_000);
+
+    const error = storage.addStep(run.id, "error", secret);
+    const command = storage.addStep(run.id, "command", secret);
+    const message = storage.addStep(run.id, "message", secret);
+    const persisted = storage.listSteps(run.id);
+    const persistedError = persisted.find((step) => step.type === "error")!;
+    const persistedCommand = persisted.find((step) => step.type === "command")!;
+    const persistedMessage = persisted.find((step) => step.type === "message")!;
+
+    for (const step of [error, command, persistedError, persistedCommand]) {
+      expect(step.content).toContain("[REDACTED]");
+      expect(step.content).toContain("[USER_HOME]");
+      expect(step.content).not.toMatch(/sqlite-secret|alice/);
+      expect(step.content.length).toBeLessThanOrEqual(4_000);
+    }
+    expect(message.content).toBe(secret);
+    expect(persistedMessage.content).toBe(secret);
+    storage.close();
+  });
+
   it("[recovery] marks dead and legacy owners once without replaying writes", () => {
     const storage = new Storage(":memory:");
     const workspaceRoot = path.join(
