@@ -1,7 +1,8 @@
 # Feature reality matrix - production-complete baseline
 
 Baseline: `origin/main@11aa6486c904c393d3948b4b4f8d75a9b094591f`,
-audited 2026-07-29.
+audited 2026-07-29 and continuously updated by the stacked batches in
+`docs/execution/nightly-status.md`.
 
 Ratings use source, production callers, committed tests, persistence, failure
 paths and runnable build artifacts. Package presence is not production
@@ -19,8 +20,8 @@ evidence.
 
 ```text
 Production: 0
-Functional: 17
-Partial: 5
+Functional: 19
+Partial: 3
 Scaffold: 1
 Dead: 0
 Unknown: 0
@@ -33,8 +34,8 @@ that the functional modules are unusable.
 
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
-| `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Three main-process test files; root production bundle passes | No formal preload/renderer suites; renderer imports Node path helpers through shared; recovery not E2E | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Typecheck passes | Declared build script is missing; no produced `dist`; zero committed CLI/TUI Vitest files; no PTY harness | Partial |
+| `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload and renderer gates pass; root production bundle passes | Renderer imports Node path helpers through shared; recovery not E2E | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, command, render and real Windows ConPTY gates pass | Core mutation/session E2E and release packaging remain incomplete | Functional |
 
 ## Core
 
@@ -42,14 +43,14 @@ that the functional modules are unusable.
 | --- | --- | --- | --- | --- |
 | `packages/core/shared` | Shared models, IPC, settings and policy types used across apps/packages | Six suites | Browser-safe and Node-only path utilities are not split | Functional |
 | `packages/core/sandbox` | Workspace containment, command whitelist/router, WSL/Docker staging and Windows Job Object helper | Six suites including Docker-gated paths | Full-suite Windows abort timing is flaky; host whitelist remains weaker than a container | Functional |
-| `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Four real lifecycle/migration tests are defined | Postinstall Electron ABI prevents Node test execution; no separate Electron/migration gate | Partial |
+| `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Four Node lifecycle/migration tests plus Electron native-load checks pass through a restorative ABI matrix | Historical fixtures and backup-before-upgrade failure recovery remain incomplete | Functional |
 | `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path suites | Stable Run linkage and crash reconciliation are not defined; Desktop interoperability unproved | Functional |
 
 ## Runtime
 
 | Module | Runtime and entry | Test evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
-| `packages/runtime/llm` | OpenAI-compatible and Anthropic streaming providers, timeout/retry/redaction | Six suites plus opt-in smoke definitions | Live/debug selection is inconsistent; default discovery can consume ambient credentials | Functional |
+| `packages/runtime/llm` | OpenAI-compatible and Anthropic streaming providers, timeout/retry/redaction | Six suites plus explicit opt-in smoke definitions | Live provider compatibility/release evidence is incomplete | Functional |
 | `packages/runtime/tools` | Bounded file/search/patch/command/git/symbol/port tools | Eight suites | Whole mutation graph is not yet machine-audited through one approval contract | Functional |
 | `packages/runtime/agent-core` | Shared autonomous loop, budget, verify/repair, rollback, compression and multi-agent entry | Seventeen suites; dynamic tool boundary has single/multi-agent regression coverage | Explicit production state machine/error taxonomy and crash recovery are incomplete; eval fixture matrix missing | Functional |
 
@@ -85,7 +86,7 @@ that the functional modules are unusable.
 ## Cross-cutting evidence
 
 - Desktop and CLI source both construct the shared Storage, AgentService and LLM
-  factory; the CLI artifact itself currently cannot be built.
+  factory; the root build now emits both Desktop and CLI artifacts.
 - Dynamic tool bundles now require complete mutation classification, reject
   reserved/undeclared calls, keep multi-agent role schemas and allowlists
   aligned, and persist bounded/redacted security failures.
@@ -93,11 +94,13 @@ that the functional modules are unusable.
   process.
 - SQLite is the Run-state store and JSONL is the CLI conversation store, but
   there is no proved stable linkage/reconciler after a crash.
-- The root build passes. The root test gate is red on Storage ABI, Windows abort
-  timing and an ambient live Docker debug suite.
-- TUI discovery currently finds 18 catalogued slash commands, 18 keyboard/input
-  actions, three modal routes, no mouse implementation and zero committed TUI
-  Vitest files. See `docs/tui/action-inventory.md`.
+- The root build and default offline test gate pass. The explicit integration
+  gate passes with a restorative Node/Electron Storage ABI matrix; Windows
+  abort remains under soak because earlier loaded runs exceeded its bound.
+- TUI discovery currently finds 18 catalogued slash commands, 19 keyboard/input
+  actions, three modal routes, no mouse implementation and four committed
+  CLI/TUI Vitest files, including a real Windows ConPTY lifecycle. See
+  `docs/tui/action-inventory.md`.
 
 ## Production-rating gate
 

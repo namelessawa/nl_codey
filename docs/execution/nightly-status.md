@@ -2,19 +2,19 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - RED BASELINE**
+Overall state: **ACTIVE - DEFAULT AND INTEGRATION GREEN; P0 WORK REMAINS**
 
 ## Batch board
 
 | Batch | Branch | Scope | State | Evidence |
 | --- | --- | --- | --- | --- |
 | 1 | `codex/audit-production-complete` | Reality audit, control files, generated TUI inventory, current-doc path corrections | Ready for draft review; gate red on SBOX-ABORT-001 | Baseline captured; 18 commands, 18 key actions and 3 modal routes discovered |
-| 2 | `codex/p1-test-cli-foundation` | Formal test configs, live/debug opt-in gate, CLI build/smoke | Ready for draft review; integration gate remains red by design | Default offline gate: 685 passed; CLI bundle/help/version passed |
+| 2 | `codex/p1-test-cli-foundation` | Formal test configs, live/debug opt-in gate, CLI build/smoke | Ready for draft review; initial red integration evidence retained | Default offline gate: 685 passed; CLI bundle/help/version passed |
 | 3 | `codex/p1-tui-render-foundation` | TUI unit/render/ANSI frame tests | Ready for draft review | 8 Ink render/interaction assertions passed with ANSI normalization |
 | 4 | `codex/p1-tui-pty-harness` | Windows ConPTY + resize/key/cleanup primitives | Ready for draft review | 2 real ConPTY lifecycle assertions passed |
 | 5 | `codex/p1-tui-core-workflows` | Core approval/reject/stop/session/recovery scenarios | Pending | Depends on PTY harness |
-| 6 | `codex/p0-storage-abi-gate` | Node/Electron ABI + migration gates | Pending | Four storage tests ABI-blocked |
-| 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Pending | Full suite measured 2115 ms vs 1500 ms |
+| 6 | `codex/p0-storage-abi-gate` | Node/Electron ABI + migration gates | Ready for draft review | Node migration/lifecycle 4/4; Electron load before/after restore passed |
+| 7 | `codex/p0-sandbox-abort-stability` | Windows abort/process-tree stability | Pending soak | Latest isolated integration run passed at 1171 ms; prior loaded runs exceeded 3 s |
 | 8 | `codex/p0-run-session-recovery` | Startup reconciliation and Run/Session linkage | Pending | No current E2E contract |
 | 9 | `codex/p0-unified-approval` | Mutation inventory and common approval enforcement | Pending | Whole graph not yet proved |
 | 10 | `codex/p0-plugin-runner-spike` | Restricted plugin runner RFC/spike | Pending | Must follow preceding P0 gates |
@@ -90,14 +90,32 @@ Overall state: **ACTIVE - RED BASELINE**
 - The exercised paths do not submit an agent task; no provider was constructed
   and no model/network call occurred.
 
+### 2026-07-29 - Storage ABI and migration matrix
+
+- Added named Node, Electron and combined Storage gates. The Node gate backs up
+  the installed Electron native binary, selects or compiles the exact host
+  Node ABI, runs real migration/lifecycle tests, restores the backup in a
+  `finally` path and verifies Electron can still open SQLite.
+- Pinned `node-gyp` for Node releases without a published prebuild. Successful
+  Node binaries are cached by package version, module ABI, platform and
+  architecture under ignored `node_modules/.cache`.
+- Passed all four Node Storage assertions, including the pre-Phase-2 migration
+  fixture, and passed Electron ABI 130 smoke checks both before and after the
+  swap. A forced intermediate failure also restored Electron successfully.
+- The combined integration gate then passed: Storage 4/4 plus Sandbox/Docker
+  17/17, with 7 Docker-environment cases skipped.
+- Sandbox abort remains open for a repeated loaded soak because historical
+  runs measured 1936-3147 ms despite the latest isolated 1171 ms result.
+
 ## Current blockers
 
-1. Real storage assertions cannot run with the postinstall Electron binary in
-   a Node process.
-2. Windows child-process abort exceeds its documented 1500 ms bound.
-3. Remaining TUI editing keys and end-to-end mutation/session workflows still
+1. Windows child-process abort has historical loaded-run failures above its
+   documented 1500 ms bound and needs a repeatable soak.
+2. Remaining TUI editing keys and end-to-end mutation/session workflows still
    lack committed coverage.
-4. Run/Session crash reconciliation and a unified mutation approval boundary
+3. Run/Session crash reconciliation and a unified mutation approval boundary
    are not yet proved.
+4. Historical migration coverage still needs more fixtures plus
+   backup-before-upgrade/failure-recovery behavior.
 5. Full Node plugin execution remains outside an OS-enforced capability
    boundary.
