@@ -376,7 +376,7 @@ const rendered = `${JSON.stringify(inventory, null, 2)}\n`;
 
 if (process.argv.includes("--check")) {
   const current = fs.existsSync(OUTPUT) ? fs.readFileSync(OUTPUT, "utf8") : "";
-  if (current !== rendered) {
+  if (current.replaceAll("\r\n", "\n") !== rendered) {
     process.stderr.write("mutation inventory is stale; run pnpm docs:mutations\n");
     process.exitCode = 1;
   }
