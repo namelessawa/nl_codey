@@ -475,11 +475,16 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   typecheck and the cross-platform inventory gate, then exposed that ConPTY's
   output pipe stays silent in the GitHub Windows service session. Hosted test
   run `30404457013` proved the legacy winpty backend is also silent there.
-  Hosted test steps now select node-pty's bundled ConPTY DLL, while local
-  Windows tests continue to use the system ConPTY API by default; neither path
-  skips PTY behavior assertions. The repository's existing default CodeQL
-  setup remains the sole scanner because GitHub rejects
-  advanced-configuration uploads while default setup is enabled.
+  Run `30404803761` proved the bundled ConPTY DLL plus source launcher is
+  likewise silent. The repository's existing default CodeQL setup remains the
+  sole scanner because GitHub rejects advanced-configuration uploads while
+  default setup is enabled.
+- Hosted Release run `30404803761` proved the bundled ConPTY DLL is also
+  silent when the PTY child launches through the source `tsx` path. Hosted
+  jobs now build the CLI first and point the PTY harness at the production
+  `dist/index.js` entry while retaining the system ConPTY backend. Local
+  production-entry verification passed 2/2 lifecycle and 5/5 agent/session
+  workflows without skips or unhandled pipe errors.
 - `pnpm typecheck`, `pnpm build`, workflow YAML parsing, production audit
   (zero high/critical; one low), CLI pack/install/help, unpacked Windows
   packaging, NSIS/ZIP packaging, silent install/uninstall, 10 Storage and

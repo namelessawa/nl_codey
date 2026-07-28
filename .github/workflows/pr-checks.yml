@@ -43,10 +43,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Build CLI PTY entry
+        run: pnpm --filter nlc build
+
       - name: Deterministic default gates
         run: pnpm test
         env:
-          NLC_TUI_PTY_BACKEND: conpty-dll
+          NLC_TUI_PTY_ENTRY: bundle
 
       - name: Storage ABI and integration gates
         run: pnpm test:integration

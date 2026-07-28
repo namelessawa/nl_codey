@@ -9,6 +9,7 @@ import stripAnsi from "strip-ansi";
 const require = createRequire(import.meta.url);
 const tsxCli = require.resolve("tsx/cli");
 const cliEntry = fileURLToPath(new URL("../index.ts", import.meta.url));
+const cliBundleEntry = fileURLToPath(new URL("../../dist/index.js", import.meta.url));
 
 export type PtyExit = {
   exitCode: number;
@@ -43,10 +44,9 @@ export class TuiPtyHarness {
     });
     this.serializer = new SerializeAddon();
     this.terminal.loadAddon(this.serializer);
-    // GitHub's Windows runner is a non-interactive service session where the
-    // system ConPTY output pipe can remain silent. The explicit CI override
-    // keeps the same PTY behavior assertions on node-pty's bundled ConPTY DLL,
-    // while local Windows runs exercise the system ConPTY API by default.
+    // Local and hosted release tests use the system ConPTY API by default.
+    // Explicit backend selection remains available for diagnosing Windows
+    // terminal-host differences without changing the behavior assertions.
     const ptyBackend = process.env.NLC_TUI_PTY_BACKEND;
     const useConpty =
       process.platform === "win32" &&
@@ -54,7 +54,11 @@ export class TuiPtyHarness {
     const useConptyDll =
       process.platform === "win32" &&
       ptyBackend === "conpty-dll";
-    this.pty = spawn(process.execPath, [tsxCli, cliEntry, ...options.args], {
+    const cliArgs =
+      process.env.NLC_TUI_PTY_ENTRY === "bundle"
+        ? [cliBundleEntry, ...options.args]
+        : [tsxCli, cliEntry, ...options.args];
+    this.pty = spawn(process.execPath, cliArgs, {
       name: "xterm-256color",
       cwd: options.cwd,
       cols,
