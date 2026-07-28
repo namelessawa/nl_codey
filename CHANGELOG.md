@@ -9,6 +9,22 @@ Section conventions (Keep a Changelog):
 
 ## [Unreleased]
 
+### Security
+
+- Dynamic tool bundles now fail closed. `mutatingNames` is mandatory and
+  runtime validation rejects missing/non-array classification, unknown or
+  duplicate mutating names, duplicate schemas, and collisions with built-in
+  Agent/extended/orchestrator tool names.
+- Validated dispatchers refuse undeclared dynamic calls. Read-only mode both
+  hides and rejects classified mutating tools, while degraded mode rejects
+  them before the plugin dispatcher can execute.
+- AgentService records rejected bundles and bundle factory failures as
+  `[security]` Run Steps in both single-agent and multi-agent paths. Desktop
+  production wiring no longer converts `buildPluginBundle` exceptions into
+  silent `null` results.
+- This hardening does not provide OS-level isolation for a full Node plugin
+  process; a dedicated restricted plugin runner remains separate work.
+
 ### Fixed
 
 **IPC code-review remediation — 18 findings from full frontend↔backend review.**

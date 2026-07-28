@@ -316,7 +316,7 @@ Orchestrator 消息总线 / 锁 / 角色、Git 集成、Web 工具、LLM provide
 
 > **原生模块注意：** `pnpm test` 在裸 Node 下运行，而 `better-sqlite3`
 > 在 `pnpm dev`/`build` 流程中是按 Electron 的 ABI 重建的。因此唯一
-> 真正打开 DB 的测试（`packages/storage/src/storage.test.ts`）在 Node
+> 真正打开 DB 的测试（`packages/core/storage/src/storage.test.ts`）在 Node
 > 下会因 ABI 不匹配失败 —— 这是工具链层面的现象,不是代码回归。
 > 详见 `CLAUDE.md`。
 
@@ -342,3 +342,14 @@ Orchestrator 消息总线 / 锁 / 角色、Git 集成、Web 工具、LLM provide
   管道。
 - **Phase 4 插件** 必须经人工逐权限批准（永远不会自动批准），插件
   调用时每次都重新校验权限；命令参数 shell 转义。
+- **动态工具信任边界** 要求每个 bundle 显式提供完整的
+  `mutatingNames` 数组（只读 bundle 也必须提供空数组）。Agent Core
+  会在暴露 schema 或调用 dispatcher 前做运行时校验：缺失/错误分类、
+  重复 schema、重复 mutating 名称、内置名称冲突及未声明调用都会被
+  fail-closed 拒绝。read-only 模式同时隐藏并拒绝 mutating tools，
+  degraded mode 也在 dispatch 前拒绝它们；bundle 拒绝会写入可见的
+  `[security]` Run Step。
+
+> **插件隔离限制：** 上述修复收紧了注册和 dispatch 边界，但不能隔离
+> 一个已经启动的完整 Node 插件进程。此类进程仍具备宿主用户权限；真正
+> 的进程级文件系统/网络隔离需要独立的受限插件运行器。
