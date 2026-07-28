@@ -465,11 +465,6 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   Node 22, upgraded `better-sqlite3` to 12.11.1 (published Node 24 prebuild)
   and upgraded node-gyp to 12.2.0 (Visual Studio 2026 support). A frozen local
   install rebuilt the Electron native binding successfully.
-- The repository's non-main ruleset requires CodeQL results before accepting a
-  branch ref, while default setup only scans after a ref exists. Added a
-  `codex-ci-*` Release-workflow path that runs only the official CodeQL action
-  for a temporary tag; release packaging is explicitly skipped on that path,
-  and normal manual/`v*` behavior is unchanged.
 - The loaded default test initially reproduced the known approval-crash cleanup
   tail after `taskkill` itself stalled. The ConPTY harness now keeps tree kill
   as the primary path but directly terminates the PTY root when that bounded
