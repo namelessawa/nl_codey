@@ -25,6 +25,24 @@ Before documentation generation, the clean branch was three commits ahead of
 
 ## Commands actually executed
 
+### PR review remediation
+
+| Command | Exit | Observed result |
+| --- | ---: | --- |
+| `pnpm --filter @nlc/agent-core typecheck` | 0 | Agent Core `tsc --noEmit` passed. |
+| `pnpm exec vitest run packages/runtime/agent-core/src` | 0 | 17 files passed; 153 tests passed; 12 environment-gated tests skipped. |
+| `pnpm exec vitest run apps/desktop/src/main/services.test.ts` | 0 | 1/1 production-wiring test passed. |
+| `pnpm typecheck` | 0 | All 23 participating workspace projects passed. |
+| `pnpm exec vitest run --exclude '**/storage.test.ts'` | 1 | Run twice; both runs passed 82 files / 696 tests and failed the existing `runchild-abort.test.ts` mid-run abort timing assertion (1678ms, then 2081ms; limit 1500ms). 19 tests were skipped. |
+| `pnpm exec vitest run packages/core/sandbox/src/runchild-abort.test.ts` | 0 | Isolated file passed 4/4; the same mid-run abort case completed in 998ms. |
+| `pnpm build` | 0 | Package builds and Electron main/preload/renderer production bundles completed. |
+
+The non-Storage aggregate failure is recorded as a failure, not a pass. It is
+outside this branch's dynamic-tool scope, so no Sandbox timing threshold or
+implementation was changed.
+
+### Original P0 verification
+
 | Command | Exit | Observed result |
 | --- | ---: | --- |
 | `pnpm install` | 0 | 24 workspace projects; lockfile current; 481 packages linked; Desktop postinstall rebuilt `better-sqlite3` for Electron successfully. |
@@ -38,7 +56,7 @@ Additional focused verification was also executed:
 
 | Command | Exit | Observed result |
 | --- | ---: | --- |
-| `pnpm exec vitest run packages/runtime/agent-core/src/dynamic-tools-security.test.ts` | 0 | 15/15 passed after the fix. |
+| `pnpm exec vitest run packages/runtime/agent-core/src/dynamic-tools-security.test.ts` | 0 | 15/15 passed after the original fix; the PR review remediation expands this file to 26/26. |
 | `pnpm exec vitest run apps/desktop/src/main/services.test.ts` | 0 | 1/1 passed. |
 | `pnpm --filter @nlc/desktop typecheck` | 0 | Desktop node and web tsconfigs passed. |
 

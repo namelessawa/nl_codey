@@ -345,10 +345,14 @@ Orchestrator 消息总线 / 锁 / 角色、Git 集成、Web 工具、LLM provide
 - **动态工具信任边界** 要求每个 bundle 显式提供完整的
   `mutatingNames` 数组（只读 bundle 也必须提供空数组）。Agent Core
   会在暴露 schema 或调用 dispatcher 前做运行时校验：缺失/错误分类、
-  重复 schema、重复 mutating 名称、内置名称冲突及未声明调用都会被
-  fail-closed 拒绝。read-only 模式同时隐藏并拒绝 mutating tools，
-  degraded mode 也在 dispatch 前拒绝它们；bundle 拒绝会写入可见的
-  `[security]` Run Step。
+  重复 schema、重复 mutating 名称、Host Reserved 名称冲突（包括
+  `write_file`）及未声明调用都会被 fail-closed 拒绝。read-only 模式
+  同时隐藏并拒绝 mutating tools，degraded mode 也在 dispatch 前拒绝
+  它们。Multi-Agent 的 Planner/Coder/Reviewer 从同一角色 Schema 集合
+  派生执行白名单；动态工具默认不属于任何角色，伪造调用会在共享
+  Executor 前返回结构化 `role_tool_denied`。Bundle Factory 异常写入
+  `[security]` Run Step 前会被限长、单行化，并脱敏凭据、敏感 URL 和
+  本地用户目录。
 
 > **插件隔离限制：** 上述修复收紧了注册和 dispatch 边界，但不能隔离
 > 一个已经启动的完整 Node 插件进程。此类进程仍具备宿主用户权限；真正

@@ -5,13 +5,18 @@
 - Make `DynamicToolBundle.mutatingNames` mandatory.
 - Validate untrusted bundles before schema exposure or dispatch.
 - Reject malformed classifications, duplicate schemas/classifications,
-  built-in name collisions, and undeclared calls.
+  host-reserved name collisions (including `write_file`), and undeclared calls.
 - Enforce dynamic mutation classification in read-only and degraded modes.
+- Enforce one schema-derived execution allowlist for each Multi-Agent role;
+  dynamic tools are role-unassigned by default.
 - Record bundle validation and factory failures as `[security]` Run Steps in
-  single-agent and multi-agent paths.
+  single-agent and multi-agent paths, with bounded and credential/path-redacted
+  factory error details.
 - Remove Desktop's silent `buildPluginBundle` catch.
-- Cover the trust boundary with 15 Agent Core tests and one Desktop
+- Cover the trust boundary with 26 Agent Core tests and one Desktop
   production-wiring test.
+- Add a pull-request GitHub Actions workflow for the verified non-Storage
+  command set.
 
 ## Remaining risks (not implemented here)
 
@@ -31,6 +36,9 @@ This P0 must not be described as solving that problem.
 Node. The four Storage tests therefore fail at module load. Establish separate
 Node-ABI and Electron-ABI integration commands/CI jobs instead of excluding or
 weakening Storage assertions.
+
+The PR workflow's exclusion is a temporary, explicit reference to this item;
+it is not evidence that Storage has passed.
 
 ### P2 — capability-level dynamic bundle contract
 

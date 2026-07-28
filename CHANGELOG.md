@@ -14,14 +14,27 @@ Section conventions (Keep a Changelog):
 - Dynamic tool bundles now fail closed. `mutatingNames` is mandatory and
   runtime validation rejects missing/non-array classification, unknown or
   duplicate mutating names, duplicate schemas, and collisions with built-in
-  Agent/extended/orchestrator tool names.
+  Agent/extended/orchestrator tool names. A single host-reserved set now also
+  includes file-mutating and degraded-mode dangerous names, including
+  `write_file`.
 - Validated dispatchers refuse undeclared dynamic calls. Read-only mode both
   hides and rejects classified mutating tools, while degraded mode rejects
   them before the plugin dispatcher can execute.
+- Planner, Coder, and Reviewer now enforce at execution time the exact schema
+  set exposed to that role. Dynamic tools are role-unassigned by default, and
+  fabricated role calls return a structured `role_tool_denied` result before
+  the shared executor.
 - AgentService records rejected bundles and bundle factory failures as
   `[security]` Run Steps in both single-agent and multi-agent paths. Desktop
   production wiring no longer converts `buildPluginBundle` exceptions into
-  silent `null` results.
+  silent `null` results. Untrusted factory errors are normalized, bounded, and
+  redacted for credentials, sensitive URLs, and local user directories before
+  they reach SQLite or renderer events.
+- Pull requests targeting `main` now run a dedicated Windows GitHub Actions
+  workflow for install, typecheck, Agent Core security tests, Desktop
+  production wiring, the non-Storage test suite, and the production build.
+  The Storage real-DB test remains explicitly excluded under the documented
+  Node/Electron native ABI backlog.
 - This hardening does not provide OS-level isolation for a full Node plugin
   process; a dedicated restricted plugin runner remains separate work.
 

@@ -109,13 +109,21 @@ Each tool enforces hard caps so a single step can't flood the model or escape th
 - Agent Core must validate every runtime bundle before exposing schemas or
   retaining its dispatcher. Reject duplicate schemas/classifications,
   classifications without schemas, and collisions with every built-in tool
-  surface.
+  surface. `HOST_RESERVED_TOOL_NAMES` is the single collision set and includes
+  Agent, extended, orchestrator, file-mutating, and degraded-mode dangerous
+  names such as `write_file`.
 - Dispatch must reject undeclared dynamic calls even if a model fabricates a
   tool call it was never offered. Read-only mode must both hide and reject
   mutating tools; degraded mode must reject them before source dispatch.
+- Multi-agent role schemas and execution allowlists must be derived from the
+  same filtered schema set. Dynamic tools belong to no role by default; a
+  Planner, Coder, or Reviewer fabrication must return `role_tool_denied`
+  before the shared executor or dynamic dispatcher.
 - Bundle factory and validation failures must create a visible `[security]`
-  Run Step. Production wiring, including `buildServices`, must not swallow
-  factory exceptions before AgentService can audit them.
+  Run Step. Factory error details must be bounded, single-line, credential-
+  redacted, and user-home-redacted before persistence or renderer emission.
+  Production wiring, including `buildServices`, must not swallow factory
+  exceptions before AgentService can audit them.
 - These controls do not isolate a full Node plugin process. Do not describe
   manifest permissions as OS-enforced process isolation.
 
