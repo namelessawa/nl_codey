@@ -48,7 +48,7 @@ function start(cols = 100): TuiPtyHarness {
   return session;
 }
 
-describeWindows("[tui-pty] Windows ConPTY lifecycle", () => {
+describeWindows("[tui-pty] Windows PTY lifecycle", () => {
   it("renders, resizes, completes /help and exits cleanly", async () => {
     const session = start();
     expect(session.pid).toBeGreaterThan(0);
@@ -75,7 +75,7 @@ describeWindows("[tui-pty] Windows ConPTY lifecycle", () => {
     session.write("/exit");
     // The help catalogue itself contains "/exit", so wait for the prompt row
     // specifically. Otherwise the Enter write can overtake the text write in
-    // ConPTY and leave a visible but unsubmitted "/exit" behind.
+    // the PTY and leave a visible but unsubmitted "/exit" behind.
     await session.waitForScreen((screen) =>
       screen.split("\n").some((line) => line.includes("❯ /exit")),
     );
@@ -93,7 +93,7 @@ describeWindows("[tui-pty] Windows ConPTY lifecycle", () => {
 
     // Prove Ink's raw-input handlers are mounted before sending Ctrl+C.
     // A status/header render can arrive a tick earlier than the input effect,
-    // in which case ConPTY forwards Ctrl+C as SIGINT and Node exits with 1.
+    // in which case the PTY forwards Ctrl+C as SIGINT and Node exits with 1.
     session.write("x");
     await session.waitForScreen((screen) =>
       screen.split("\n").some((line) => line.includes("❯ x")),

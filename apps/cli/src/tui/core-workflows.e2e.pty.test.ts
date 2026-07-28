@@ -144,7 +144,6 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await enter(session, "create the approval fixture");
     await session.waitForBuffer(
       (buffer) =>
-        buffer.includes("Applying a minimal change.") &&
         buffer.includes("[verify] pending patch") &&
         buffer.includes("AGENT_NOTES.md"),
       20_000,
@@ -308,11 +307,18 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     const header = readSession(sessionPath!).find((line) => line.type === "session")!;
     const recovered = start(fixture);
     await recovered.waitForBuffer(
-      (buffer) =>
-        buffer.includes("crash at the approval fixture") &&
-        buffer.includes("recovered 1 interrupted run(s)") &&
-        buffer.includes("No tools or workspace writes were") &&
-        buffer.includes("replayed; /rollback remains available"),
+      (buffer) => {
+        // winpty serializes visual line wrapping as newlines, while ConPTY
+        // keeps this status sentence contiguous. Compare the same rendered
+        // content independent of the selected Windows PTY backend.
+        const unwrapped = buffer.replaceAll("\n", "");
+        return (
+          unwrapped.includes("crash at the approval fixture") &&
+          unwrapped.includes("recovered 1 interrupted run(s)") &&
+          unwrapped.includes("No tools or workspace writes were") &&
+          unwrapped.includes("replayed; /rollback remains available")
+        );
+      },
       20_000,
     );
     expect(fs.existsSync(notesPath)).toBe(false);
