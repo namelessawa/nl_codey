@@ -18,6 +18,8 @@ export type PtyExit = {
 export type TuiPtyOptions = {
   cwd: string;
   args: readonly string[];
+  /** Alternate entry for a production-TUI composition fixture. */
+  entryPath?: string;
   cols?: number;
   rows?: number;
   env?: Record<string, string>;
@@ -53,20 +55,24 @@ export class TuiPtyHarness {
     const useConptyDll =
       process.platform === "win32" &&
       ptyBackend === "conpty-dll";
-    this.pty = spawn(process.execPath, [tsxCli, cliEntry, ...options.args], {
-      name: "xterm-256color",
-      cwd: options.cwd,
-      cols,
-      rows,
-      useConpty,
-      useConptyDll,
-      env: {
-        ...process.env,
-        FORCE_COLOR: "0",
-        NO_COLOR: "1",
-        ...options.env,
+    this.pty = spawn(
+      process.execPath,
+      [tsxCli, options.entryPath ?? cliEntry, ...options.args],
+      {
+        name: "xterm-256color",
+        cwd: options.cwd,
+        cols,
+        rows,
+        useConpty,
+        useConptyDll,
+        env: {
+          ...process.env,
+          FORCE_COLOR: "0",
+          NO_COLOR: "1",
+          ...options.env,
+        },
       },
-    });
+    );
     this.pid = this.pty.pid;
     this.pty.onData((data) => {
       this.terminal.write(data);

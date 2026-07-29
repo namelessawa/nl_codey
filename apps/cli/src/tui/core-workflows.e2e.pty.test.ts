@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Storage } from "@nlc/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadProviderStore } from "../lib/provider-store.js";
@@ -10,6 +11,9 @@ const canRunNativePty =
   process.platform === "win32" &&
   process.env.NLC_SKIP_NATIVE_PTY !== "1";
 const describeWindows = canRunNativePty ? describe : describe.skip;
+const dynamicFailureEntry = fileURLToPath(
+  new URL("./dynamic-tools-failure.fixture.ts", import.meta.url),
+);
 const sessions: TuiPtyHarness[] = [];
 const tempRoots: string[] = [];
 
@@ -52,7 +56,11 @@ function createFixture(): Fixture {
   return { root, workspaceRoot, dataRoot };
 }
 
-function start(fixture: Fixture, env: Record<string, string> = {}): TuiPtyHarness {
+function start(
+  fixture: Fixture,
+  env: Record<string, string> = {},
+  entryPath?: string,
+): TuiPtyHarness {
   const session = spawnTuiPty({
     cwd: fixture.workspaceRoot,
     cols: 100,
@@ -64,6 +72,7 @@ function start(fixture: Fixture, env: Record<string, string> = {}): TuiPtyHarnes
       fixture.dataRoot,
       "--no-color",
     ],
+    ...(entryPath ? { entryPath } : {}),
     env: {
       LLM_PROVIDER: "mock",
       NLC_API_KEY: "",
@@ -584,42 +593,50 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await exit(restarted);
   });
 
-  it("redacts a provider error in the TUI, SQLite audit, and session log", async () => {
+  it("redacts a dynamic-tool factory failure in TUI, SQLite, and session log", async () => {
     const fixture = createFixture();
-    const secret = "sk-" + "native-redaction-fixture-1234";
-    const session = start(fixture, {
-      NLC_MOCK_SCENARIO: "redacted-error",
-      NLC_MOCK_ERROR_SECRET: secret,
-    });
+    const secret = "tui-dynamic-factory-token-123456789";
+    const userHome = os.homedir();
+    const session = start(
+      fixture,
+      { NLC_MOCK_SCENARIO: "large-output" },
+      dynamicFailureEntry,
+    );
 
     await session.waitForScreen((screen) => screen.includes("(idle)"));
-    await enter(session, "surface the provider failure safely");
+    await enter(session, "surface the dynamic tool failure safely");
     const buffer = await session.waitForBuffer(
       (output) =>
+        output.includes("[security] Dynamic tools disabled") &&
         output.includes("[REDACTED]") &&
         output.includes("[USER_HOME]") &&
-        output.includes("failed"),
+        output.includes("done"),
       20_000,
     );
     expect(buffer).not.toContain(secret);
-    expect(buffer).not.toContain("redaction-user");
+    expect(buffer).not.toContain(userHome);
 
     const audit = readRunAudit(fixture);
-    expect(audit.status).toBe("failed");
-    expect(audit.exitReason).toBe("failed");
+    expect(audit.status).toBe("done");
+    expect(audit.exitReason).toBe("done");
     const errorSteps = audit.steps.filter((step) => step.type === "error");
     expect(errorSteps).toHaveLength(1);
+    expect(errorSteps[0]?.content).toContain(
+      "[security] Dynamic tools disabled: bundle factory failed",
+    );
     expect(errorSteps[0]?.content).toContain("[REDACTED]");
     expect(errorSteps[0]?.content).toContain("[USER_HOME]");
     expect(errorSteps[0]?.content).not.toContain(secret);
-    expect(errorSteps[0]?.content).not.toContain("redaction-user");
+    expect(errorSteps[0]?.content).not.toContain(userHome);
+    expect(errorSteps[0]?.content).not.toMatch(/[\r\n]/);
 
     const [sessionPath] = await waitForSessionFiles(fixture.dataRoot, 1);
     const sessionText = fs.readFileSync(sessionPath!, "utf8");
+    expect(sessionText).toContain("[security] Dynamic tools disabled");
     expect(sessionText).toContain("[REDACTED]");
     expect(sessionText).toContain("[USER_HOME]");
     expect(sessionText).not.toContain(secret);
-    expect(sessionText).not.toContain("redaction-user");
+    expect(sessionText).not.toContain(userHome);
 
     await enter(session, "/help");
     await session.waitForBuffer((output) => output.includes("/rollback"));

@@ -44,7 +44,7 @@ import { MessageStream } from "./message-stream.js";
 import { Prompt } from "./prompt.js";
 import { Approval } from "./approval.js";
 import { Footer } from "./footer.js";
-import { useLoop } from "./use-loop.js";
+import { useLoop, type UseLoopOptions } from "./use-loop.js";
 import { renderHelp, type CommandEffect } from "./commands.js";
 import { loadCliSettings } from "../lib/settings.js";
 import { initProjectSkeleton, renderInitOutcome } from "../lib/init-project.js";
@@ -68,6 +68,8 @@ export type TuiOptions = {
   workspaceRoot?: string;
   dataRoot?: string;
   autoApprove?: boolean;
+  /** Optional service composition for an embedding host. */
+  serviceFactory?: UseLoopOptions["serviceFactory"];
   /** Initial theme. Defaults to the registry's DEFAULT_THEME (teal). */
   theme?: ThemeName;
 };
@@ -80,6 +82,7 @@ function InnerApp(opts: TuiOptions) {
     ...(opts.workspaceRoot !== undefined ? { workspaceRoot: opts.workspaceRoot } : {}),
     ...(opts.dataRoot !== undefined ? { dataRoot: opts.dataRoot } : {}),
     ...(opts.autoApprove !== undefined ? { autoApprove: opts.autoApprove } : {}),
+    ...(opts.serviceFactory !== undefined ? { serviceFactory: opts.serviceFactory } : {}),
   });
   const [terminalSize, setTerminalSize] = useState(() => ({
     columns: stdout.columns,

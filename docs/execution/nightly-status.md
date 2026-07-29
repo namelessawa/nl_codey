@@ -38,6 +38,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 28 | `codex/p1-tui-minimum-layout` | Full terminal-size matrix and height-aware fallback | Ready for draft review; TUI-RENDER-001 and TUI-MIN-001 closed | Full offline gate green; 19 Ink render and 3 real ConPTY lifecycle/prompt assertions pass |
 | 29 | `codex/p1-tui-read-only-analysis` | Exact Goal Scenario 2 read-only analysis and forged-write refusal | Ready for draft review; exact Scenario 2 closed | Full offline gate green; 4 Mock scenario, 19 Ink render and 12 native TUI E2E assertions pass |
 | 30 | `codex/p1-tui-large-tool-output` | Exact Goal Scenario 14 output limits and native scrollback | Ready for draft review; exact Scenario 14 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
+| 31 | `codex/p1-tui-dynamic-tool-redaction` | Exact Goal Scenario 13 dynamic-tool construction failure | Ready for draft review; exact Scenario 13 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 
 ## Work log
 
@@ -851,6 +852,34 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   restores the former 80-line fixture and removes the pure boundary tests; it
   does not change production persistence caps or default provider behavior.
 
+### 2026-07-29 - Prove dynamic-tool construction failure redaction
+
+- Added an explicit optional dynamic-tool factory to CLI service composition
+  and an optional service factory to the Ink composition. Both are absent from
+  the normal `nlc` entry, so default behavior and provider resolution are
+  unchanged.
+- A dedicated PTY fixture supplies a factory that throws a multiline error with
+  a forged Bearer token and the current user-home path. No environment switch,
+  plugin copy or raw-error display path was added.
+- The native workflow requires one single-line `[security]` SQLite error step,
+  `[REDACTED]` and `[USER_HOME]` in the TUI/SQLite/JSONL, absence of both raw
+  values everywhere, a degraded `done` Run and a usable `/help` prompt.
+- The first focused E2E run proved token redaction and graceful completion but
+  showed the deliberately verbose fixture placed `[USER_HOME]` past the
+  100-column row. The fixture now retains the same raw values in the shortest
+  two-line error, allowing both placeholders to be observed in one safe line.
+- The second run reached persistence assertions and exposed only an incorrect
+  test expectation (`model_finished`); the actual persisted normal exit reason
+  is `done`. After aligning to the real enum, the complete 12/12 E2E gate passed
+  in 75 seconds and restored Electron 33.4.11 / modules 130.
+- Focused CLI typecheck and 19/19 Ink render assertions pass. This batch is
+  entirely offline and does not read `custom.txt`. Rollback removes only the
+  composition seam, fixture and exact E2E evidence.
+- The complete default offline gate passed 634 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 15 TUI unit, 19 render, 3 lifecycle,
+  12 E2E and 13 recovery assertions in 190 seconds. Every native matrix
+  restored and re-verified Electron 33.4.11 / modules 130.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
@@ -858,8 +887,8 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
 2. TUI acceptance still needs exact Scenario 9 invalid→valid→new-run provider
-   use, Scenario 13 dynamic-tool construction failure, broader session
-   invalid-input UX and final unsupported-mouse product copy.
+   use, broader session invalid-input UX and final unsupported-mouse product
+   copy.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

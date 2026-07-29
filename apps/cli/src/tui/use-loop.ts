@@ -28,7 +28,11 @@ import path from "node:path";
 import { nlcRoot, type AgentEvent } from "@nlc/shared";
 import type { LoadedSession, SessionMessage, SessionSummary } from "@nlc/session";
 import { renderProjectTree } from "@nlc/session";
-import { buildCliServices, type CliServices } from "../lib/services.js";
+import {
+  buildCliServices,
+  type BuildCliServicesOpts,
+  type CliServices,
+} from "../lib/services.js";
 import { SessionBridge, sessionRootFor } from "./session-bridge.js";
 
 export type RoleKey = "user" | "agent" | "tool" | "verify" | "error" | "system";
@@ -147,6 +151,8 @@ export type UseLoopOptions = {
   workspaceRoot?: string;
   dataRoot?: string;
   autoApprove?: boolean;
+  /** Explicit embedding/test seam; normal CLI use keeps the production factory. */
+  serviceFactory?: (opts: BuildCliServicesOpts) => CliServices;
 };
 
 export function useLoop(opts: UseLoopOptions = {}) {
@@ -181,7 +187,8 @@ export function useLoop(opts: UseLoopOptions = {}) {
     if (servicesRef.current) return servicesRef.current;
     if (errorRef.current) return null;
     try {
-      servicesRef.current = buildCliServices({
+      const serviceFactory = opts.serviceFactory ?? buildCliServices;
+      servicesRef.current = serviceFactory({
         dataRoot,
         emit: (event) => {
           bridgeRef.current?.handleAgentEvent(event);

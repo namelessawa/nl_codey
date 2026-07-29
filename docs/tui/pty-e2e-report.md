@@ -29,7 +29,7 @@ tests and the separate five-cycle crash soak remain mandatory.
 | Command approve / reject | A whitelisted command stays pending until `y`, then persists command/exit audit output; `n` reaches `cancelled` with no command step | Pass |
 | Budget exhaustion | A one-iteration fixture reaches `budget_exceeded`, displays `max_iterations`, persists the exit reason, makes no patch, and returns prompt control | Pass |
 | 9. Provider configuration (partial) | `/provider` selects OpenAI, saves an empty-key `.invalid` endpoint, persists the active provider and `model_change`, then reloads that endpoint after restart without creating an agent Run. Invalid→valid correction plus a new Run using it remain | Partial |
-| 13. Redacted provider error (partial) | A raw synthetic Bearer key and Windows home path enter through a Mock error chunk; TUI, SQLite and JSONL contain placeholders only, the Run is `failed`, and the prompt remains usable. Dynamic-tool construction failure remains | Partial |
+| 13. Dynamic-tool construction failure | An explicit CLI service-composition fixture throws a multiline dynamic-tool factory error containing a forged Bearer token and the current user home. The real AgentService records one single-line `[security]` step; TUI, SQLite and JSONL contain only `[REDACTED]` / `[USER_HOME]`, the base agent degrades to `done`, and the prompt remains usable | Pass |
 | 14. Large output / scrollback | A public `read_file` returns a 10 KB fixture; SQLite retains at most 4,000 characters with `…(truncated)` and omits the tail. The response then renders 320 numbered message rows: native xterm navigation recovers row 1, bottom restore shows row 320, SQLite/JSONL retain all rows, and `/help` remains usable. Pure reducer tests separately prove 500 stream-item and 200 trace-item memory bounds | Pass |
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
 | 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted | Pass |
@@ -44,5 +44,5 @@ parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
 The mapped lifecycle, prompt, agent/session and crash-tail behaviors above have
-native PTY evidence. Exact completion of Scenarios 9 and 13 plus explicit
-unsupported-mouse product copy remain open.
+native PTY evidence. Exact completion of Scenario 9 plus explicit unsupported-
+mouse product copy remain open.

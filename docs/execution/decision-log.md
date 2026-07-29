@@ -167,3 +167,19 @@ Reason: terminal scrollback, durable audit/session storage and live React state
 have different ownership and limits. A single runaway loop would couple those
 boundaries to iteration/tool-call budgets and make failures ambiguous; separate
 assertions prove every limit without relaxing the production circuit breakers.
+
+## D-015 - Inject dynamic tools through composition, never environment state
+
+Date: 2026-07-29
+
+Decision: expose an optional dynamic-tool factory on the CLI service builder
+and an optional service factory on the Ink composition. Keep both absent in the
+normal `nlc` entry. Scenario 13 launches the production TUI through a dedicated
+fixture entry that supplies a throwing factory; all handling after composition
+uses the real AgentService, SQLite, SessionBridge and renderer.
+
+Reason: CLI does not yet ship Desktop's plugin manager, so its public entry
+could not naturally construct a dynamic bundle. An environment-triggered throw
+would be a production backdoor, while copying the Desktop plugin host would
+create a second runtime. Explicit dependency injection proves the shared
+security boundary without changing default CLI behavior or weakening types.
