@@ -109,6 +109,13 @@ describeWindows("[tui-pty] Windows PTY lifecycle", () => {
 
     expect(exit.exitCode).toBe(0);
     expect(session.mouseTrackingWasEnabled()).toBe(false);
+    expect(session.terminalModes()).toMatchObject({
+      cursorHidden: false,
+      cursorWasHidden: true,
+      cursorWasRestored: true,
+      alternateScreen: false,
+      alternateScreenWasEnabled: false,
+    });
   });
 
   it("turns idle Ctrl+C into deterministic process cleanup", async () => {
@@ -136,6 +143,13 @@ describeWindows("[tui-pty] Windows PTY lifecycle", () => {
 
     expect(exit.exitCode).toBe(0);
     expect(Date.now() - started).toBeLessThan(5_000);
+    expect(session.terminalModes()).toMatchObject({
+      cursorHidden: false,
+      cursorWasHidden: true,
+      cursorWasRestored: true,
+      alternateScreen: false,
+      alternateScreenWasEnabled: false,
+    });
   });
 
   it("preserves a prompt draft across PageUp and PageDown", async () => {

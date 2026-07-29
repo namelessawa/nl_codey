@@ -341,3 +341,18 @@ into an arbitrary host-file writer. Main-owned selection preserves explicit
 user intent and keeps path authority on the privileged side of the IPC
 boundary, while the shared builder keeps Desktop output identical to headless
 output.
+
+## D-025 - Reject stray slash-command arguments
+
+Date: 2026-07-29
+
+Decision: commands with no arguments and commands with exact positional
+contracts reject extra tokens as `unknown` instead of silently performing the
+shorter command. Natural-language/path commands retain their documented spaced
+arguments. Keep the prompt's 16,384-code-point bound authoritative and prove
+long CJK descriptions remain intact through parsing.
+
+Reason: `/exit now`, `/init --unknown` or a branch command with ignored trailing
+tokens should never execute a nearby interpretation. Strict arity makes typos
+visible and deterministic without imposing artificial ASCII or single-word
+limits on paths and descriptions.

@@ -57,6 +57,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EV
 | 47 | `codex/p1-distributed-nonproduction-boundary` | Explicit fail-closed boundary for the unauthenticated distributed scaffold | Ready for draft review; `DIST-001` closed | Full offline gate green; 688 unit, 17 recorded-eval, 93 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 48 | `codex/p1-diagnostics-export-core` | Content-minimized shared diagnostics schema and CLI/headless export | Ready for draft review; `FEATURE-001` diagnostics core complete | Full offline gate green; 690 unit, 17 recorded-eval, 93 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 49 | `codex/p1-diagnostics-export-desktop` | Main-owned native Desktop diagnostics export | Ready for draft review; `FEATURE-001` closed | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 50 | `codex/p1-tui-release-evidence` | Strict command inputs and terminal-mode restoration evidence | Ready for draft review; `TUI-UNIT-001` and `TUI-PTY-001` closed | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1414,6 +1415,28 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EV
 - This batch makes no LLM or network call and does not read `custom.txt`.
   Rollback removes only the Desktop entry and IPC route; the shared schema and
   CLI/headless export remain.
+
+### 2026-07-29 - Close automated TUI release-evidence gaps
+
+- Slash commands with exact arity now reject stray tokens rather than silently
+  executing a shorter interpretation. Table-driven tests cover missing,
+  malformed and non-ASCII commands, while a 4,096-code-point CJK skill
+  description proves long arguments remain intact.
+- The real ConPTY harness now tracks cursor and alternate-screen DEC private
+  modes across split output chunks. Both normal `/exit` and idle Ctrl+C prove
+  that Ink hides then restores the cursor and that the application never
+  enters alternate-screen or mouse-tracking mode.
+- Focused CLI typecheck, 30 TUI unit assertions and all four native lifecycle
+  journeys pass. Root typecheck/build and the 237-second full offline gate also
+  pass: 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI,
+  30 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions. The
+  storage matrix restored the Electron ABI.
+- Windows Terminal with PowerShell and a Unicode-capable font are the supported
+  interactive environment; legacy `cmd.exe` and an ASCII-only rendering mode
+  are explicitly unsupported rather than retained as ambiguous open claims.
+- This batch makes no LLM or network call and does not read `custom.txt`.
+  Rollback restores permissive stray-argument parsing and removes terminal-mode
+  evidence; it does not affect Run or Session data.
 
 ## Current blockers
 

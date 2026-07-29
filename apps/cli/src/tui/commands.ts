@@ -97,11 +97,14 @@ export function parseCommand(line: string): CommandEffect | null {
     case "exit":
     case "quit":
     case "q":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "exit" };
     case "clear":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "clear" };
     case "help":
     case "?":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "show-help" };
     case "trace": {
       const raw = parts[1]?.trim() ?? "";
@@ -114,9 +117,11 @@ export function parseCommand(line: string): CommandEffect | null {
     }
     case "workspaces":
     case "ws":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "list-workspaces" };
     case "settings":
     case "set":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "show-settings" };
     case "cd": {
       const target = parts.slice(1).join(" ").trim();
@@ -124,11 +129,19 @@ export function parseCommand(line: string): CommandEffect | null {
       return { kind: "switch-workspace", path: target };
     }
     case "init": {
-      const force = parts.slice(1).some((p) => p === "--force" || p === "-f");
+      const options = parts.slice(1);
+      if (
+        options.length > 1 ||
+        options.some((option) => option !== "--force" && option !== "-f")
+      ) {
+        return { kind: "unknown", raw: trimmed };
+      }
+      const force = options.length === 1;
       return { kind: "init", force };
     }
     case "skills":
     case "sk":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "list-skills" };
     case "skills-generate":
     case "skill-gen":
@@ -143,14 +156,18 @@ export function parseCommand(line: string): CommandEffect | null {
     }
     case "sessions":
     case "list-sessions":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "sessions" };
     case "tree":
     case "log":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "tree" };
     case "branch": {
       const messageId = parts[1]?.trim() ?? "";
       const sessionId = parts[2]?.trim() ?? "";
-      if (!messageId) return { kind: "unknown", raw: trimmed };
+      if (!messageId || parts.length > 3) {
+        return { kind: "unknown", raw: trimmed };
+      }
       return { kind: "branch", messageId, sessionId: sessionId.length > 0 ? sessionId : null };
     }
     case "resume":
@@ -161,7 +178,8 @@ export function parseCommand(line: string): CommandEffect | null {
     }
     case "rollback":
     case "undo": {
-      const runId = parts.slice(1).join(" ").trim();
+      if (parts.length > 2) return { kind: "unknown", raw: trimmed };
+      const runId = parts[1]?.trim() ?? "";
       return { kind: "rollback", runId: runId.length > 0 ? runId : null };
     }
     case "model":
@@ -177,6 +195,7 @@ export function parseCommand(line: string): CommandEffect | null {
     case "provider":
     case "providers":
     case "p":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "provider" };
     default:
       return { kind: "unknown", raw: trimmed };

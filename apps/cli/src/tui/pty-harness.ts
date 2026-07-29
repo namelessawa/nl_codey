@@ -15,6 +15,15 @@ export type PtyExit = {
   signal: number;
 };
 
+export type TerminalModeSnapshot = {
+  cursorHidden: boolean;
+  cursorWasHidden: boolean;
+  cursorWasRestored: boolean;
+  alternateScreen: boolean;
+  alternateScreenWasEnabled: boolean;
+  alternateScreenWasRestored: boolean;
+};
+
 export type TuiPtyOptions = {
   cwd: string;
   args: readonly string[];
@@ -35,6 +44,12 @@ export class TuiPtyHarness {
   private exitResult: PtyExit | null = null;
   private terminalControlTail = "";
   private enabledMouseTracking = false;
+  private cursorHidden = false;
+  private cursorWasHidden = false;
+  private cursorWasRestored = false;
+  private readonly alternateScreenModes = new Set<string>();
+  private alternateScreenWasEnabled = false;
+  private alternateScreenWasRestored = false;
 
   constructor(options: TuiPtyOptions) {
     const cols = options.cols ?? 100;
@@ -85,6 +100,27 @@ export class TuiPtyHarness {
       ) {
         this.enabledMouseTracking = true;
       }
+      for (const match of controlData.matchAll(/\u001b\[\?(25|47|1047|1049)([hl])/g)) {
+        const mode = match[1];
+        if (!mode) continue;
+        const enabled = match[2] === "h";
+        if (mode === "25") {
+          this.cursorHidden = !enabled;
+          this.cursorWasHidden ||= !enabled;
+          this.cursorWasRestored ||= enabled && this.cursorWasHidden;
+        } else {
+          if (enabled) {
+            this.alternateScreenModes.add(mode);
+          } else {
+            this.alternateScreenModes.delete(mode);
+          }
+          this.alternateScreenWasEnabled ||= enabled;
+          this.alternateScreenWasRestored ||=
+            !enabled &&
+            this.alternateScreenWasEnabled &&
+            this.alternateScreenModes.size === 0;
+        }
+      }
       this.terminalControlTail = controlData.slice(-16);
       this.terminal.write(data);
     });
@@ -120,6 +156,17 @@ export class TuiPtyHarness {
 
   mouseTrackingWasEnabled(): boolean {
     return this.enabledMouseTracking;
+  }
+
+  terminalModes(): TerminalModeSnapshot {
+    return {
+      cursorHidden: this.cursorHidden,
+      cursorWasHidden: this.cursorWasHidden,
+      cursorWasRestored: this.cursorWasRestored,
+      alternateScreen: this.alternateScreenModes.size > 0,
+      alternateScreenWasEnabled: this.alternateScreenWasEnabled,
+      alternateScreenWasRestored: this.alternateScreenWasRestored,
+    };
   }
 
   viewport(): string {

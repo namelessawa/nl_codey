@@ -43,9 +43,9 @@ surface is not implemented and is not advertised.
 | Below 60x20 and dynamic resize | Explicit size warning, retained prompt/modal ownership, recovery after growth | Pass |
 | Dark / light themes | Theme render fixtures | Pass |
 | Reduced animation | The TUI has no animation or motion subsystem | N/A |
-| No-Unicode-font fallback | No ASCII-only product mode is implemented | Open |
+| No-Unicode-font fallback | A Unicode-capable terminal font is required; no ASCII-only rendering mode is advertised | Explicitly unsupported |
 | Windows Terminal + PowerShell | Real local Windows ConPTY gates launch through PowerShell | Pass automated; release-candidate human check pending |
-| `cmd.exe` | No committed compatibility evidence or product support statement | Open |
+| `cmd.exe` | The supported interactive host is Windows Terminal with PowerShell; legacy Console Host / `cmd.exe` is not a release target | Explicitly unsupported |
 
 This file is an evidence ledger, not a blanket completion claim. Open and
 Partial cells remain release blockers until implemented, explicitly unsupported,

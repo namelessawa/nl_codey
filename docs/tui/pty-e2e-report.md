@@ -37,6 +37,7 @@ tests and the separate five-cycle crash soak remain mandatory.
 | 11. Resize | `pnpm test:tui:render` covers 120x40, 100x30, 80x24 and 60x20; real ConPTY hides trace below 80 columns, shows compact status/size chrome below 60x20 and restores the full frame after growth | Pass |
 | Prompt editing | `pnpm test:tui:pty` sends bracketed multiline CJK paste, Escape, Home/End/Left/forward Delete, recognizes PageUp/PageDown without changing the draft, resizes a live draft through 50x16 and back to 60x20, recalls history and repeats `/help` | Pass |
 | Mouse boundary | `/help` labels terminal-native wheel scrollback Experimental and clicks/input capture unsupported. The real lifecycle harness scans split terminal output and proves no known mouse tracking enable sequence was emitted before clean exit | Pass (explicit unsupported contract) |
+| Terminal modes | The harness tracks split DEC private-mode sequences. Normal `/exit` and idle Ctrl+C both observe cursor hide followed by cursor show, finish with the cursor visible, and prove the application never enters alternate-screen mode | Pass |
 | 12. Crash recovery | The process is killed at patch approval; restart links SQLite Run to JSONL Session, marks it interrupted once, and leaves the patch absent | Pass |
 | Crash-tail soak | `pnpm test:tui:crash-soak` repeats approval termination/recovery five times; every root PID exits within the bound, recovery is visible, normal exit succeeds, and the fixture directory is immediately removable | Pass |
 

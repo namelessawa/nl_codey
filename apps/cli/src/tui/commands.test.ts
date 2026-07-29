@@ -66,6 +66,37 @@ describe("[tui] command registry", () => {
       kind: "unknown",
       raw: "/trace two",
     });
+    expect(parseCommand("/skills-generate")).toEqual({
+      kind: "skills-generate",
+      description: "",
+    });
+  });
+
+  it.each([
+    ["/exit now", "/exit now"],
+    ["/help extra", "/help extra"],
+    ["/workspaces extra", "/workspaces extra"],
+    ["/settings extra", "/settings extra"],
+    ["/init --force extra", "/init --force extra"],
+    ["/init --unknown", "/init --unknown"],
+    ["/skills extra", "/skills extra"],
+    ["/sessions extra", "/sessions extra"],
+    ["/tree extra", "/tree extra"],
+    ["/branch message session extra", "/branch message session extra"],
+    ["/rollback run-1 extra", "/rollback run-1 extra"],
+    ["/provider extra", "/provider extra"],
+    ["/不存在 参数", "/不存在 参数"],
+  ])("rejects malformed exact-arity command %s", (input, raw) => {
+    expect(parseCommand(input)).toEqual({ kind: "unknown", raw });
+  });
+
+  it("preserves bounded long CJK descriptions without splitting code points", () => {
+    const description = "审".repeat(4_096);
+
+    expect(parseCommand(`/skills-generate ${description}`)).toEqual({
+      kind: "skills-generate",
+      description,
+    });
   });
 
   it("filters command suggestions case-insensitively", () => {
