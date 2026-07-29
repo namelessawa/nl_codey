@@ -9,7 +9,7 @@
 
 - Catalogued slash commands: 19
 - Parser alias groups: 18
-- Keyboard/input actions: 23
+- Keyboard/input actions: 24
 - Keyboard rows without test identifiers: 0
 - Modal routes: 3
 - Mouse implementation discovered: no
@@ -45,6 +45,7 @@
 | --- | --- | --- | --- |
 | Global | Ctrl+C | Cancel an active run; an empty idle prompt exits | apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
 | Terminal | Resize below 80 columns | Reflow the frame and hide the trace panel | apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
+| Terminal | Resize below 60x20 | Replace the full frame with a size warning while retaining input ownership | apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
 | Prompt | Enter | Submit once as a task or slash command; ignore blank/whitespace input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - command/plain and duplicate-submit guards |
 | Prompt | Backspace/Delete/Ctrl+H/BS/DEL | Erase one Unicode code point before or at the cursor | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - Windows DEL and CJK editing |
 | Prompt | Left/Right | Move the Unicode code-point cursor one position | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - CJK cursor editing; apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |

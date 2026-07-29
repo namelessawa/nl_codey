@@ -35,7 +35,7 @@ that the functional modules are unusable.
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, complete generated input inventory, render, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Full terminal-size matrix, read-only-analysis workflow and explicit mouse disposition remain incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, complete generated input inventory and terminal-size matrix, render, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Read-only-analysis workflow, malformed-session UX breadth and explicit mouse disposition remain incomplete | Functional |
 
 ## Core
 

@@ -8,6 +8,13 @@ const read = (...parts) => fs.readFileSync(rel(...parts), "utf8");
 
 const commandSource = read("apps", "cli", "src", "tui", "commands.ts");
 const appSource = read("apps", "cli", "src", "tui", "ink-tui.tsx");
+const terminalLayoutSource = read(
+  "apps",
+  "cli",
+  "src",
+  "tui",
+  "terminal-layout.ts",
+);
 const promptSource = read("apps", "cli", "src", "tui", "prompt.tsx");
 const promptEditorSource = read(
   "apps",
@@ -254,7 +261,8 @@ function requirePattern(source, pattern, label) {
 
 const keyboardRows = [
   ["Global", "Ctrl+C", appSource, /key\.ctrl\s*&&\s*input\s*===\s*"c"[\s\S]*loop\.isRunning/, "Cancel an active run; an empty idle prompt exits"],
-  ["Terminal", "Resize below 80 columns", appSource, /stdout\.on\("resize"[\s\S]*width\s*<\s*NARROW_BREAKPOINT/, "Reflow the frame and hide the trace panel"],
+  ["Terminal", "Resize below 80 columns", `${appSource}\n${terminalLayoutSource}`, /stdout\.on\("resize"[\s\S]*NARROW_TERMINAL_COLUMNS/, "Reflow the frame and hide the trace panel"],
+  ["Terminal", "Resize below 60x20", terminalLayoutSource, /MIN_TERMINAL_COLUMNS[\s\S]*MIN_TERMINAL_ROWS[\s\S]*isTooSmall/, "Replace the full frame with a size warning while retaining input ownership"],
   ["Prompt", "Enter", promptSource, /case\s+"submit"[\s\S]*submitPrompt/, "Submit once as a task or slash command; ignore blank/whitespace input"],
   ["Prompt", "Backspace/Delete/Ctrl+H/BS/DEL", promptEditorSource, /DELETE_SEQUENCES[\s\S]*case\s+"backspace"[\s\S]*case\s+"delete"/, "Erase one Unicode code point before or at the cursor"],
   ["Prompt", "Left/Right", promptImplementationSource, /LEFT_SEQUENCES[\s\S]*RIGHT_SEQUENCES[\s\S]*case\s+"left"[\s\S]*case\s+"right"/, "Move the Unicode code-point cursor one position"],
@@ -331,6 +339,8 @@ const promptUnitTestLabel =
 const ptyEvidenceReady =
   ptyTestSource.includes('describeWindows("[tui-pty] Windows PTY lifecycle"') &&
   ptyTestSource.includes("renders, resizes, completes /help and exits cleanly") &&
+  ptyTestSource.includes("Terminal 59x19 is too small.") &&
+  ptyTestSource.includes("Terminal 50x16 is too small.") &&
   ptyTestSource.includes("turns idle Ctrl+C into deterministic process cleanup") &&
   ptyTestSource.includes(
     "edits Unicode paste, preserves a draft across resize and recalls history",
@@ -383,7 +393,8 @@ const keyboardInventoryRows = keyboardRows.map(
     const ptyEvidence =
       ptyEvidenceReady &&
       ((surface === "Global" && key === "Ctrl+C") ||
-        (surface === "Terminal" && key === "Resize below 80 columns") ||
+        (surface === "Terminal" &&
+          ["Resize below 80 columns", "Resize below 60x20"].includes(key)) ||
         (surface === "Prompt" &&
           ["Left/Right", "Home/End", "Up/Down", "Text / bracketed paste"].includes(
             key,

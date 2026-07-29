@@ -124,3 +124,17 @@ Reason: the provider evidence reproduced a dropped first Ctrl+U immediately
 after the modal advanced to its URL field. An inline handler made Ink
 unsubscribe and resubscribe on each render, leaving a short input gap. A stable
 registration fixes the product behavior rather than teaching tests to retry.
+
+## D-012 - Keep the prompt mounted below minimum terminal size
+
+Date: 2026-07-29
+
+Decision: treat 60x20 as the supported full-frame boundary. If either
+dimension is smaller, replace only the header/live-body pair with compact
+status and resize guidance; keep the Prompt and any blocking modal mounted in
+their original sibling positions.
+
+Reason: a resize fallback that conditionally remounts the whole application
+would discard drafts or approval ownership precisely when terminal geometry is
+unstable. Separating the pure size contract from the frame preserves state and
+makes all documented boundaries directly render-testable.

@@ -68,6 +68,22 @@ describeWindows("[tui-pty] Windows PTY lifecycle", () => {
       (screen) => screen.includes("NL_Codey") && !screen.includes("trace"),
     );
 
+    session.resize(59, 19);
+    await session.waitForScreen(
+      (screen) =>
+        screen.includes("Terminal 59x19 is too small.") &&
+        screen.includes("idle") &&
+        !screen.includes("trace"),
+    );
+
+    session.resize(120, 40);
+    await session.waitForScreen(
+      (screen) =>
+        screen.includes("NL_Codey") &&
+        screen.includes("trace") &&
+        !screen.includes("is too small"),
+    );
+
     session.write("/he");
     await session.waitForScreen((screen) => screen.includes("command palette"));
     session.write("\t");
@@ -134,9 +150,18 @@ describeWindows("[tui-pty] Windows PTY lifecycle", () => {
     await session.waitForScreen((screen) =>
       screen.split("\n").some((line) => line.includes("❯ helpX")),
     );
-    session.resize(60, 24);
+    session.resize(50, 16);
     await session.waitForScreen(
       (screen) =>
+        screen.includes("Terminal 50x16 is too small.") &&
+        !screen.includes("trace") &&
+        screen.split("\n").some((line) => line.includes("❯ helpX")),
+    );
+
+    session.resize(60, 20);
+    await session.waitForScreen(
+      (screen) =>
+        !screen.includes("is too small") &&
         !screen.includes("trace") &&
         screen.split("\n").some((line) => line.includes("❯ helpX")),
     );

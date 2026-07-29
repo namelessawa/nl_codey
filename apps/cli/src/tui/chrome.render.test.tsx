@@ -6,6 +6,12 @@ import { Footer } from "./footer.js";
 import { Header } from "./header.js";
 import { LiveAgent } from "./live-agent.js";
 import { MessageStream } from "./message-stream.js";
+import { TerminalFrame } from "./terminal-frame.js";
+import {
+  deriveTerminalLayout,
+  MIN_TERMINAL_COLUMNS,
+  MIN_TERMINAL_ROWS,
+} from "./terminal-layout.js";
 import { ThemeProvider } from "./theme-context.js";
 import { Trace } from "./trace.js";
 import type { TraceItem } from "./use-loop.js";
@@ -117,5 +123,71 @@ describe("[tui-render] chrome and live state", () => {
     expect(frame).toContain("[REDACTED]");
     expect(frame).toContain("[USER_HOME]");
     expect(frame).not.toMatch(/tui-secret|alice/);
+  });
+
+  it("renders the documented 120x40 through 60x20 size matrix", () => {
+    const sizes = [
+      [120, 40, true],
+      [100, 30, true],
+      [80, 24, true],
+      [60, 20, false],
+    ] as const;
+    const renderFrame = (columns: number, rows: number) => (
+      <ThemeProvider initial="mono">
+        <TerminalFrame
+          layout={deriveTerminalLayout(columns, rows)}
+          workspaceRoot="E:\\projects\\nl-codey"
+          dataRoot="C:\\Users\\tester\\.nlc"
+          status="idle"
+          isRunning={false}
+          liveAgent={null}
+          trace={[]}
+          showIdleHint
+        />
+      </ThemeProvider>
+    );
+    const view = render(renderFrame(sizes[0][0], sizes[0][1]));
+
+    for (const [columns, rows, traceVisible] of sizes) {
+      view.rerender(renderFrame(columns, rows));
+      const frame = plain(view.lastFrame());
+      expect(frame).toContain("NL_Codey");
+      expect(frame).toContain("(no messages yet");
+      expect(frame).not.toContain("is too small");
+      expect(frame.includes("trace")).toBe(traceVisible);
+    }
+  });
+
+  it("uses a height-aware fallback below 60x20 and recovers at the boundary", () => {
+    const renderFrame = (columns: number, rows: number) => (
+      <ThemeProvider initial="mono">
+        <TerminalFrame
+          layout={deriveTerminalLayout(columns, rows)}
+          workspaceRoot="E:\\projects\\nl-codey"
+          dataRoot="C:\\Users\\tester\\.nlc"
+          status="tool_use"
+          isRunning
+          liveAgent={null}
+          trace={[]}
+          showIdleHint={false}
+        />
+      </ThemeProvider>
+    );
+    const view = render(renderFrame(MIN_TERMINAL_COLUMNS - 1, MIN_TERMINAL_ROWS));
+
+    let frame = plain(view.lastFrame());
+    expect(frame).toContain("Terminal 59x20 is too small.");
+    expect(frame).toContain("tool_use");
+    expect(frame).toContain("Resize to at least 60x20");
+    expect(frame).not.toContain("trace");
+
+    view.rerender(renderFrame(MIN_TERMINAL_COLUMNS, MIN_TERMINAL_ROWS - 1));
+    frame = plain(view.lastFrame());
+    expect(frame).toContain("Terminal 60x19 is too small.");
+
+    view.rerender(renderFrame(MIN_TERMINAL_COLUMNS, MIN_TERMINAL_ROWS));
+    frame = plain(view.lastFrame());
+    expect(frame).not.toContain("is too small");
+    expect(frame).toContain("NL_Codey");
   });
 });

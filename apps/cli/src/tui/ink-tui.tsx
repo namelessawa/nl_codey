@@ -35,15 +35,12 @@
 import React from "react";
 import { useEffect, useState } from "react";
 import path from "node:path";
-import { Box, Text, render, useApp, useInput, useStdout } from "ink";
+import { Box, render, useApp, useInput, useStdout } from "ink";
 import { nlcRoot } from "@nlc/shared";
 import { loadSkills } from "@nlc/agent-core";
-import { ThemeProvider, useAnimatedBorder, useTheme } from "./theme-context.js";
+import { ThemeProvider, useTheme } from "./theme-context.js";
 import { THEMES, type ThemeName } from "./theme.js";
-import { Header } from "./header.js";
 import { MessageStream } from "./message-stream.js";
-import { LiveAgent } from "./live-agent.js";
-import { Trace } from "./trace.js";
 import { Prompt } from "./prompt.js";
 import { Approval } from "./approval.js";
 import { Footer } from "./footer.js";
@@ -64,10 +61,8 @@ import {
   upsertProvider,
   type StoredProvider,
 } from "../lib/provider-store.js";
-
-const NARROW_BREAKPOINT = 80;
-/** Live-frame body height — keeps the prompt row anchored. */
-const LIVE_BODY_HEIGHT = 14;
+import { TerminalFrame } from "./terminal-frame.js";
+import { deriveTerminalLayout } from "./terminal-layout.js";
 
 export type TuiOptions = {
   workspaceRoot?: string;
@@ -80,15 +75,16 @@ export type TuiOptions = {
 function InnerApp(opts: TuiOptions) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const { setThemeName, themeName, palette } = useTheme();
-  const headerBorder = useAnimatedBorder(0);
-  const liveBorder = useAnimatedBorder(1);
+  const { setThemeName, themeName } = useTheme();
   const loop = useLoop({
     ...(opts.workspaceRoot !== undefined ? { workspaceRoot: opts.workspaceRoot } : {}),
     ...(opts.dataRoot !== undefined ? { dataRoot: opts.dataRoot } : {}),
     ...(opts.autoApprove !== undefined ? { autoApprove: opts.autoApprove } : {}),
   });
-  const [width, setWidth] = useState(stdout.columns ?? 100);
+  const [terminalSize, setTerminalSize] = useState(() => ({
+    columns: stdout.columns,
+    rows: stdout.rows,
+  }));
   const [pendingSkill, setPendingSkill] = useState<PendingSkill | null>(null);
   const [skillBusy, setSkillBusy] = useState(false);
   // Provider picker — `null` means closed; non-null means the modal is mounted
@@ -99,7 +95,8 @@ function InnerApp(opts: TuiOptions) {
   } | null>(null);
 
   useEffect(() => {
-    const update = (): void => setWidth(stdout.columns ?? 100);
+    const update = (): void =>
+      setTerminalSize({ columns: stdout.columns, rows: stdout.rows });
     stdout.on("resize", update);
     return () => {
       stdout.off("resize", update);
@@ -463,8 +460,10 @@ function InnerApp(opts: TuiOptions) {
     loop.appendSystem("/skills-generate cancelled.", "skills");
   };
 
-  const isNarrow = width < NARROW_BREAKPOINT;
-  const showLiveAgent = !!loop.liveAgent;
+  const terminalLayout = deriveTerminalLayout(
+    terminalSize.columns,
+    terminalSize.rows,
+  );
   const showIdleHint = loop.stream.length === 0 && !loop.liveAgent && !loop.isRunning;
   const hasBlockingModal = !!loop.pendingApproval || !!pendingSkill || !!providerOpen;
 
@@ -476,41 +475,16 @@ function InnerApp(opts: TuiOptions) {
       <MessageStream key={loop.streamVersion} items={loop.stream} />
 
       {/* LIVE FRAME — Ink repaints this region on every state change. */}
-      <Box
-        borderStyle="single"
-        borderLeft={false}
-        borderRight={false}
-        borderColor={headerBorder}
-      >
-        <Header
-          workspaceRoot={loop.workspaceRoot}
-          dataRoot={loop.dataRoot}
-          status={loop.status}
-          isRunning={loop.isRunning}
-        />
-      </Box>
-
-      <Box
-        flexDirection="row"
-        height={LIVE_BODY_HEIGHT}
-        borderStyle="single"
-        borderLeft={false}
-        borderRight={false}
-        borderColor={liveBorder}
-      >
-        <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-          {showLiveAgent ? (
-            <LiveAgent item={loop.liveAgent} />
-          ) : showIdleHint ? (
-            <Box paddingX={1} paddingY={1}>
-              <Text color={palette.textDim}>
-                (no messages yet — type a task below, or `/help` for commands)
-              </Text>
-            </Box>
-          ) : null}
-        </Box>
-        <Trace items={loop.trace} visible={!isNarrow} />
-      </Box>
+      <TerminalFrame
+        layout={terminalLayout}
+        workspaceRoot={loop.workspaceRoot}
+        dataRoot={loop.dataRoot}
+        status={loop.status}
+        isRunning={loop.isRunning}
+        liveAgent={loop.liveAgent}
+        trace={loop.trace}
+        showIdleHint={showIdleHint}
+      />
 
       {loop.pendingApproval ? (
         <Approval

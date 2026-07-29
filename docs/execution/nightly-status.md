@@ -35,6 +35,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 25 | `codex/p1-eval-live-benchmark` | Approved custom-provider live benchmark | Ready for draft review; EVAL-001 closed | 12/13 (92.31%) in 155 seconds; controlled cross-file terminal failure retained; ABI restored |
 | 26 | `codex/p1-tui-prompt-editor` | Unicode prompt state machine and native input contract | Ready for draft review; TUI-PROMPT-001 closed | 13 TUI unit, 15 render and 3 real ConPTY lifecycle/prompt assertions pass |
 | 27 | `codex/p1-tui-input-inventory` | Complete generated modal/input evidence | Ready for draft review; TUI-INV-001 closed | 17 Ink render assertions; 23/23 generated input rows have test identifiers |
+| 28 | `codex/p1-tui-minimum-layout` | Full terminal-size matrix and height-aware fallback | Ready for draft review; TUI-RENDER-001 and TUI-MIN-001 closed | Full offline gate green; 19 Ink render and 3 real ConPTY lifecycle/prompt assertions pass |
 
 ## Work log
 
@@ -760,15 +761,38 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - Rollback removes the two interaction cases and restores inline modal input
   handlers; no provider configuration or generated skill is written by tests.
 
+### 2026-07-29 - Complete TUI terminal-size matrix
+
+- Added one pure terminal-layout contract with a supported full-frame minimum
+  of 60x20. The documented 120x40, 100x30, 80x24 and 60x20 sizes retain the
+  normal frame; either dimension below the boundary renders compact status and
+  resize guidance.
+- Kept Prompt and blocking modal routes outside the conditional frame, so
+  resizing cannot remount the editor or transfer approval/configuration input
+  ownership. The normal frame returns immediately after the terminal grows.
+- Ink render evidence now covers the full matrix, 59x20 and 60x19 fallbacks,
+  and recovery at exactly 60x20. Native ConPTY covers 59x19 warning, recovery
+  at 120x40, and a live `helpX` draft across 50x16 to 60x20.
+- Focused verification passed 19/19 Ink render assertions, 3/3 real ConPTY
+  lifecycle/prompt assertions, CLI typecheck and the generated action
+  inventory. The inventory now has 24 input rows and zero missing test IDs.
+- The complete default offline gate passed 632 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 13 TUI unit, 19 render, 3 lifecycle,
+  11 E2E and 13 recovery assertions in 206 seconds. Every native matrix
+  restored and re-verified Electron 33.4.11 / modules 130; root typecheck also
+  passed, followed by a green production build.
+- This batch is entirely offline and does not read `custom.txt`. Rollback
+  restores width-only layout behavior and removes the compact fallback; it
+  does not alter workspaces, sessions or provider settings.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. TUI acceptance still has an incomplete terminal-size/minimum fallback
-   matrix, no explicit read-only-analysis PTY case, broader session invalid
-   input gaps, and no final unsupported-mouse product copy.
+2. TUI acceptance still has no explicit read-only-analysis PTY case, broader
+   session invalid-input gaps, and no final unsupported-mouse product copy.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

@@ -39,15 +39,15 @@ Plugin process isolation is Docker-only, default-off, and documented in
 
 | ID | Work | Acceptance evidence | State |
 | --- | --- | --- | --- |
-| TUI-INV-001 | Generate commands, aliases, keys and modal routes from implementation | `pnpm docs:tui-actions`; CI fails on generated diff or missing handler metadata | Done in Batch 27; 19 commands, 23 keyboard/input actions and 3 modal routes are generated with zero missing test identifiers |
+| TUI-INV-001 | Generate commands, aliases, keys and modal routes from implementation | `pnpm docs:tui-actions`; CI fails on generated diff or missing handler metadata | Done in Batch 27; 19 commands, now 24 keyboard/input actions and 3 modal routes are generated with zero missing test identifiers |
 | TUI-UNIT-001 | Parser, prompt editing, approval, provider and session command unit tests | `pnpm test:tui:unit` green with invalid/missing/long/CJK cases | In progress; prompt and all generated input rows pass, while broader session invalid/missing-input breadth remains |
-| TUI-RENDER-001 | Ink component/state/size/theme/ANSI frame tests | `pnpm test:tui:render` covers 120x40, 100x30, 80x24, 60x20 and minimum-size fallback | In progress; component/ANSI coverage passes, but the full size/minimum matrix is not yet complete |
+| TUI-RENDER-001 | Ink component/state/size/theme/ANSI frame tests | `pnpm test:tui:render` covers 120x40, 100x30, 80x24, 60x20 and minimum-size fallback | Done in Batch 28; the complete size matrix, ANSI normalization and both dimension fallbacks pass |
 | TUI-PTY-001 | Windows ConPTY harness with stable key send, resize, frame capture and cleanup | `pnpm test:tui:pty`; real keys and resize, cursor/mouse/alternate-screen restored | In progress; 3 lifecycle/prompt journeys and five-cycle crash soak pass, while mouse is explicitly unsupported |
 | TUI-E2E-001 | Implement the 14 Goal v2 PTY scenarios | `pnpm test:tui:e2e`; sanitized evidence report with no orphan processes | In progress; 11 native agent/session cases plus 3 lifecycle/prompt cases pass, but the read-only-analysis scenario and remaining public actions still need explicit evidence |
 | TUI-PROMPT-001 | Complete cursor/Home/End/history/paste/control-character semantics | Unit + PTY evidence; input survives resize and modal focus | Done in Batch 26; pure state machine, Ink ownership tests and real ConPTY Unicode/paste/resize/history journey pass |
 | TUI-SESSION-001 | Interactive session list/tree/resume/branch and recovery | Lineage and restart E2E; corrupt/partial JSONL visible but non-fatal | Open |
 | TUI-MOUSE-001 | Either implement and test mouse lifecycle or label unsupported | Mouse matrix and PTY cleanup evidence, or explicit unsupported product copy | Open |
-| TUI-MIN-001 | Add height-aware minimum terminal fallback | No layout corruption; prompt/status retained or explicit size warning | Open |
+| TUI-MIN-001 | Add height-aware minimum terminal fallback | No layout corruption; prompt/status retained or explicit size warning | Done in Batch 28; below 60x20 uses compact status/size chrome while Prompt and blocking modals remain mounted |
 
 ## P1/P2 - runtime, intelligence and product completion
 
