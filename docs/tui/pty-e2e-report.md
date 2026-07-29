@@ -18,7 +18,7 @@ no output bytes with system ConPTY, the bundled ConPTY DLL, or winpty. The
 hosted workflows therefore set the explicit `NLC_SKIP_NATIVE_PTY=1` capability
 flag. They still run the deterministic TUI unit/render suites and every other
 default, integration, package, and installer gate. Interactive and self-hosted
-Windows validation must leave the flag unset so the default seventeen native PTY
+Windows validation must leave the flag unset so the default eighteen native PTY
 tests and the separate five-cycle crash soak remain mandatory.
 
 | Document scenario | Evidence in the current gate | Result |
@@ -30,6 +30,7 @@ tests and the separate five-cycle crash soak remain mandatory.
 | Command approve / reject | A whitelisted command stays pending until `y`, then persists command/exit audit output; `n` reaches `cancelled` with no command step | Pass |
 | Budget exhaustion | A one-iteration fixture reaches `budget_exceeded`, displays `max_iterations`, persists the exit reason, makes no patch, and returns prompt control | Pass |
 | 9. Provider configuration | `/provider` selects OpenAI with a synthetic key and a loopback endpoint that returns HTTP 400. The first Run persists `failed`; after restart the modal reloads the invalid setting, corrects only its endpoint, preserves the masked key, and a new Run receives deterministic SSE. The stub records `/v1/chat/completions`, Bearer auth, `gpt-4o` and `stream: true`; SQLite/JSONL persist the two model changes and the second `done` Run without displaying the key | Pass |
+| Settings and Skill install | `/settings` renders the loopback provider/model/base URL, language and only “from environment” for the synthetic key. `/skills-generate` opens the real picker; Down then Up changes the target, no file exists before Enter, and project confirmation sends one `stream: false` completion to the local stub. The generated file appears only under project `.nlc/skills`, exact bytes match the validated response, `/skills` discovers it, and neither screen nor scrollback contains the key | Pass |
 | 13. Dynamic-tool construction failure | An explicit CLI service-composition fixture throws a multiline dynamic-tool factory error containing a forged Bearer token and the current user home. The real AgentService records one single-line `[security]` step; TUI, SQLite and JSONL contain only `[REDACTED]` / `[USER_HOME]`, the base agent degrades to `done`, and the prompt remains usable | Pass |
 | 14. Large output / scrollback | A public `read_file` returns a 10 KB fixture; SQLite retains at most 4,000 characters with `…(truncated)` and omits the tail. The response then renders 320 numbered message rows: native xterm navigation recovers row 1, bottom restore shows row 320, SQLite/JSONL retain all rows, and `/help` remains usable. Pure reducer tests separately prove 500 stream-item and 200 trace-item memory bounds | Pass |
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
@@ -48,7 +49,7 @@ drives restart, diagnostics and continued input through the public TUI.
 Approval and rollback evidence similarly observes the workspace before and
 after public key/command input.
 
-All exact Goal v2 TUI scenarios now have native PTY or named render evidence.
-Session multilevel/cross-parent and nonexistent-id breadth is closed. Remaining
-UI-state cells and release-candidate manual verification remain separate
-product-completion work.
+All exact Goal v2 TUI scenarios and implemented UI-state cells now have native
+PTY or named render/unit evidence. Session multilevel/cross-parent and
+nonexistent-id breadth is closed. Release-candidate manual verification remains
+separate product-completion work.

@@ -21,16 +21,16 @@ surface is not implemented and is not advertised.
 | Budget information | Normal budget and explicit `budget_exceeded` reason | `chrome.render.test.tsx`; budget E2E | Pass |
 | Prompt input | Empty, plain/CJK/multiline/long input, cursor editing, history, PageUp/PageDown safe no-op, modal/run ownership, resize preservation | `prompt-editor.test.ts`; `inputs.render.test.tsx`; ConPTY prompt journeys | Pass |
 | Footer shortcuts | Wide and narrow shortcut copy; modal input supersedes prompt | `chrome.render.test.tsx`; `inputs.render.test.tsx` | Pass |
-| Status notifications | Idle, running, done, failed, cancelled, interrupted, budget exceeded | render and core workflow E2E suites | Pass for current runtime states; shared FSM taxonomy remains open |
-| Error notifications | Provider HTTP error, policy refusal, redacted security failure | read-only, provider and dynamic-tool E2E cases | Pass for covered error classes; shared typed error taxonomy remains open |
+| Status notifications | Idle, running, done, failed, cancelled, interrupted, budget exceeded | render and core workflow E2E suites; shared lifecycle tests | Pass |
+| Error notifications | Provider/configuration, model protocol, policy, verification, tool, storage and interrupted-restart codes | shared lifecycle tests; read-only, provider and dynamic-tool E2E cases | Pass |
 | Approval interface | Patch/command pending, approve, reject, rollback and input blocking | `inputs.render.test.tsx`; patch/command E2E cases | Pass |
 | Provider picker modal | Open, navigate, edit, cancel, save, invalid Run, reload/correct/save, focus return | `inputs.render.test.tsx`; provider E2E | Pass |
-| Skill install picker modal | Navigate, confirm, Escape/Q cancel, busy input ownership | `inputs.render.test.tsx` | Partial: no native PTY install journey |
+| Skill install picker modal | Navigate, confirm, Escape/Q cancel, busy input ownership, install-target write boundary and catalogue refresh | `inputs.render.test.tsx`; native settings/skill E2E | Pass |
 | Tab bars | No public tab-bar component or route is implemented | generated `action-inventory.md` | N/A; must be added to discovery if introduced |
 | Session tree | `/sessions` and `/tree` append stream views; resume/branch/restart lineage; multilevel and explicit cross-parent branches; invalid resume/session/message targets preserve the active writer; corrupt/partial diagnostics; resumed append isolation; visible write failure; contained resume/show and collision isolation | session core tests; native session E2E | Pass |
 | Help view | Generated command catalogue plus explicit mouse support boundary | `commands.test.ts`; ConPTY `/help` journey | Pass |
-| Settings view | `/settings` appends resolved non-secret settings; `/model` and `/think` disclose current limitations | command registry tests | Partial: no interactive settings modal or full setting matrix |
-| Feature-specific panels | Current Provider and Skill pickers are inventoried above | generated `action-inventory.md` | Partial: future panels must enter discovery and evidence gates |
+| Settings view | `/settings` appends resolved non-secret settings; `/provider` owns TUI provider editing; `/model` and `/think` disclose current limitations | command registry tests; native settings/skill E2E | Pass for the supported command view; a generic TUI settings editor is not shipped or advertised |
+| Feature-specific panels | Current Provider and Skill pickers are inventoried above | generated `action-inventory.md` | N/A; no additional panel is shipped, and future panels must enter discovery/evidence gates |
 
 ## Cross-cutting state axes
 
@@ -47,6 +47,6 @@ surface is not implemented and is not advertised.
 | Windows Terminal + PowerShell | Real local Windows ConPTY gates launch through PowerShell | Pass automated; release-candidate human check pending |
 | `cmd.exe` | The supported interactive host is Windows Terminal with PowerShell; legacy Console Host / `cmd.exe` is not a release target | Explicitly unsupported |
 
-This file is an evidence ledger, not a blanket completion claim. Open and
-Partial cells remain release blockers until implemented, explicitly unsupported,
-or covered by repeatable manual evidence.
+This file is an evidence ledger, not a blanket release claim. Every implemented
+automated UI-state cell now has named evidence or an explicit unsupported/N/A
+boundary. Release-candidate human verification remains a separate gate.

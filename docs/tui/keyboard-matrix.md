@@ -33,7 +33,7 @@ dimensions and explicitly records every required key's supported disposition.
 | Prompt | Plain text, CJK, bounded multiline bracketed paste, control filtering | unit, Ink render and native ConPTY prompt tests | Pass |
 | Approval | `Y` approves; `N` or `Q` rejects | render and patch/command E2E | Pass |
 | Provider picker | Up/Down, Enter, Escape; field editing keys | render and provider E2E | Pass |
-| Skill install picker | Up/Down, Enter, Escape/Q | Ink render tests | Pass at component level |
+| Skill install picker | Up/Down, Enter, Escape/Q | Ink render plus native settings/skill E2E | Pass |
 | Terminal | Resize across 120x40, 100x30, 80x24, 60x20 and below minimum | render and native ConPTY | Pass |
 
 All fifteen required key groups have committed automated evidence. PageUp and

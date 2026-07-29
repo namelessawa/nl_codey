@@ -61,6 +61,25 @@ const ptyTestPath = rel(
 const ptyTestSource = fs.existsSync(ptyTestPath)
   ? fs.readFileSync(ptyTestPath, "utf8")
   : "";
+const coreE2eTestPath = rel(
+  "apps",
+  "cli",
+  "src",
+  "tui",
+  "core-workflows.e2e.pty.test.ts",
+);
+const coreE2eTestSource = fs.existsSync(coreE2eTestPath)
+  ? fs.readFileSync(coreE2eTestPath, "utf8")
+  : "";
+const skillSettingsE2eReady =
+  coreE2eTestSource.includes(
+    "shows safe settings and installs a generated skill after a native target choice",
+  ) &&
+  coreE2eTestSource.includes("api key:   from environment") &&
+  coreE2eTestSource.includes('generated skill "log-audit" (project)') &&
+  coreE2eTestSource.includes('await enter(session, "/skills")');
+const skillSettingsE2eTestLabel =
+  "apps/cli/src/tui/core-workflows.e2e.pty.test.ts ([tui-e2e] settings + skill install)";
 
 function discoverTestFiles(directory) {
   if (!fs.existsSync(directory)) return [];
@@ -247,6 +266,16 @@ const commandRows = commandSpecs.map((spec) => {
   }
   const metadata = effectMetadata[parser.effect];
   if (!metadata) throw new Error(`Missing inventory metadata for effect: ${parser.effect}`);
+  const evidence = [];
+  if (commandRegistryCovered) {
+    evidence.push("apps/cli/src/tui/commands.test.ts ([tui] registry/parser)");
+  }
+  if (
+    skillSettingsE2eReady &&
+    ["show-settings", "skills-generate", "list-skills"].includes(parser.effect)
+  ) {
+    evidence.push(skillSettingsE2eTestLabel);
+  }
   return {
     action: spec.name,
     entry: "Prompt",
@@ -254,9 +283,7 @@ const commandRows = commandSpecs.map((spec) => {
       .map((alias) => `/${alias}`)
       .join(", "),
     ...metadata,
-    test: commandRegistryCovered
-      ? "apps/cli/src/tui/commands.test.ts ([tui] registry/parser)"
-      : "None",
+    test: evidence.length > 0 ? evidence.join("; ") : "None",
   };
 });
 
@@ -416,6 +443,13 @@ const keyboardInventoryRows = keyboardRows.map(
             "Text / bracketed paste",
           ].includes(key)));
     if (ptyEvidence) evidence.push(ptyTestLabel);
+    if (
+      skillSettingsE2eReady &&
+      surface === "Skill install picker" &&
+      ["Up/Down", "Enter"].includes(key)
+    ) {
+      evidence.push(skillSettingsE2eTestLabel);
+    }
     return [surface, key, result, evidence.length > 0 ? evidence.join("; ") : "None"];
   },
 );
@@ -438,11 +472,15 @@ const modalTable = table(
     const modalCovered =
       inputEvidenceReady &&
       ["Approval", "ProviderPicker", "SkillInstallPicker"].includes(name);
+    const evidence = modalCovered ? [inputRenderTestLabel] : [];
+    if (name === "SkillInstallPicker" && skillSettingsE2eReady) {
+      evidence.push(skillSettingsE2eTestLabel);
+    }
     return [
       name,
       pathByName[name] ?? "Discovered in InnerApp JSX",
       "Modal blocks global/prompt input",
-      modalCovered ? inputRenderTestLabel : "None",
+      evidence.length > 0 ? evidence.join("; ") : "None",
     ];
   }),
 );

@@ -13,7 +13,7 @@
 - Keyboard rows without test identifiers: 0
 - Modal routes: 3
 - Mouse implementation discovered: no
-- Committed CLI/TUI Vitest files: 8
+- Committed CLI/TUI Vitest files: 10
 
 ## Slash commands
 
@@ -22,10 +22,10 @@
 | /help | Prompt | /help, /? | Idle prompt | Append command catalogue to the message stream | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /trace [<n>] | Prompt | /trace | At least one recorded tool result; optional one-based position from newest | Append a bounded, redacted request/result detail with context provenance | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /init | Prompt | /init | Writable workspace; --force for replacement | Create or update the project .nlc skeleton | Workspace files | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
-| /skills | Prompt | /skills, /sk | Readable global/project skill roots | Append discovered skills | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
-| /skills-generate <desc> | Prompt | /skills-generate, /skill-gen, /sg | Description; configured LLM; install-target approval | Generate and install a skill | LLM call + project/global files | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /skills | Prompt | /skills, /sk | Readable global/project skill roots | Append discovered skills | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser); apps/cli/src/tui/core-workflows.e2e.pty.test.ts ([tui-e2e] settings + skill install) |
+| /skills-generate <desc> | Prompt | /skills-generate, /skill-gen, /sg | Description; configured LLM; install-target approval | Generate and install a skill | LLM call + project/global files | apps/cli/src/tui/commands.test.ts ([tui] registry/parser); apps/cli/src/tui/core-workflows.e2e.pty.test.ts ([tui-e2e] settings + skill install) |
 | /theme [<name>] | Prompt | /theme, /th | Known theme when an argument is supplied | List themes or switch active theme and record a session event | UI + session event | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
-| /settings | Prompt | /settings, /set | Readable CLI settings | Append resolved non-secret settings | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /settings | Prompt | /settings, /set | Readable CLI settings | Append resolved non-secret settings | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser); apps/cli/src/tui/core-workflows.e2e.pty.test.ts ([tui-e2e] settings + skill install) |
 | /workspaces | Prompt | /workspaces, /ws | Idle prompt | Currently displays an ABI-gap notice instead of workspace data | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /cd <path> | Prompt | /cd | Path argument | Currently reports that workspace switching is not wired | No (scaffold) | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /sessions | Prompt | /sessions, /list-sessions | Readable session store | Append session summaries | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
@@ -66,8 +66,8 @@
 | Provider picker | Enter | Advance or save | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - step advance |
 | Provider picker | Escape | Cancel the picker | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - cancel callback |
 | Provider editor | Backspace/Delete, Ctrl+W, Ctrl+U | Edit the active field | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - field editing |
-| Skill install picker | Up/Down | Move through install targets | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - two-way navigation |
-| Skill install picker | Enter | Confirm the install target | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - target callback |
+| Skill install picker | Up/Down | Move through install targets | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - two-way navigation; apps/cli/src/tui/core-workflows.e2e.pty.test.ts ([tui-e2e] settings + skill install) |
+| Skill install picker | Enter | Confirm the install target | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - target callback; apps/cli/src/tui/core-workflows.e2e.pty.test.ts ([tui-e2e] settings + skill install) |
 | Skill install picker | Escape/Q | Cancel skill generation | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - cancel and busy ownership |
 
 The prompt editor has committed unit, Ink-render and native ConPTY evidence for
@@ -81,7 +81,7 @@ while scrollback remains owned by the terminal.
 | Modal route | Open path | Input ownership | Automated test |
 | --- | --- | --- | --- |
 | Approval | Agent emits patch_ready | Modal blocks global/prompt input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) |
-| SkillInstallPicker | /skills-generate <description> | Modal blocks global/prompt input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) |
+| SkillInstallPicker | /skills-generate <description> | Modal blocks global/prompt input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]); apps/cli/src/tui/core-workflows.e2e.pty.test.ts ([tui-e2e] settings + skill install) |
 | ProviderPicker | /provider | Modal blocks global/prompt input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) |
 
 The help catalogue is appended to the message stream; it is not a modal.

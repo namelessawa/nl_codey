@@ -30,7 +30,7 @@ candidate.
 
 | Area | Evidence | Result |
 | --- | --- | --- |
-| Local quality gate | `pnpm typecheck`, `pnpm build`, then `pnpm test` | Pass; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 ConPTY lifecycle, 13 TUI E2E and 14 recovery assertions |
+| Local quality gate | `pnpm typecheck`, `pnpm build`, then `pnpm test` | Pass; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 ConPTY lifecycle, 14 TUI E2E and 14 recovery assertions |
 | Native storage ABI | Restorative Node test wrappers verify Electron 33.4.11 / modules 130 before and after Node ABI use | Pass; Electron ABI restored |
 | Hosted main-target gate | [PR run 30449422948](https://github.com/namelessawa/nl_codey/actions/runs/30449422948) | Node 22 pass; Node 24 pass; Windows package and installed CLI pass |
 | Hosted artifact path | Job 90568574386 in run 30449422948 | Build, installed CLI smoke, VSIX package/audit, Desktop package/runtime smoke, silent install/uninstall and upload all pass |
@@ -41,6 +41,7 @@ candidate.
 | Plugin boundary | Default-off Docker-only runner with read-only staging, no network, no host credentials and approval-gated returned diff | Adversarial gate pass; no host-user Node fallback |
 | Storage/recovery | Historical migrations, backup-before-upgrade, rollback, interrupted Run/Session reconciliation and restart | Pass |
 | Agent benchmark | Deterministic 13/13, recorded 13/13, approved live 12/13, unsafe refusal 1/1, unsafe regression 0/13, rollback 3/3 | Thresholds pass; the retained live failure is listed below |
+| TUI Settings and Skills | Native ConPTY `/settings`, target-gated `/skills-generate`, exact project-only file write and `/skills` refresh through a loopback protocol stub | Pass; synthetic key is absent from screen/scrollback and no external model/network is used |
 | Diagnostics | Shared bounded/redacted bundle with CLI/headless and main-owned Desktop save dialog | Pass for the documented surface |
 
 The earlier clean hosted Release run
@@ -78,8 +79,9 @@ These are honest supported-scope limits, not completed broader features:
 - VS Code is rated Partial: multi-root execution, Session browsing and rollback
   UI are not shipped, and interactive host verification is open.
 - Desktop is Functional, but a full public-workflow Desktop E2E remains a gap.
-- TUI skill installation lacks a native PTY journey; settings are command-only,
-  not a complete interactive settings panel.
+- TUI settings are intentionally command-scoped: `/settings` is a non-secret
+  read-only view and `/provider` owns provider editing. A generic TUI settings
+  panel is not shipped or advertised; native Settings/Skill evidence passes.
 - “Intelligent Diff” means deterministic approval-gated unified diff plus
   bounded impact context, not a separate AI diff-review product.
 - “Multi-model Router” means explicit provider selection per new Run, not

@@ -20,6 +20,20 @@ const dynamicFailureEntry = fileURLToPath(
 const sessions: TuiPtyHarness[] = [];
 const tempRoots: string[] = [];
 const servers: Server[] = [];
+const GENERATED_SKILL_MARKDOWN = [
+  "---",
+  "name: log-audit",
+  "description: Audit production logs for recurring failures.",
+  "when_to_use: When production logs need a bounded error review.",
+  "---",
+  "",
+  "# Log audit",
+  "",
+  "1. Find bounded error and failure markers.",
+  "2. Group recurring signatures without copying secrets.",
+  "3. Report counts, time bounds, and one next action.",
+  "",
+].join("\n");
 
 type Fixture = {
   root: string;
@@ -91,6 +105,24 @@ async function startProviderStub(): Promise<{
         response.end(
           JSON.stringify({
             error: { message: "invalid local provider configuration" },
+          }),
+        );
+        return;
+      }
+
+      if (body.stream === false) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  role: "assistant",
+                  content: GENERATED_SKILL_MARKDOWN,
+                },
+                finish_reason: "stop",
+              },
+            ],
           }),
         );
         return;
@@ -745,6 +777,99 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await enter(restarted, "/help");
     await restarted.waitForBuffer((output) => output.includes("/rollback"));
     await exit(restarted);
+  });
+
+  it("shows safe settings and installs a generated skill after a native target choice", async () => {
+    const fixture = createFixture();
+    const provider = await startProviderStub();
+    const apiKey = "sk-local-skill-fixture-1234";
+    const description = "audit production logs for recurring failures";
+    fs.writeFileSync(
+      path.join(fixture.dataRoot, "settings.json"),
+      JSON.stringify({
+        llm: {
+          provider: "openai",
+          baseUrl: provider.validBaseUrl,
+          model: "gpt-4o",
+        },
+        ui: { language: "en-US" },
+      }),
+      "utf8",
+    );
+    const session = start(fixture, { NLC_API_KEY: apiKey });
+    const projectSkill = path.join(
+      fixture.workspaceRoot,
+      ".nlc",
+      "skills",
+      "log-audit.md",
+    );
+    const globalSkill = path.join(
+      fixture.dataRoot,
+      "skills",
+      "log-audit.md",
+    );
+
+    await session.waitForScreen((screen) => screen.includes("(idle)"));
+    await enter(session, "/settings");
+    const settingsBuffer = await session.waitForBuffer(
+      (buffer) =>
+        buffer.includes("provider:  openai") &&
+        buffer.includes("model:     gpt-4o") &&
+        buffer.includes(`base url:  ${provider.validBaseUrl}`) &&
+        buffer.includes("api key:   from environment") &&
+        buffer.includes("language:  en-US"),
+    );
+    expect(settingsBuffer).not.toContain(apiKey);
+
+    await enter(session, `/skills-generate ${description}`);
+    await session.waitForScreen(
+      (screen) =>
+        screen.includes("[skill] install target") &&
+        screen.includes(".nlc/skills/") &&
+        screen.includes("project") &&
+        screen.includes("global"),
+    );
+    expect(fs.existsSync(projectSkill)).toBe(false);
+    expect(fs.existsSync(globalSkill)).toBe(false);
+
+    session.write("\x1b[B");
+    await session.waitForScreen((screen) => screen.includes("> global"));
+    session.write("\x1b[A");
+    await session.waitForScreen((screen) => screen.includes("> project"));
+    session.write("\r");
+
+    const installedBuffer = await session.waitForBuffer(
+      (buffer) =>
+        buffer.includes('generated skill "log-audit" (project)') &&
+        buffer.includes("Audit production logs for recurring failures.") &&
+        buffer.includes("agent loop will pick this up on the next task"),
+      20_000,
+    );
+    await waitForFile(projectSkill, true);
+    expect(fs.existsSync(globalSkill)).toBe(false);
+    expect(fs.readFileSync(projectSkill, "utf8")).toBe(
+      GENERATED_SKILL_MARKDOWN.trim(),
+    );
+    expect(installedBuffer).not.toContain(apiKey);
+    expect(provider.requests).toHaveLength(1);
+    expect(provider.requests[0]).toMatchObject({
+      url: "/v1/chat/completions",
+      authorization: `Bearer ${apiKey}`,
+      body: { model: "gpt-4o", stream: false },
+    });
+    expect(JSON.stringify(provider.requests[0]!.body)).toContain(description);
+
+    await enter(session, "/skills");
+    const catalogue = await session.waitForBuffer(
+      (buffer) =>
+        buffer.includes("1 skill discovered") &&
+        buffer.includes("[project]") &&
+        buffer.includes("log-audit") &&
+        buffer.includes("When production logs need a bounded error review."),
+    );
+    expect(catalogue).not.toContain(apiKey);
+
+    await exit(session);
   });
 
   it("redacts a dynamic-tool factory failure in TUI, SQLite, and session log", async () => {
