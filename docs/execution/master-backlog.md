@@ -54,7 +54,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | ID | Work | Acceptance evidence | State |
 | --- | --- | --- | --- |
 | FSM-001 | Shared explicit Run transition table and error taxonomy | Invalid transitions rejected; Desktop/TUI render shared state/error codes | Open |
-| EVAL-001 | Required deterministic, recorded, opt-in live and TUI workflow fixtures | Published scorecard meets Goal thresholds with zero unsafe regression | In progress in Batch 24; `pnpm test:eval` passes all 13 deterministic and recorded-response fixtures (100%), unsafe refusal is 100%, regression is 0%, and the 8-workflow TUI matrix is mapped; approved live benchmark remains unmeasured |
+| EVAL-001 | Required deterministic, recorded, opt-in live and TUI workflow fixtures | Published scorecard meets Goal thresholds with zero unsafe regression | Done in Batches 24-25; deterministic 13/13, recorded 13/13, approved live 12/13 (92.31%), unsafe refusal 100%, regression 0%, rollback 3/3 and TUI workflow 8/8 |
 | CTX-001 | Provenance, impact graph, stale-index and selection-reason surface | Trace/detail output and correctness fixtures | Open |
 | RENDERER-001 | Split browser-safe paths from Node helpers | Renderer/preload tests and packaged runtime smoke | Open |
 | INDEX-001 | Add project-indexer ignore/symlink/binary/language tests | Dedicated suite green | Open |

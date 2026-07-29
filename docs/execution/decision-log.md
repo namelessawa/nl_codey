@@ -85,3 +85,15 @@ Reason: deterministic replay proves runtime behavior and regression stability,
 but it cannot establish provider/model task success. Counting the earlier
 single read-only connectivity smoke as a 100% live benchmark would overstate
 the evidence and collapse two distinct Goal v2 thresholds.
+
+## D-009 - Preserve the first approved live score, including its failure
+
+Date: 2026-07-29
+
+Decision: publish the first complete frozen live run as 12/13 (92.31%). Keep
+`feature-cross-file` as `terminal_state_failed` in the denominator and do not
+rerun selectively to replace it with a pass.
+
+Reason: Goal v2 requires an attributable success rate, not a curated best-of
+result. The observed rate exceeds the >=80% threshold, while retaining the
+failure gives future model/runtime changes a meaningful regression baseline.

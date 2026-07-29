@@ -32,6 +32,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 22 | `codex/p1-tui-large-scrollback` | Native large-output retention and scrollback navigation | Ready for draft review; document behavior matrix closed | 632 unit, 2 lifecycle, 11 E2E and 13 recovery assertions passed |
 | 23 | `codex/p1-tui-crash-soak` | Five-cycle bounded ConPTY crash cleanup | Ready for draft review; TUI crash-tail blocker closed | 5/5 soak, 11 E2E and 13 recovery assertions passed; ABI restored |
 | 24 | `codex/p1-eval-recorded-foundation` | Frozen Headless deterministic/recorded benchmark and scorecard | In progress; offline thresholds pass, approved live threshold remains open | 13/13 deterministic, 13/13 recorded, unsafe refusal 1/1, regression 0%; 17 eval assertions and ABI restore passed |
+| 25 | `codex/p1-eval-live-benchmark` | Approved custom-provider live benchmark | Ready for draft review; EVAL-001 closed | 12/13 (92.31%) in 155 seconds; controlled cross-file terminal failure retained; ABI restored |
 
 ## Work log
 
@@ -680,20 +681,41 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   fixture gate, scorecard and root test entry; disposable SQLite/Git roots are
   deleted by the tests.
 
+### 2026-07-29 - Approved live-model benchmark
+
+- Added the explicit `pnpm test:eval:live` gate. It is absent from default,
+  integration, release and CI commands and loads provider, endpoint, model and
+  key only from the ignored repository-root `custom.txt`.
+- Ran all 13 frozen Headless categories serially against the configured custom
+  provider. Code changes were approval-gated and confined to disposable
+  workspaces; crash recovery used a disposable SQLite database; Git branch,
+  commit and PR-description generation used a temporary local repository with
+  no remote.
+- The first complete run passed 12/13 (92.31%), exceeding the required >=80%.
+  `feature-cross-file` ended with the controlled `terminal_state_failed` code.
+  The failure remains in the published denominator; it was not selectively
+  retried or replaced.
+- Dangerous-request refusal, verification repair, patch-rejection recovery,
+  budget exhaustion, cancel/resume, crash recovery and Git workflow all
+  passed. Console output contained only category names, booleans and controlled
+  reason codes; no raw assistant text, tool arguments, provider error body,
+  endpoint/model value or API key was printed or persisted.
+- The gate passed its threshold assertion in 155 seconds and the restorative
+  wrapper verified Electron 33.4.11 / modules 130 before and after the Node ABI
+  run. Rollback removes only the opt-in test/config/script entry and reopens
+  `EVAL-001`; it cannot revoke the external model usage already incurred.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. `EVAL-LIVE-001` needs an explicitly approved frozen live benchmark using
-   only `custom.txt`; the required >=80% rate is not established by the
-   earlier one-task connectivity smoke.
-3. TUI acceptance still has public prompt/editor actions without committed
+2. TUI acceptance still has public prompt/editor actions without committed
    identifiers, an incomplete terminal-size/minimum fallback matrix, no
    explicit read-only-analysis PTY case, and no final unsupported-mouse product
    copy.
-4. The broader production goal still requires the shared FSM/error taxonomy,
+3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental
    disposition work listed in `docs/execution/master-backlog.md`.

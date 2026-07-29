@@ -28,7 +28,7 @@ are labeled honestly.
 | CI | Named unit/integration/desktop/renderer/preload/CLI/TUI/sandbox/plugin/recovery/eval/E2E gates are green | Named gates and hosted Windows Release pass; main-target Node 22/24/package/dependency/audit jobs remain unproved | In progress |
 | TUI discovery | Commands, aliases, keys, mouse actions, and modals are generated from implementation | `pnpm docs:tui-actions` discovers 19 commands, 19 keyboard actions and 3 modals; rows without tests remain visible | In progress |
 | TUI verification | Unit + render + ANSI frame + Windows ConPTY E2E evidence for every public action/state | Native lifecycle, core workflow, provider/error/scrollback and crash-soak gates pass; prompt semantics, full size matrix, read-only scenario and explicit mouse copy remain | In progress |
-| Agent benchmark | Deterministic 100%, recorded >=95%, approved live >=80%, plus TUI workflows | Committed scorecard records 13/13 deterministic and recorded fixtures, 0 unsafe regressions and 8/8 TUI workflows; live benchmark is not measured | In progress |
+| Agent benchmark | Deterministic 100%, recorded >=95%, approved live >=80%, plus TUI workflows | Scorecard records deterministic 13/13, recorded 13/13, approved live 12/13 (92.31%), 0 unsafe regressions, rollback 3/3 and TUI workflows 8/8 | Complete |
 | Product surfaces | Desktop, TUI, headless eval and VS Code share one runtime and policy | Desktop/TUI share Agent Core; VS Code extension does not exist | Blocked |
 | Release | Windows build/package/install smoke, CodeQL, audit and documented manual verification | Hosted Release 30405876544 passed clean build/package/install/artifact gates; main-target required checks and final manual report remain | In progress |
 

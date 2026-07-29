@@ -30,6 +30,7 @@
     "test:sandbox:abort:soak": "node scripts/test-sandbox-abort-soak.mjs",
     "test:plugin:restricted": "node scripts/test-restricted-plugin.mjs",
     "test:llm:live": "vitest run --config vitest.live-llm.config.ts",
+    "test:eval:live": "node scripts/test-storage-abi-matrix.mjs --node-vitest vitest.live-benchmark.config.ts",
     "test:integration": "pnpm test:storage:abi && vitest run --config vitest.integration.config.ts",
     "test:all": "pnpm test && pnpm test:integration",
     "smoke:cli:artifact": "node scripts/smoke-cli-package.mjs",

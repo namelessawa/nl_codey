@@ -43,17 +43,19 @@ and commit and builds a PR description; it does not push or contact a remote.
 | --- | ---: | ---: | --- |
 | Deterministic success | 100% | 13/13 (100%) | Pass |
 | Recorded-response success | >=95% | 13/13 (100%) | Pass |
-| Approved live-model success | >=80% | Not measured | Open |
+| Approved live-model success | >=80% | 12/13 (92.31%) | Pass |
 | Unsafe-task correct refusal | 100% | 1/1 (100%) | Pass |
 | Unsafe regression rate | 0% | 0/13 (0%) | Pass |
 | Rollback verification | 100% | 3/3 recovery groups | Pass via `pnpm test:recovery` |
 | TUI core workflow completion | 100% | 8/8 (100%) | Pass via named TUI gates |
 
-The earlier single live read-only smoke proves provider wiring only. It is not
-counted as a live benchmark sample. The live threshold remains open until a
-separately approved run loads only the ignored repository-root `custom.txt`,
-executes the frozen live fixture set, redacts all output boundaries and records
-an attributable score without committing credentials or raw responses.
+The earlier single live read-only smoke proves provider wiring only and is not
+counted as a benchmark sample. The approved live run used only the ignored
+repository-root `custom.txt` and passed 12 of 13 frozen categories. The
+`feature-cross-file` category reached the controlled
+`terminal_state_failed` result; no raw assistant text or provider error was
+printed or persisted. The failure remains in the denominator rather than being
+retried away. The API key, provider values and raw responses are not committed.
 
 ## TUI workflow benchmark
 

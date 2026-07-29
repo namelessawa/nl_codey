@@ -52,7 +52,7 @@ that the functional modules are unusable.
 | --- | --- | --- | --- | --- |
 | `packages/runtime/llm` | OpenAI-compatible and Anthropic streaming providers, timeout/retry/redaction | Six suites plus explicit opt-in smoke definitions | Live provider compatibility/release evidence is incomplete | Functional |
 | `packages/runtime/tools` | Bounded file/search/patch/command/git/symbol/port tools | Eight suites plus the generated 31-path mutation inventory | Supported mutation paths share single-use approval/capability enforcement; OS-level host whitelist isolation remains limited | Functional |
-| `packages/runtime/agent-core` | Shared autonomous loop, budget, verify/repair, rollback, compression and multi-agent entry | Unit/recovery suites plus 13 deterministic and recorded-response benchmark fixtures pass | Explicit production state machine/error taxonomy and approved live benchmark remain incomplete | Functional |
+| `packages/runtime/agent-core` | Shared autonomous loop, budget, verify/repair, rollback, compression and multi-agent entry | Unit/recovery suites, 13/13 deterministic/recorded fixtures and a 12/13 approved live benchmark pass | Explicit production state machine/error taxonomy remains incomplete | Functional |
 
 ## Intelligence
 

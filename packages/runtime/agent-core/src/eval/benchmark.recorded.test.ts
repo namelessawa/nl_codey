@@ -373,7 +373,9 @@ describe.sequential("[eval-recorded] production headless benchmark", () => {
       expect(scorecard).toContain(`| \`${category}\` | Pass | Pass |`);
     }
     expect(scorecard).toContain("13/13 (100%)");
-    expect(scorecard).toContain("Approved live-model success | >=80% | Not measured | Open");
+    expect(scorecard).toContain(
+      "Approved live-model success | >=80% | 12/13 (92.31%) | Pass",
+    );
     expect(scorecard).toContain("8/8 (100%)");
   });
 
