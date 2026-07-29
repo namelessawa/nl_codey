@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { SessionStore } from "@nlc/session";
 import { Storage } from "@nlc/storage";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadProviderStore } from "../lib/provider-store.js";
@@ -944,16 +945,71 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     expect(childUser.content).toBe("branch child fixture");
     expect(childUser.parentId).toBe(originalUser.id);
 
+    const malformedMarker = "session-corruption-fixture-value";
+    fs.appendFileSync(
+      childPath,
+      `{"type":"message","id":"truncated-tail","content":"${malformedMarker}"`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(path.dirname(childPath), "damaged-session.json"),
+      '{"type":"message","content":"unreadable-private-payload"}\n',
+      "utf8",
+    );
+
     const restarted = start(fixture);
-    await restarted.waitForBuffer(
+    const restartBuffer = await restarted.waitForBuffer(
       (buffer) =>
         buffer.includes(`restored ${childHeader.id}`) &&
         buffer.includes("branch child fixture") &&
+        buffer.includes("session recovery warning") &&
+        buffer.includes("future appends are isolated") &&
         buffer.includes("no tools were re-run"),
       15_000,
     );
+    expect(restartBuffer).not.toContain(malformedMarker);
+    expect(restartBuffer).not.toContain("unreadable-private-payload");
     expect(fs.existsSync(notesPath)).toBe(false);
+
+    await enter(restarted, "/sessions");
+    const diagnosticBuffer = await restarted.waitForBuffer(
+      (buffer) =>
+        buffer.includes("warning: 2 session file issues detected") &&
+        buffer.includes("damaged-session.json") &&
+        buffer.includes("malformed JSON skipped (recoverable)") &&
+        buffer.includes("missing a valid session header"),
+    );
+    expect(diagnosticBuffer).not.toContain(malformedMarker);
+    expect(diagnosticBuffer).not.toContain("unreadable-private-payload");
+
+    await enter(restarted, "continue after partial session recovery");
+    await restarted.waitForBuffer(
+      (buffer) => buffer.includes("[verify] pending patch"),
+      20_000,
+    );
+    restarted.write("n");
+    await restarted.waitForScreen(
+      (screen) => screen.includes("cancelled"),
+      20_000,
+    );
     await exit(restarted);
+
+    const sessionStore = new SessionStore({
+      root: path.join(fixture.dataRoot, "agent.session"),
+    });
+    const recoveredChild = sessionStore.openSession(childPath);
+    expect(recoveredChild.diagnostics).toHaveLength(1);
+    expect(
+      recoveredChild.messages.some(
+        (message) => message.content === "continue after partial session recovery",
+      ),
+    ).toBe(true);
+    const finalLine = fs
+      .readFileSync(childPath, "utf8")
+      .trimEnd()
+      .split(/\r?\n/)
+      .at(-1)!;
+    expect(() => JSON.parse(finalLine)).not.toThrow();
   });
 
   it("reconciles a run killed at approval without replaying its patch", async () => {

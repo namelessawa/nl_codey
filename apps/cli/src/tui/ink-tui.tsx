@@ -36,7 +36,7 @@ import React from "react";
 import { useEffect, useMemo, useState } from "react";
 import path from "node:path";
 import { Box, render, useApp, useInput, useStdout } from "ink";
-import { nlcRoot } from "@nlc/shared";
+import { nlcRoot, redactSensitiveText } from "@nlc/shared";
 import { loadSkills } from "@nlc/agent-core";
 import { ThemeProvider, useTheme } from "./theme-context.js";
 import { THEMES, type ThemeName } from "./theme.js";
@@ -262,7 +262,8 @@ function InnerApp(opts: TuiOptions) {
       case "sessions": {
         try {
           const summaries = loop.listSessions();
-          if (summaries.length === 0) {
+          const diagnostics = loop.listSessionDiagnostics();
+          if (summaries.length === 0 && diagnostics.length === 0) {
             loop.appendSystem(
               "no sessions on disk yet — submit a task to open one.",
               "sessions",
@@ -271,7 +272,7 @@ function InnerApp(opts: TuiOptions) {
           }
           const widest = summaries.reduce((n, s) => Math.max(n, s.id.length), 0);
           const lines: string[] = [
-            `${summaries.length} session${summaries.length === 1 ? "" : "s"} in this project`,
+            `${summaries.length} readable session${summaries.length === 1 ? "" : "s"} in this project`,
             "",
           ];
           const active = loop.currentSessionId();
@@ -282,6 +283,27 @@ function InnerApp(opts: TuiOptions) {
               `  ${marker} ${s.id.padEnd(widest + 2)}${s.messageCount.toString().padStart(3)} msg  ` +
                 `${s.title}${branched}`,
             );
+          }
+          if (diagnostics.length > 0) {
+            const visible = diagnostics.slice(0, 20);
+            lines.push(
+              "",
+              `warning: ${diagnostics.length} session file issue${diagnostics.length === 1 ? "" : "s"} detected; raw content was not displayed.`,
+            );
+            for (const diagnostic of visible) {
+              const fileName = redactSensitiveText(diagnostic.fileName, {
+                maxLength: 80,
+                fallback: "session file",
+              });
+              lines.push(
+                diagnostic.kind === "malformed_json"
+                  ? `  ! ${fileName} line ${diagnostic.line}: malformed JSON skipped (recoverable)`
+                  : `  ! ${fileName}: unreadable or missing a valid session header`,
+              );
+            }
+            if (visible.length < diagnostics.length) {
+              lines.push(`  … ${diagnostics.length - visible.length} more issue(s)`);
+            }
           }
           loop.appendSystem(lines.join("\n"), "sessions");
         } catch (err) {

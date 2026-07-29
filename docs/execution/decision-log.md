@@ -214,3 +214,19 @@ the application implementing mouse events. Calling that full mouse support
 would imply click, modal selection, coordinate, focus and cleanup contracts the
 product does not have. The explicit boundary is safer and meets Goal v2's
 required disposition without adding an unreliable input layer.
+
+## D-018 - Preserve malformed Session evidence while isolating future appends
+
+Date: 2026-07-29
+
+Decision: skip malformed JSONL records but return their line-number diagnostics
+without raw content or absolute paths. Before reopening a Session writer,
+append one newline when the file has an unterminated tail, preserving the
+forensic fragment as its own invalid record so every future append starts on a
+fresh line.
+
+Reason: silently ignoring a crash-truncated tail made existing history readable
+but allowed the next JSON record to concatenate with the fragment and disappear
+on subsequent reads. Rewriting or deleting the fragment would erase evidence.
+Line isolation plus a visible, content-free warning preserves both recovery and
+diagnosability without exposing private conversation text.

@@ -89,13 +89,63 @@ describe("SessionStore", () => {
     expect(loaded.messages).toHaveLength(2);
   });
 
-  it("survives a truncated trailing line on read", () => {
+  it("reports and isolates a truncated tail before resumed appends", () => {
     const writer = store.createSession("E:\\proj\\foo");
-    writer.appendMessage({ role: "user", content: "hello" });
+    const first = writer.appendMessage({ role: "user", content: "hello" });
     // Simulate a partial write at the tail.
     fs.appendFileSync(writer.filePath, '{"type":"message","id":"msg_x"', "utf8");
-    const loaded = store.openSession(writer.filePath);
-    expect(loaded.messages).toHaveLength(1);
+    const beforeResume = store.openSession(writer.filePath);
+    expect(beforeResume.messages).toHaveLength(1);
+    expect(beforeResume.diagnostics).toEqual([
+      { kind: "malformed_json", line: 3, trailing: true },
+    ]);
+
+    const { writer: resumed, loaded } = store.resumeSession(writer.filePath);
+    expect(loaded.diagnostics).toEqual(beforeResume.diagnostics);
+    const next = resumed.appendMessage({ role: "assistant", content: "recovered" });
+    const reopened = store.openSession(writer.filePath);
+
+    expect(next.parentId).toBe(first.id);
+    expect(reopened.messages.map((message) => message.content)).toEqual([
+      "hello",
+      "recovered",
+    ]);
+    expect(reopened.diagnostics).toEqual([
+      { kind: "malformed_json", line: 3, trailing: false },
+    ]);
+  });
+
+  it("lists content-free diagnostics for malformed and unreadable files", () => {
+    const cwd = "E:\\proj\\foo";
+    const writer = store.createSession(cwd);
+    fs.appendFileSync(writer.filePath, "not-json\n", "utf8");
+    const invalidPath = path.join(store.projectFolder(cwd), "damaged-session.json");
+    fs.writeFileSync(invalidPath, '{"type":"message","content":"private"}\n', "utf8");
+    let invalidError = "";
+    try {
+      store.openSession(invalidPath);
+    } catch (error) {
+      invalidError = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(invalidError).toContain("damaged-session.json");
+    expect(invalidError).not.toContain(tmp);
+    expect(store.listProjectSessionDiagnostics(cwd)).toEqual([
+      {
+        kind: "unreadable_session",
+        fileName: "damaged-session.json",
+        sessionId: null,
+        line: null,
+        recoverable: false,
+      },
+      {
+        kind: "malformed_json",
+        fileName: path.basename(writer.filePath),
+        sessionId: writer.header.id,
+        line: 2,
+        recoverable: true,
+      },
+    ]);
   });
 
   it("skips unknown record types (forward-compat)", () => {

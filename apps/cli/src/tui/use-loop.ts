@@ -26,7 +26,12 @@ import { useEffect, useMemo, useReducer, useRef } from "react";
 import fs from "node:fs";
 import path from "node:path";
 import { nlcRoot, type AgentEvent } from "@nlc/shared";
-import type { LoadedSession, SessionMessage, SessionSummary } from "@nlc/session";
+import type {
+  LoadedSession,
+  SessionFileDiagnostic,
+  SessionMessage,
+  SessionSummary,
+} from "@nlc/session";
 import { renderProjectTree } from "@nlc/session";
 import {
   buildCliServices,
@@ -410,6 +415,10 @@ export function useLoop(opts: UseLoopOptions = {}) {
   /** Return one summary row per session in this workspace. */
   const listSessions = (): SessionSummary[] => getBridge().listSessions();
 
+  /** Return content-free diagnostics for damaged session files/records. */
+  const listSessionDiagnostics = (): SessionFileDiagnostic[] =>
+    getBridge().listDiagnostics();
+
   /** Load every session in this workspace (for /tree rendering). */
   const loadAllSessions = (): LoadedSession[] => getBridge().loadAllSessions();
 
@@ -481,6 +490,7 @@ export function useLoop(opts: UseLoopOptions = {}) {
       // session ops
       currentSessionId,
       listSessions,
+      listSessionDiagnostics,
       loadAllSessions,
       renderTree,
       branchAt,
@@ -619,7 +629,22 @@ function resolveRunPrefix<T extends { id: string }>(runs: T[], prefix: string): 
 }
 
 function sessionItems(loaded: LoadedSession): StreamItem[] {
-  return loaded.messages.map((message) => sessionItem(message));
+  const items = loaded.messages.map((message) => sessionItem(message));
+  if (loaded.diagnostics.length === 0) return items;
+  const lines = loaded.diagnostics
+    .map((diagnostic) => diagnostic.line)
+    .join(", ");
+  return [
+    ...items,
+    {
+      id: `session-warning-${loaded.header.id}`,
+      role: "error",
+      label: "session",
+      text:
+        `session recovery warning: ignored ${loaded.diagnostics.length} malformed ` +
+        `JSONL line(s) (${lines}); valid messages were restored and future appends are isolated.`,
+    },
+  ];
 }
 
 function sessionItem(message: SessionMessage): StreamItem {

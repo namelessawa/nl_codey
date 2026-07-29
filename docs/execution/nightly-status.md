@@ -41,6 +41,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 31 | `codex/p1-tui-dynamic-tool-redaction` | Exact Goal Scenario 13 dynamic-tool construction failure | Ready for draft review; exact Scenario 13 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 32 | `codex/p1-tui-provider-run-use` | Exact Goal Scenario 9 invalid configuration, correction and new-Run use | Ready for draft review; TUI-E2E-001 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 33 | `codex/p1-tui-mouse-contract` | Explicit Experimental mouse boundary and required TUI acceptance ledgers | Ready for draft review; TUI-MOUSE-001 closed | Full offline gate green; 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
+| 34 | `codex/p1-tui-session-diagnostics` | Corrupt/partial Session diagnostics and safe resumed appends | Ready for draft review; corrupt/partial acceptance closed | Full offline gate green; 635 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 
 ## Work log
 
@@ -937,15 +938,44 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   removes the help disclosure, mouse-mode observer and four acceptance ledgers,
   reopening `TUI-MOUSE-001`.
 
+### 2026-07-29 - Recover visibly from corrupt or partial Session JSONL
+
+- Session reads now distinguish malformed JSON from valid forward-compatible
+  records and return one-based, content-free diagnostics. Project diagnostics
+  also report unreadable/missing-header files without raw payloads or absolute
+  paths.
+- Resume isolates an unterminated crash tail with one newline before opening
+  the append writer. The fragment remains available for forensics, but every
+  later message starts on a fresh JSONL record and remains readable.
+- Startup replay adds a Session warning after recovered messages. `/sessions`
+  reports at most 20 redacted file diagnostics and summarizes any remainder;
+  an invalid file no longer disappears silently when no valid session exists.
+- The native Session workflow creates and branches through public TUI input,
+  exits, injects a truncated child tail and invalid-header sibling, then
+  restarts. It requires restored history, two safe issue classes, absence of
+  both raw fixture payloads, a successful later task/rejection, one retained
+  diagnostic and a parseable final JSON record.
+- Focused Session and CLI typechecks passed, as did 13/13 SessionStore tests
+  and the complete 12/12 native TUI E2E gate in 104 seconds. Electron ABI was
+  restored and re-verified.
+- The complete default offline gate passed 635 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 15 TUI unit, 19 render, 3 lifecycle,
+  12 E2E and 13 recovery assertions in 191 seconds. Every native matrix
+  restored and re-verified Electron 33.4.11 / modules 130; root typecheck and
+  production build passed.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback removes
+  diagnostics and tail isolation, returning to silent malformed-line skipping.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. All exact Goal v2 TUI scenarios pass and the mouse boundary is explicit.
-   Broader session invalid-input UX, PageUp/PageDown, remaining UI-state cells
-   and release-candidate manual verification remain.
+2. All exact Goal v2 TUI scenarios pass; mouse disposition and corrupt/partial
+   Session recovery are explicit. Session write-failure/path breadth,
+   PageUp/PageDown, remaining UI-state cells and release-candidate manual
+   verification remain.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

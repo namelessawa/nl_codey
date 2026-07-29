@@ -32,6 +32,7 @@ import path from "node:path";
 import {
   SessionStore,
   type LoadedSession,
+  type SessionFileDiagnostic,
   type SessionSummary,
   type SessionToolCall,
   type SessionWriter,
@@ -169,6 +170,11 @@ export class SessionBridge {
   /** List every session under this workspace, newest activity first. */
   listSessions(): SessionSummary[] {
     return this.store.listProjectSessions(this.cwd);
+  }
+
+  /** Return content-free diagnostics for malformed or unreadable session files. */
+  listDiagnostics(): SessionFileDiagnostic[] {
+    return this.store.listProjectSessionDiagnostics(this.cwd);
   }
 
   /** Load every session file under this workspace (for tree rendering). */

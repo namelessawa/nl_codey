@@ -14,9 +14,8 @@
  *
  * Writes are append-only: every `appendMessage`/`appendStateEvent` call
  * does ONE `fs.appendFileSync` with a single JSON line. A truncated
- * trailing line caused by a crash mid-write is simply ignored by the
- * reader (`safeParseLine` returns `null` for malformed JSON) — the rest
- * of the file is still recoverable.
+ * trailing line caused by a crash mid-write is diagnosed and skipped by
+ * the reader, while the rest of the file remains recoverable.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +29,8 @@ import {
   isStateEvent,
   type LoadedSession,
   type SessionHeader,
+  type SessionDiagnostic,
+  type SessionFileDiagnostic,
   type SessionMessage,
   type SessionRecord,
   type SessionRole,
@@ -265,6 +266,7 @@ export class SessionStore {
    */
   resumeSession(filePath: string): { writer: SessionWriter; loaded: LoadedSession } {
     const loaded = this.openSession(filePath);
+    isolateUnterminatedTail(filePath);
     const head = loaded.messages.length > 0 ? loaded.messages[loaded.messages.length - 1]!.id : null;
     const writer = new SessionWriter(filePath, loaded.header, head, this.#now);
     return { writer, loaded };
@@ -278,10 +280,20 @@ export class SessionStore {
     const records: SessionRecord[] = [];
     const messages: SessionMessage[] = [];
     const events: StateEvent[] = [];
-    for (const line of lines) {
+    const diagnostics: SessionDiagnostic[] = [];
+    const lastContentLine = findLastContentLine(lines);
+    for (const [index, line] of lines.entries()) {
       if (line.length === 0) continue;
-      const parsed = safeParseLine(line);
-      if (parsed === null) continue;
+      const parsedLine = parseJsonLine(line);
+      if (!parsedLine.ok) {
+        diagnostics.push({
+          kind: "malformed_json",
+          line: index + 1,
+          trailing: index === lastContentLine && !raw.endsWith("\n"),
+        });
+        continue;
+      }
+      const parsed = parsedLine.value;
       if (isHeader(parsed)) {
         if (header === null) header = parsed;
         continue;
@@ -299,9 +311,11 @@ export class SessionStore {
       // Unknown discriminator — silently skip (forward-compat).
     }
     if (header === null) {
-      throw new Error(`openSession: ${filePath} is missing a "session" header line`);
+      throw new Error(
+        `openSession: ${path.basename(filePath)} is missing a "session" header line`,
+      );
     }
-    return { header, records, messages, events, filePath };
+    return { header, records, messages, events, diagnostics, filePath };
   }
 
   /**
@@ -349,6 +363,47 @@ export class SessionStore {
   loadProjectSessions(cwd: string): LoadedSession[] {
     return this.listProjectSessions(cwd).map((s) => this.openSession(s.filePath));
   }
+
+  /**
+   * Return content-free diagnostics for every JSON session file.
+   * Raw malformed lines and absolute paths are deliberately excluded.
+   */
+  listProjectSessionDiagnostics(cwd: string): SessionFileDiagnostic[] {
+    const folder = this.projectFolder(cwd);
+    if (!fs.existsSync(folder)) return [];
+    const diagnostics: SessionFileDiagnostic[] = [];
+    const entries = fs
+      .readdirSync(folder, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"));
+    for (const entry of entries) {
+      const filePath = path.join(folder, entry.name);
+      try {
+        const loaded = this.openSession(filePath);
+        for (const diagnostic of loaded.diagnostics) {
+          diagnostics.push({
+            kind: diagnostic.kind,
+            fileName: entry.name,
+            sessionId: loaded.header.id,
+            line: diagnostic.line,
+            recoverable: true,
+          });
+        }
+      } catch {
+        diagnostics.push({
+          kind: "unreadable_session",
+          fileName: entry.name,
+          sessionId: null,
+          line: null,
+          recoverable: false,
+        });
+      }
+    }
+    return diagnostics.sort(
+      (left, right) =>
+        left.fileName.localeCompare(right.fileName) ||
+        (left.line ?? 0) - (right.line ?? 0),
+    );
+  }
 }
 
 // --- internals ------------------------------------------------------------
@@ -357,11 +412,27 @@ function appendLine(filePath: string, record: object): void {
   fs.appendFileSync(filePath, JSON.stringify(record) + "\n", "utf8");
 }
 
-function safeParseLine(line: string): unknown {
+function parseJsonLine(
+  line: string,
+): { ok: true; value: unknown } | { ok: false } {
   try {
-    return JSON.parse(line);
+    return { ok: true, value: JSON.parse(line) as unknown };
   } catch {
-    return null;
+    return { ok: false };
+  }
+}
+
+function findLastContentLine(lines: readonly string[]): number {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index]!.length > 0) return index;
+  }
+  return -1;
+}
+
+function isolateUnterminatedTail(filePath: string): void {
+  const raw = fs.readFileSync(filePath, "utf8");
+  if (raw.length > 0 && !raw.endsWith("\n")) {
+    fs.appendFileSync(filePath, "\n", "utf8");
   }
 }
 
