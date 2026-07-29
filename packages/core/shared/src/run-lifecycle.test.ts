@@ -118,4 +118,27 @@ describe("shared agent error taxonomy", () => {
       classifyAgentRunFailure("unclassified fixture", "tool_execution"),
     ).toBe("tool_execution");
   });
+
+  it("classifies interrupted restarts without regex backtracking", () => {
+    expect(
+      classifyAgentRunFailure(
+        new Error("Run interrupted while waiting for restart"),
+      ),
+    ).toBe("interrupted_restart");
+    expect(
+      classifyAgentRunFailure(
+        new Error("Restart detected after an interrupted worker"),
+      ),
+    ).toBe("interrupted_restart");
+
+    const repeatedUncontrolledInput = "interrupted".repeat(100_000);
+    expect(classifyAgentRunFailure(repeatedUncontrolledInput)).toBe(
+      "internal_failure",
+    );
+    expect(
+      classifyAgentRunFailure(
+        `${repeatedUncontrolledInput} restart`,
+      ),
+    ).toBe("interrupted_restart");
+  });
 });

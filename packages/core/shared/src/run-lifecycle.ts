@@ -257,7 +257,11 @@ export function classifyAgentRunFailure(
     return "tool_execution";
   }
   if (/storage|database|disk|sqlite/i.test(message)) return "storage_failure";
-  if (/interrupted.*restart|restart.*interrupted/i.test(message)) {
+  const normalizedMessage = message.toLowerCase();
+  if (
+    normalizedMessage.includes("interrupted") &&
+    normalizedMessage.includes("restart")
+  ) {
     return "interrupted_restart";
   }
   return fallback;
