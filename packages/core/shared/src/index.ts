@@ -7,6 +7,7 @@ export * from "./ipc.js";
 export * from "./settings.js";
 export * from "./providers.js";
 export * from "./run-control.js";
+export * from "./run-lifecycle.js";
 export * from "./agent-detail.js";
 export * from "./iterations.js";
 export * from "./project-card.js";

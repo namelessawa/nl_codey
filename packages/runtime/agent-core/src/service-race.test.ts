@@ -215,6 +215,7 @@ describe("AgentService race-safety with concurrent clearRuns", () => {
     expect(outcome.state).toBe("failed");
     if (outcome.state === "failed") {
       expect(outcome.reason).toBe("LLM stream timeout");
+      expect(outcome.failureCode).toBe("provider_request");
     }
     expect(outcome.finalMessages).toHaveLength(1);
   });
@@ -276,6 +277,7 @@ describe("AgentService race-safety with concurrent clearRuns", () => {
     expect(outcome.state).toBe("failed");
     if (outcome.state === "failed") {
       expect(outcome.reason).toBe("provider gave up");
+      expect(outcome.failureCode).toBe("provider_request");
     }
   });
 

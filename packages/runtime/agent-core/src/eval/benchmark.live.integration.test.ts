@@ -467,6 +467,7 @@ async function runCrashRecovery(
       runtimeInstanceId: "dead-live-benchmark",
       ownerPid: 424_242,
     });
+    storage.updateRunStatus(run.id, "tool_use");
     storage.updateRunStatus(run.id, "waiting_for_user_approval");
     storage.addStep(run.id, "diff", "<redacted live patch proposal>");
     storage.close();

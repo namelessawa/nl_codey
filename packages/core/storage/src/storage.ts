@@ -24,7 +24,13 @@ import type {
   TaskNodeStatus,
   Workspace,
 } from "@nlc/shared";
-import { redactSensitiveText } from "@nlc/shared";
+import {
+  AgentRunLifecycleError,
+  assertAgentRunTransition,
+  isAgentRunState,
+  isTerminalAgentRunState,
+  redactSensitiveText,
+} from "@nlc/shared";
 import {
   COLUMN_MIGRATIONS,
   INDEX_SQL,
@@ -449,27 +455,42 @@ export class Storage {
   }
 
   updateRunStatus(runId: string, status: AgentRunState): AgentRun {
-    const updatedAt = Date.now();
-    this.db
-      .prepare("UPDATE agent_runs SET status = ?, updated_at = ? WHERE id = ?")
-      .run(status, updatedAt, runId);
-    const run = this.getRun(runId);
-    if (!run) throw new Error(`Run not found: ${runId}`);
-    return run;
+    const update = this.db.transaction(() => {
+      const current = this.getRun(runId);
+      if (!current) {
+        throw new AgentRunLifecycleError("run_not_found", { runId });
+      }
+      assertAgentRunTransition(current.status, status);
+      this.db
+        .prepare("UPDATE agent_runs SET status = ?, updated_at = ? WHERE id = ?")
+        .run(status, Date.now(), runId);
+      const run = this.getRun(runId);
+      if (!run) {
+        throw new AgentRunLifecycleError("run_not_found", { runId });
+      }
+      return run;
+    });
+    return update();
   }
 
   /** Atomically persist the terminal state after filesystem rollback succeeds. */
   completeRunRollback(runId: string): AgentRun {
     const complete = this.db.transaction(() => {
+      const current = this.getRun(runId);
+      if (!current) {
+        throw new AgentRunLifecycleError("run_not_found", { runId });
+      }
+      assertAgentRunTransition(current.status, "cancelled");
       const updatedAt = Date.now();
-      const result = this.db
+      this.db
         .prepare(
           "UPDATE agent_runs SET status = 'cancelled', exit_reason = 'rolled_back', updated_at = ? WHERE id = ?",
         )
         .run(updatedAt, runId);
-      if (result.changes !== 1) throw new Error(`Run not found: ${runId}`);
       const run = this.getRun(runId);
-      if (!run) throw new Error(`Run not found: ${runId}`);
+      if (!run) {
+        throw new AgentRunLifecycleError("run_not_found", { runId });
+      }
       return run;
     });
     return complete();
@@ -519,7 +540,14 @@ export class Storage {
       const current = this.db
         .prepare("SELECT * FROM agent_runs WHERE id = ?")
         .get(candidate.id) as RunRow | undefined;
-      if (!current || isTerminalRunStatus(current.status)) return null;
+      if (
+        !current ||
+        !isAgentRunState(current.status) ||
+        isTerminalAgentRunState(current.status)
+      ) {
+        return null;
+      }
+      assertAgentRunTransition(current.status, "failed");
       const updated = this.db
         .prepare(
           `UPDATE agent_runs
@@ -1073,15 +1101,6 @@ function toRun(row: RunRow): AgentRun {
     runtimeInstanceId: row.runtime_instance_id,
     ownerPid: row.owner_pid,
   };
-}
-
-function isTerminalRunStatus(status: string): boolean {
-  return (
-    status === "done" ||
-    status === "failed" ||
-    status === "cancelled" ||
-    status === "budget_exceeded"
-  );
 }
 
 function isProcessAlive(pid: number): boolean {

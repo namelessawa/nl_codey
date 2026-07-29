@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
+import { AgentRunLifecycleError } from "@nlc/shared";
 import { Storage, StorageMigrationError } from "./storage.js";
 import { SCHEMA_SQL } from "./schema.js";
 
@@ -44,6 +45,34 @@ describe("Storage", () => {
     // Re-running the schema must not throw (idempotent CREATE TABLE IF NOT EXISTS).
     expect(() => new Storage(":memory:")).not.toThrow();
     expect(SCHEMA_SQL).toContain("IF NOT EXISTS");
+    storage.close();
+  });
+
+  it("enforces the shared Run transition table atomically", () => {
+    const storage = new Storage(":memory:");
+    const workspace = storage.upsertWorkspace("C:/projects/run-fsm");
+    const run = storage.createRun(workspace.id, "exercise lifecycle");
+
+    for (const status of [
+      "tool_use",
+      "waiting_for_user_approval",
+      "applying_patch",
+      "verifying",
+      "done",
+    ] as const) {
+      storage.updateRunStatus(run.id, status);
+    }
+
+    expect(() => storage.updateRunStatus(run.id, "verifying")).toThrow(
+      AgentRunLifecycleError,
+    );
+    expect(storage.getRun(run.id)?.status).toBe("done");
+    expect(() => storage.updateRunStatus("missing-run", "failed")).toThrow(
+      expect.objectContaining({ code: "run_not_found" }),
+    );
+
+    storage.updateRunStatus(run.id, "tool_use");
+    expect(storage.getRun(run.id)?.status).toBe("tool_use");
     storage.close();
   });
 
@@ -383,6 +412,7 @@ describe("Storage", () => {
       runtimeInstanceId: "instance-dead",
       ownerPid: 999_999,
     });
+    storage.updateRunStatus(dead.id, "tool_use");
     storage.updateRunStatus(dead.id, "waiting_for_user_approval");
     storage.addSnapshot(dead.id, "never-created.txt", "original bytes");
 
@@ -390,11 +420,13 @@ describe("Storage", () => {
       runtimeInstanceId: "instance-live",
       ownerPid: 4_242,
     });
+    storage.updateRunStatus(live.id, "tool_use");
     storage.updateRunStatus(live.id, "applying_patch");
 
     const terminal = storage.createRun(ws.id, "already done", {
       ownerPid: 999_998,
     });
+    storage.updateRunStatus(terminal.id, "tool_use");
     storage.updateRunStatus(terminal.id, "done");
 
     const legacy = storage.createRun(ws.id, "legacy owner");

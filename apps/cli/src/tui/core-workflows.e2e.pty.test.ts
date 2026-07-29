@@ -644,14 +644,23 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await enter(session, "prove invalid provider configuration");
     const invalidBuffer = await session.waitForBuffer(
       (output) =>
-        output.includes("invalid local provider configuration") &&
-        output.includes("failed"),
+        output.includes("invalid local provider") &&
+        output.includes("configuration") &&
+        output.includes("failed") &&
+        output.includes("[provider_request]"),
       20_000,
     );
     expect(invalidBuffer).not.toContain(apiKey);
     const invalidAudit = readRunAudit(fixture);
     expect(invalidAudit.status).toBe("failed");
-    expect(invalidAudit.exitReason).toBe("failed");
+    expect(invalidAudit.exitReason).toBe("provider_request");
+    expect(
+      invalidAudit.steps.some(
+        (step) =>
+          step.type === "error" &&
+          step.content.includes("[provider_request]"),
+      ),
+    ).toBe(true);
     expect(provider.requests).toHaveLength(1);
     expect(provider.requests[0]).toMatchObject({
       url: "/invalid/v1/chat/completions",

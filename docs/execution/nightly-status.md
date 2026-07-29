@@ -45,6 +45,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 35 | `codex/p1-tui-page-navigation-contract` | Required PageUp/PageDown safe-no-op input contract | Ready for draft review; all 15 required key groups now have automated evidence | Full offline gate green; 635 unit, 16 TUI unit, 20 render, 4 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 36 | `codex/p1-tui-session-fault-isolation` | Visible Session write faults and resume/show path containment | Ready for draft review; write-failure/path-isolation acceptance closed | Full offline gate green; 638 unit, 16 TUI unit, 20 render, 4 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 37 | `codex/p1-tui-session-lineage-breadth` | Multilevel/cross-parent Session lineage and invalid-target continuity | Ready for draft review; `TUI-SESSION-001` closed | Full offline gate green; 638 unit, 16 TUI unit, 20 render, 4 lifecycle, 13 E2E and 13 recovery assertions pass |
+| 38 | `codex/p1-shared-run-fsm-errors` | Shared Run transition table, atomic enforcement and stable failure codes | Ready for draft review; core `FSM-001` implementation complete | Full offline gate green; 643 unit, 17 recorded-eval, 80 Desktop-main, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1059,6 +1060,40 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   restored and re-verified Electron 33.4.11 / modules 130.
 - Root typecheck and the production Desktop/CLI build passed.
 
+### 2026-07-29 - Enforce the shared Run FSM and failure taxonomy
+
+- Shared now owns the complete Run-state catalogue, explicit legal transition
+  table, terminal-state predicate and stable failure codes. Same-state writes
+  remain idempotent; terminal Runs may re-enter `tool_use` only for an explicit
+  continuation, while rollback may move supported states to `cancelled`.
+- Storage validates each transition inside the same SQLite transaction as the
+  update. A missing Run and an invalid edge raise typed lifecycle errors; an
+  invalid edge leaves the persisted status unchanged. Startup reconciliation
+  uses the same terminal predicate and transition assertion.
+- AgentService classifies provider configuration/request, model protocol,
+  policy, tool, verification, storage and internal failures. It persists the
+  stable code in `exit_reason` and prefixes the separately redacted audit step;
+  provider resolution, loop exceptions, initial-context failures and
+  multi-agent exits use the same path.
+- TUI status now renders the shared form such as
+  `failed [provider_request]`. Desktop failure banners use the same shared code
+  extraction, while historical free-form failed Runs safely render as
+  `internal_failure`.
+- The native provider journey proves an HTTP 400 becomes
+  `provider_request` in the terminal, SQLite exit reason and error step, then
+  corrects the provider and completes a new Run. Two intermediate E2E attempts
+  reached the correct state but exposed width-dependent whitespace in the
+  test predicate; the final assertion checks independent visual evidence
+  fragments and 13/13 scenarios pass.
+- The complete default offline gate passed 643 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 16 TUI unit, 20 render, 4 lifecycle,
+  13 E2E and 14 recovery assertions in 239 seconds. Root typecheck and the
+  production Desktop/CLI build passed; every restorative matrix re-verified
+  Electron 33.4.11 / modules 130.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback removes
+  the shared transition/error contract and returns Storage to unchecked status
+  overwrites and UI surfaces to raw failure strings.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1071,7 +1106,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    evidence. Session write-failure/path containment and multilevel/cross-parent/
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
-3. The broader production goal still requires the shared FSM/error taxonomy,
-   context provenance/index correctness, browser-safe renderer split,
-   project-indexer coverage, VS Code adapter and the feature/experimental
-   disposition work listed in `docs/execution/master-backlog.md`.
+3. The broader production goal still requires context provenance/index
+   correctness, browser-safe renderer split, project-indexer coverage, VS Code
+   adapter and the feature/experimental disposition work listed in
+   `docs/execution/master-backlog.md`.

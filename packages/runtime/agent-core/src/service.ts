@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   AgentEvent,
+  AgentRunFailureCode,
   AgentRun,
   AgentRunDetail,
   AgentRunState,
@@ -22,8 +23,11 @@ import type {
 } from "@nlc/shared";
 import {
   clampBudgetLimits,
+  classifyAgentRunFailure,
   contextWindowFor,
   DEFAULT_BUDGET_LIMITS,
+  formatAgentRunFailure,
+  isTerminalAgentRunState,
   redactSensitiveText,
   UNSAFE_WITHOUT_SANDBOX_TOOLS,
 } from "@nlc/shared";
@@ -661,8 +665,7 @@ export class AgentService {
     try {
       llm = this.resolveLLM();
     } catch (err) {
-      this.addStep(run.id, "error", asMessage(err));
-      this.setStatus(run.id, "failed");
+      this.failRun(run.id, err, "provider_configuration");
       this.controllers.delete(run.id);
       return this.getDetail(run.id);
     }
@@ -688,35 +691,40 @@ export class AgentService {
     // ~/.nlc/agents.md, <ws>/.nlc/AGENTS.md, every *.md in ~/.nlc/skills +
     // <ws>/.nlc/skills, and finally the Phase 4 augmentation. customBuiltinPrompt
     // substitutes the read-only flavour without forking the loader.
-    const phase1 = await phase1InitContext(
-      {
-        currentMessage: await this.buildInitialUserMessage(task, ctx),
-        workspaceRoot: ws.rootPath,
-      },
-      {
-        language: this.getLanguage(),
-        ...(this.effectiveReadOnly()
-          ? { customBuiltinPrompt: getReadonlySystemPrompt(this.getLanguage()) }
-          : {}),
-        ...(augmentation ? { augmentation } : {}),
-      },
-    );
-    const initialMessages: LLMMessage[] = phase1.messages;
+    let initialMessages: LLMMessage[];
+    try {
+      const phase1 = await phase1InitContext(
+        {
+          currentMessage: await this.buildInitialUserMessage(task, ctx),
+          workspaceRoot: ws.rootPath,
+        },
+        {
+          language: this.getLanguage(),
+          ...(this.effectiveReadOnly()
+            ? { customBuiltinPrompt: getReadonlySystemPrompt(this.getLanguage()) }
+            : {}),
+          ...(augmentation ? { augmentation } : {}),
+        },
+      );
+      initialMessages = phase1.messages;
+    } catch (err) {
+      this.failRun(run.id, err, "internal_failure");
+      this.controllers.delete(run.id);
+      return this.getDetail(run.id);
+    }
     // Route to the multi-agent driver when the user opted in; otherwise the
     // long-standing single-agent driveLoop. Multi-agent reuses the same
     // approval / sandbox / verify machinery via a thin adapter so safety
     // guarantees are identical.
     if (this.getAgentSettings().multiAgentEnabled) {
       void this.driveMultiAgentLoop(run.id, workspaceId, ws.rootPath, task, llm, controller).catch((err) => {
-        this.addStep(run.id, "error", asMessage(err));
-        this.setStatus(run.id, "failed");
+        this.failRun(run.id, err, "internal_failure");
         this.controllers.delete(run.id);
       });
       return this.getDetail(run.id);
     }
     void this.driveLoop(run.id, workspaceId, ws.rootPath, initialMessages, llm, controller).catch((err) => {
-      this.addStep(run.id, "error", asMessage(err));
-      this.setStatus(run.id, "failed");
+      this.failRun(run.id, err, "internal_failure");
       this.controllers.delete(run.id);
     });
     return this.getDetail(run.id);
@@ -748,25 +756,23 @@ export class AgentService {
 
     const controller = new AbortController();
     this.controllers.set(runId, controller);
+    this.setStatus(runId, "tool_use");
 
     let llm: ChatLLMProvider;
     try {
       llm = this.resolveLLM();
     } catch (err) {
-      this.addStep(runId, "error", asMessage(err));
-      this.setStatus(runId, "failed");
+      this.failRun(runId, err, "provider_configuration");
       this.controllers.delete(runId);
       return this.getDetail(runId);
     }
 
     this.storage.setRunModel(runId, llm.model);
     this.addStep(runId, "message", `Follow-up: ${followUp}`);
-    this.setStatus(runId, "tool_use");
 
     const messages: LLMMessage[] = [...prior, { role: "user", content: followUp }];
     void this.driveLoop(runId, run.workspaceId, ws.rootPath, messages, llm, controller).catch((err) => {
-      this.addStep(runId, "error", asMessage(err));
-      this.setStatus(runId, "failed");
+      this.failRun(runId, err, "internal_failure");
       this.controllers.delete(runId);
     });
     return this.getDetail(runId);
@@ -1198,11 +1204,18 @@ export class AgentService {
           : outcome.status === "cancelled"
             ? "cancelled"
             : "failed";
+      const exitReason =
+        finalStatus === "failed" ? "internal_failure" : finalStatus;
       const summary = buildMultiAgentSummary(userTask, outcome.status, outcome.nodes);
       this.addStep(
         runId,
         finalStatus === "done" ? "message" : "error",
-        `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
+        finalStatus === "failed"
+          ? formatAgentRunFailure(
+              "internal_failure",
+              `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
+            )
+          : `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
       );
       // Persist a synthetic conversation so a follow-up via continueTask can
       // resume on the single-agent loop with the original task + node-by-node
@@ -1214,11 +1227,16 @@ export class AgentService {
           buildMultiAgentRunMessages(this.getLanguage(), userTask, summary),
         ),
       );
-      this.safeRunWrite(() => this.storage.setRunExitReason(runId, finalStatus));
+      this.safeRunWrite(() => this.storage.setRunExitReason(runId, exitReason));
       this.setStatus(runId, finalStatus);
     } catch (err) {
       const errSummary = `Multi-agent run failed: ${asMessage(err)}`;
-      this.addStep(runId, "error", asMessage(err));
+      const failureCode = classifyAgentRunFailure(err, "internal_failure");
+      this.addStep(
+        runId,
+        "error",
+        formatAgentRunFailure(failureCode, asMessage(err)),
+      );
       // Even on error, preserve at least the user task so a follow-up has
       // somewhere to anchor. The synthetic assistant turn includes the
       // failure reason so the model can react appropriately.
@@ -1228,7 +1246,9 @@ export class AgentService {
           buildMultiAgentRunMessages(this.getLanguage(), userTask, errSummary),
         ),
       );
-      this.safeRunWrite(() => this.storage.setRunExitReason(runId, "failed"));
+      this.safeRunWrite(() =>
+        this.storage.setRunExitReason(runId, failureCode),
+      );
       this.setStatus(runId, "failed");
     } finally {
       this.controllers.delete(runId);
@@ -1529,8 +1549,19 @@ export class AgentService {
         this.setStatus(runId, "done");
         break;
       case "failed":
-        this.addStep(runId, "error", outcome.reason);
-        this.safeRunWrite(() => this.storage.setRunExitReason(runId, "failed"));
+        {
+          const failureCode =
+            outcome.failureCode ??
+            classifyAgentRunFailure(outcome.reason, "model_protocol");
+          this.addStep(
+            runId,
+            "error",
+            formatAgentRunFailure(failureCode, outcome.reason),
+          );
+          this.safeRunWrite(() =>
+            this.storage.setRunExitReason(runId, failureCode),
+          );
+        }
         this.setStatus(runId, "failed");
         break;
       case "cancelled":
@@ -1543,6 +1574,25 @@ export class AgentService {
         this.setStatus(runId, "budget_exceeded");
         break;
     }
+  }
+
+  private failRun(
+    runId: string,
+    error: unknown,
+    fallback: AgentRunFailureCode,
+  ): void {
+    const current = this.storage.getRun(runId);
+    if (!current || isTerminalAgentRunState(current.status)) return;
+    const failureCode = classifyAgentRunFailure(error, fallback);
+    this.addStep(
+      runId,
+      "error",
+      formatAgentRunFailure(failureCode, asMessage(error)),
+    );
+    this.safeRunWrite(() =>
+      this.storage.setRunExitReason(runId, failureCode),
+    );
+    this.setStatus(runId, "failed");
   }
 
   private async buildInitialUserMessage(task: string, ctx: ToolContext): Promise<string> {
@@ -1668,7 +1718,12 @@ export function loopErrorToOutcome(
   finalMessages: LLMMessage[],
 ): ToolLoopOutcome {
   if (aborted) return { state: "cancelled", finalMessages };
-  return { state: "failed", reason: asMessage(err), finalMessages };
+  return {
+    state: "failed",
+    reason: asMessage(err),
+    failureCode: classifyAgentRunFailure(err, "internal_failure"),
+    finalMessages,
+  };
 }
 
 /**

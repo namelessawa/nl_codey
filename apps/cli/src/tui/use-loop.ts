@@ -25,7 +25,12 @@
 import { useEffect, useMemo, useReducer, useRef } from "react";
 import fs from "node:fs";
 import path from "node:path";
-import { nlcRoot, type AgentEvent } from "@nlc/shared";
+import {
+  formatAgentRunStatusCode,
+  isTerminalAgentRunState,
+  nlcRoot,
+  type AgentEvent,
+} from "@nlc/shared";
 import type {
   LoadedSession,
   SessionFileDiagnostic,
@@ -222,7 +227,10 @@ export function useLoop(opts: UseLoopOptions = {}) {
             }
           }
           handleEvent(event, dispatch, autoApprove, servicesRef);
-          if (event.kind === "run_updated" && isTerminal(event.run.status)) {
+          if (
+            event.kind === "run_updated" &&
+            isTerminalAgentRunState(event.run.status)
+          ) {
             sessionPersistenceDisabledRef.current = false;
           }
         },
@@ -399,7 +407,7 @@ export function useLoop(opts: UseLoopOptions = {}) {
     const ws = services.storage.listWorkspaces(1)[0];
     if (!ws) return;
     for (const r of services.agent.listRuns(ws.id)) {
-      if (!isTerminal(r.status)) services.agent.stop(r.id);
+      if (!isTerminalAgentRunState(r.status)) services.agent.stop(r.id);
     }
   };
 
@@ -603,8 +611,11 @@ function handleEvent(
       }
       break;
     case "run_updated":
-      dispatch({ type: "set-status", value: event.run.status });
-      if (isTerminal(event.run.status)) {
+      dispatch({
+        type: "set-status",
+        value: formatAgentRunStatusCode(event.run),
+      });
+      if (isTerminalAgentRunState(event.run.status)) {
         // Run is over — flush any half-streamed agent text into the
         // Static stream so the row falls into terminal scrollback and
         // the live frame goes idle.
@@ -635,18 +646,17 @@ async function waitTerminal(
 ): Promise<void> {
   while (true) {
     const detail = services.agent.getDetail(runId);
-    if (isTerminal(detail.run.status)) {
+    if (isTerminalAgentRunState(detail.run.status)) {
       dispatch({ type: "flush" });
       dispatch({ type: "set-running", value: false });
-      dispatch({ type: "set-status", value: detail.run.status });
+      dispatch({
+        type: "set-status",
+        value: formatAgentRunStatusCode(detail.run),
+      });
       return;
     }
     await new Promise((r) => setTimeout(r, 80));
   }
-}
-
-function isTerminal(status: string): boolean {
-  return status === "done" || status === "failed" || status === "cancelled" || status === "budget_exceeded";
 }
 
 function resolveRunPrefix<T extends { id: string }>(runs: T[], prefix: string): T {

@@ -616,6 +616,7 @@ async function exerciseCrashRecovery(recorded: boolean): Promise<boolean> {
       runtimeInstanceId: "dead-runtime",
       ownerPid: 424_242,
     });
+    storage.updateRunStatus(run.id, "tool_use");
     storage.updateRunStatus(run.id, "waiting_for_user_approval");
     if (recorded) {
       storage.addStep(
