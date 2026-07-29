@@ -1,6 +1,6 @@
 # Product feature surface matrix
 
-Baseline: the stacked production-complete execution through Batch 49. A package
+Baseline: the stacked production-complete execution through Batch 51. A package
 or UI label is not evidence that a product feature exists. “Alternative” means
 the narrower supported behavior is named explicitly and the broader marketing
 term must not be used.

@@ -1,6 +1,6 @@
 # NLC-PRODUCTION-COMPLETE
 
-Status: **ACTIVE - NOT COMPLETE**
+Status: **NOT COMPLETE - RELEASE BLOCKED**
 
 Source specification: `NL_Codey Production Complete.docx` (Goal v2,
 `NLC-PRODUCTION-COMPLETE`).
@@ -21,16 +21,16 @@ are labeled honestly.
 
 | Area | Required outcome | Current evidence | Status |
 | --- | --- | --- | --- |
-| Security | No known P0/P1 boundary failure, escape, unapproved mutation, or secret leak | Unified mutation grants, shared redaction and a default-off Docker-only plugin runner pass adversarial gates; non-Docker plugin execution fails closed | Complete for supported surface |
+| Security | No known P0/P1 boundary failure, escape, unapproved mutation, or secret leak | Unified mutation grants, shared redaction and a default-off Docker-only plugin runner pass adversarial gates; PR #70 retains one high-severity polynomial-regex CodeQL alert | Blocked pending alert resolution |
 | Storage | Real migrations and run lifecycle pass under Node and Electron ABIs | Restorative ABI gate, historical migration backup/failure recovery and hosted clean release all pass | Complete |
 | Recovery | Desktop and TUI reconcile interrupted Runs with JSONL Sessions | Stable linkage, dead-owner reconciliation, restart idempotency and no-write-replay E2E pass | Complete |
 | Unified approval | Every built-in, sandbox, plugin, MCP, multi-agent, Git, proactive, fine-tune, TUI command and shortcut mutation is gated/audited | Generated 31-path inventory and single-use approval/denial contract pass | Complete |
-| CI | Named unit/integration/desktop/renderer/preload/CLI/TUI/sandbox/plugin/recovery/eval/E2E gates are green | Named gates and hosted Windows Release pass; main-target Node 22/24/package/dependency/audit jobs remain unproved | In progress |
+| CI | Named unit/integration/desktop/renderer/preload/CLI/TUI/sandbox/plugin/recovery/eval/E2E gates are green | Local composite and main-target Node 22/24 plus Windows Desktop/installed-CLI/VSIX artifact jobs pass; Dependency graph is disabled, so hosted dependency review and the following audit do not run | Blocked on repository setting |
 | TUI discovery | Commands, aliases, keys, mouse actions, and modals are generated from implementation | `pnpm docs:tui-actions` discovers 19 commands, 25 keyboard/input actions and 3 modals; every input row has a committed test identifier and missing mouse support is explicit | Complete |
 | TUI verification | Unit + render + ANSI frame + Windows ConPTY E2E evidence for every public action/state | All exact Goal v2 scenarios pass; required ledgers exist; mouse is explicitly Experimental; PageUp/PageDown are safe reserved no-ops; Session write failures are visible/non-blocking, resume/show paths are project-contained, and multilevel/cross-parent/invalid-target lineage passes native restart evidence | In progress; remaining UI-state cells and release-candidate manual verification remain |
 | Agent benchmark | Deterministic 100%, recorded >=95%, approved live >=80%, plus TUI workflows | Scorecard records deterministic 13/13, recorded 13/13, approved live 12/13 (92.31%), 0 unsafe regressions, rollback 3/3 and TUI workflows 8/8 | Complete |
-| Product surfaces | Desktop, TUI, headless eval and VS Code share one runtime and policy | Desktop/TUI share Agent Core; VS Code run/stop and exact-Run approvals now use the CLI host protocol and therefore the same AgentService/tool policy, with automated adapter evidence but no VSIX/manual host report yet | In progress |
-| Release | Windows build/package/install smoke, CodeQL, audit and documented manual verification | Hosted Release 30405876544 passed clean build/package/install/artifact gates; main-target required checks and final manual report remain | In progress |
+| Product surfaces | Desktop, TUI, headless eval and VS Code share one runtime and policy | Desktop/TUI share Agent Core; VS Code uses the CLI host protocol, and its exact five-file VSIX passes archive audit plus isolated installation; interactive Extension Host verification remains `NOT RUN` | In progress |
+| Release | Windows build/package/install smoke, CodeQL, audit and documented manual verification | Hosted run 30449422948 passes Node 22/24 and the Windows Desktop/installed-CLI/VSIX job; dependency review, PR #70 alert resolution and both manual RC reports remain | Blocked |
 
 ## Execution invariants
 

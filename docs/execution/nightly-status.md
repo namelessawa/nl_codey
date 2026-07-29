@@ -2,7 +2,7 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EVIDENCE REMAINS**
+Overall state: **ACTIVE - COMPUTABLE GATES GREEN; SECURITY/REPOSITORY/MANUAL RELEASE BLOCKERS REMAIN**
 
 ## Batch board
 
@@ -59,6 +59,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EV
 | 49 | `codex/p1-diagnostics-export-desktop` | Main-owned native Desktop diagnostics export | Ready for draft review; `FEATURE-001` closed | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 50 | `codex/p1-tui-release-evidence` | Strict command inputs and terminal-mode restoration evidence | Ready for draft review; `TUI-UNIT-001` and `TUI-PTY-001` closed | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 51 | `codex/p1-vscode-vsix-artifact` | Versioned VSIX packaging, archive smoke and CI upload | Ready for draft review; `VSCE-001` packaging evidence complete | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 52 | `codex/production-complete-final-report` | Final evidence reconciliation and release decision | Ready for draft review; release remains blocked | Candidate-tip hosted Node 22/24, Windows package/installed CLI, VSIX and CodeQL pass; high PR #70 alert, disabled Dependency graph and both manual RC reports remain |
 
 ## Work log
 
@@ -1467,17 +1468,39 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EV
   Rollback removes the VSIX scripts/CI artifact and restores the invalid,
   non-packageable extension identity.
 
+### 2026-07-29 - Reconcile final hosted evidence and release decision
+
+- Fast-forwarded the existing integration branch from `99ee5ac` to `57271ea`
+  without rewriting history. Main-target PR run 30449422948 passed Windows
+  Node 22, Node 24 and the complete Windows artifact job. The latter passed the
+  production build, installed CLI smoke, VSIX package/content audit, Desktop
+  packaging/runtime smoke, silent install/uninstall and artifact upload.
+- Candidate-tip CodeQL run 30449420813 passed Actions, JavaScript/TypeScript
+  and Python analysis. The integration pass does not erase PR #70's retained
+  high-severity alert: check 90487591404 identifies an uncontrolled polynomial
+  regex at `packages/core/shared/src/run-lifecycle.ts:260`.
+- Dependency review still fails before audit because repository Dependency
+  graph is disabled. The exact hosted failure, historical high alert, two
+  `NOT RUN` manual reports, retained live-benchmark failure and explicit
+  product boundaries are recorded in `nightly-final-report.md`.
+- This documentation-only batch makes no model call and does not read
+  `custom.txt`. GitHub was contacted only to inspect/update the existing Draft
+  PRs and observe hosted checks. User files and unrelated working-tree states
+  remain untouched.
+
 ## Current blockers
 
-1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
-   package/installed CLI and CodeQL evidence. Dependency review fails because
-   the repository Dependency graph is disabled, and the combined job stops
-   before `pnpm audit`; enabling that repository-level setting requires
-   explicit user approval.
-2. All exact Goal v2 TUI scenarios pass; mouse disposition and corrupt/partial
+1. PR #70 retains one high-severity CodeQL finding at
+   `packages/core/shared/src/run-lifecycle.ts:260`. Fixing it in its published
+   mid-stack branch and propagating the result requires explicit approval.
+2. Main-target Node 22/24, Windows package/installed CLI/VSIX and candidate-tip
+   CodeQL are green. Dependency review fails because repository Dependency graph
+   is disabled, and the combined job stops before `pnpm audit`; enabling that
+   repository-level setting requires explicit user approval.
+3. All exact Goal v2 TUI scenarios pass; mouse disposition and corrupt/partial
    Session recovery are explicit, and all 15 required key groups have automated
    evidence. Session write-failure/path containment and multilevel/cross-parent/
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
-3. The broader production goal still requires interactive VS Code Extension
+4. The broader production goal still requires interactive VS Code Extension
    Host evidence and release-candidate manual verification.

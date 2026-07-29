@@ -33,7 +33,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | CI-SPLIT-001 | Add formal unit/desktop-main/renderer/preload/CLI/TUI/integration configs and named root scripts | Each command selects at least one intended test and fails on zero matches | Done in Batches 2-4 |
 | CI-LIVE-001 | Remove debug/live suites from default test discovery unless explicitly enabled | Default tests make zero network/model calls; explicit smoke loads ignored `custom.txt` | Done in Batch 16; dedicated custom-provider smoke passed and the 629-assertion default unit slice remained offline |
 | SBOX-ABORT-001 | Fix/characterize Windows process-tree abort without timeout inflation | Repeated isolated and loaded runs stop promptly, leave no child and preserve AbortError | Done in Batch 7 |
-| CI-RELEASE-001 | Add Node-version/Windows/build/package/CodeQL/dependency/CLI smoke gates | Required checks all green; no blanket production-test exclusion | In progress; hosted Release run 30405876544 passed the clean Windows build/package/install path and branch CodeQL is green; `CI-MAIN-001` still requires the main-target Node 22/24, package, dependency-review and audit jobs |
+| CI-RELEASE-001 | Add Node-version/Windows/build/package/CodeQL/dependency/CLI smoke gates | Required checks all green; no blanket production-test exclusion | In progress; main-target run 30449422948 passes Node 22/24 and the complete Windows Desktop/installed-CLI/VSIX artifact job, and candidate-tip CodeQL is green; dependency review still cannot run because repository Dependency graph is disabled |
 
 ## P1 - TUI product surface
 
