@@ -15,6 +15,7 @@ import { runSettings } from "./commands/settings.js";
 import { runHelp } from "./commands/help.js";
 import { runWorkspaces } from "./commands/workspaces.js";
 import { runSessions } from "./commands/sessions.js";
+import { runDiagnostics } from "./commands/diagnostics.js";
 import { CLI_VERSION } from "./lib/version.js";
 import { parseArgv, type ParsedArgs } from "./lib/argv.js";
 import { writeErrLine } from "./lib/format.js";
@@ -27,6 +28,7 @@ const REGISTRY: Record<string, Command> = {
   settings: runSettings,
   workspaces: runWorkspaces,
   sessions: runSessions,
+  diagnostics: runDiagnostics,
   help: runHelp,
 };
 

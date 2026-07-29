@@ -306,3 +306,21 @@ not exist. Implementing mTLS ad hoc would create a new network attack surface;
 the truthful production state is fail-closed and default-off until transport,
 identity, replay, recovery and mutation-approval contracts are designed and
 tested together.
+
+## D-023 - Export diagnostics as metadata, not a support archive
+
+Date: 2026-07-29
+
+Decision: define one versioned shared Run-diagnostics bundle that omits the
+user task, diff/tool-result/message bodies, snapshot contents, task
+titles/descriptions/verifier commands and Git payloads. Retain bounded Run
+metadata, totals/truncation counts, structural task/snapshot/Git metadata and
+only shared-redacted error/command summaries. The CLI writes a new owner-only
+file without overwriting an existing destination; JSON reaches stdout only
+when explicitly requested.
+
+Reason: a conventional support archive easily becomes an unnoticed source-code
+and credential exfiltration channel. Content-minimized diagnostics answer
+lifecycle, usage, failure and recovery questions while keeping repository
+content out by construction. A shared pure builder also lets Desktop and
+headless hosts produce the same schema without duplicating redaction logic.

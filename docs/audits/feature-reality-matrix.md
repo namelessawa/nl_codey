@@ -111,6 +111,10 @@ that the functional modules are unusable.
   five-cycle crash soak pass. Stream and trace state are bounded to 500 and
   200 items; persisted Tool Output is capped at 4,000 characters. See
   `docs/tui/action-inventory.md`.
+- Requested cross-cutting product names and their narrower supported
+  alternatives are tracked in
+  `docs/audits/product-feature-surface-matrix.md`; unsupported router/MCP/remote
+  Git claims are not inferred from provider, dynamic-tool or local Git helpers.
 
 ## Production-rating gate
 

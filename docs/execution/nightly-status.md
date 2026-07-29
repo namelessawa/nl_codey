@@ -55,6 +55,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 45 | `codex/p1-vscode-host-adapter` | VS Code run/stop adapter over the shared CLI runtime and policy | Ready for draft review; `VSCE-001` implementation complete, release evidence remains | Full offline gate green; 679 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 46 | `codex/p1-embedding-compatibility` | Provider-scoped production embedding protocol and response validation | Ready for draft review; `EMBED-001` closed | Full offline gate green; 688 unit, 17 recorded-eval, 88 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 47 | `codex/p1-distributed-nonproduction-boundary` | Explicit fail-closed boundary for the unauthenticated distributed scaffold | Ready for draft review; `DIST-001` closed | Full offline gate green; 688 unit, 17 recorded-eval, 93 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 48 | `codex/p1-diagnostics-export-core` | Content-minimized shared diagnostics schema and CLI/headless export | Ready for draft review; `FEATURE-001` diagnostics core complete | Full offline gate green; 690 unit, 17 recorded-eval, 93 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1366,6 +1367,32 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - This batch makes no LLM or network call and does not read `custom.txt`.
   Rollback restores the editable endpoint registry and misleading feature
   toggle, not a functioning distributed transport.
+
+### 2026-07-29 - Add safe CLI/headless Run diagnostics
+
+- A new shared schema builds bounded Run diagnostics from existing Storage
+  records. It records lifecycle/usage metadata, totals, dropped counts and
+  structural snapshot/task/Git information without serializing repository or
+  task content.
+- Only error and command Steps retain text, capped at 1,000 shared-redacted
+  characters. Tool-call, tool-result, message and diff text is represented by
+  type/time/length only; snapshot contents and Git payloads never enter the
+  bundle.
+- `nlc diagnostics <run-id>` exports the schema. By default it writes a
+  create-new owner-only JSON file, refuses missing parents and existing
+  destinations, and writes JSON to stdout only through `--json` or
+  `--output -`.
+- The new product-feature matrix documents the actual Intelligent Diff,
+  provider-selection, local Git, MCP, Skills and diagnostics surfaces and
+  forbids broader unsupported claims.
+- Two shared diagnostics assertions, 18 CLI assertions, the compiled-command
+  smoke, root typecheck/build and the 228.2-second final offline gate pass:
+  690 unit, 17 recorded-eval, 93 Desktop-main, renderer/preload, 18 CLI,
+  16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions.
+  The storage test matrix restored the Electron ABI.
+- This batch makes no LLM or network call and does not read `custom.txt`.
+  Rollback removes the shared schema/CLI command and its explicit product
+  dispositions; it does not remove existing Run data.
 
 ## Current blockers
 
