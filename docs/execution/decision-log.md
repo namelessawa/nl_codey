@@ -288,3 +288,21 @@ caused unsupported requests and risked sending credentials to a guessed
 endpoint. Provider-scoped routing gives one tested production path without
 pretending that unrelated providers support embeddings or adding another
 plaintext secret.
+
+## D-022 - Withdraw distributed execution from production
+
+Date: 2026-07-29
+
+Decision: retain `packages/advanced/distributed` only as an internal algorithm
+scaffold. Production settings always normalize `distributedEnabled` to false,
+reject attempts to enable it, and expose no node-registration tab. Both legacy
+cluster IPC channels remain temporarily for contract compatibility but return
+one stable unavailable error before reading or writing worker-node storage.
+
+Reason: the package has scheduling and recovery helpers but no authenticated
+remote transport, worker server or dispatch integration. An editable endpoint
+registry and feature toggle implied a security and execution boundary that did
+not exist. Implementing mTLS ad hoc would create a new network attack surface;
+the truthful production state is fail-closed and default-off until transport,
+identity, replay, recovery and mutation-approval contracts are designed and
+tested together.

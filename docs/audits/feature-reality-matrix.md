@@ -82,7 +82,7 @@ that the functional modules are unusable.
 | `packages/advanced/proactive` | Read-only scan, proposal inbox and scheduler | One suite | Scheduler errors can be skipped and mutation handoff is not in the unified approval inventory | Functional |
 | `packages/advanced/plugin-sdk` | Manifest/install/grant/host logic used by Desktop's default-off plugin runtime | SDK, Desktop adapter, restricted-runner unit and real Docker adversarial gates | Docker Desktop and the pinned image must be pre-provisioned; non-Docker manifests intentionally fail closed | Functional |
 | `packages/advanced/finetune` | Desktop job/model registry and external runner hooks | One suite | No bundled complete trainer/evaluator or production job isolation | Partial |
-| `packages/advanced/distributed` | Coordinator/node/assignment logic and IPC list/register surface | One suite | No authenticated remote transport or production dispatch path | Scaffold |
+| `packages/advanced/distributed` | Internal coordinator/node/assignment algorithms only; Desktop forces the persisted setting off, rejects enablement and both cluster IPC calls, and removes the node-registration tab | Package logic plus Desktop migration/validator/IPC boundary suites | No authenticated remote transport or production dispatch path; intentionally unavailable in production | Scaffold |
 
 ## Cross-cutting evidence
 

@@ -12,10 +12,9 @@ import { StyleProfilePanel } from "./StyleProfilePanel";
 import { LearningDashboard } from "./LearningDashboard";
 import { FinetuneManager } from "./FinetuneManager";
 import { ProposalInbox } from "./ProposalInbox";
-import { ClusterMonitor } from "./ClusterMonitor";
 import { PluginManager } from "./PluginManager";
 
-type TabId = "kg" | "style" | "learning" | "finetune" | "proposals" | "cluster" | "plugins" | "settings";
+type TabId = "kg" | "style" | "learning" | "finetune" | "proposals" | "plugins" | "settings";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "kg", label: "知识图谱" },
@@ -23,7 +22,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "learning", label: "学习曲线" },
   { id: "finetune", label: "微调管理" },
   { id: "proposals", label: "提案收件箱" },
-  { id: "cluster", label: "分布式节点" },
   { id: "plugins", label: "插件管理" },
   { id: "settings", label: "功能开关" },
 ];
@@ -66,7 +64,6 @@ export function AdvancedPanel({ workspaceId }: { workspaceId: string | null }): 
         {tab === "learning" && <LearningDashboard workspaceId={workspaceId} />}
         {tab === "finetune" && <FinetuneManager />}
         {tab === "proposals" && <ProposalInbox workspaceId={workspaceId} />}
-        {tab === "cluster" && <ClusterMonitor />}
         {tab === "plugins" && <PluginManager />}
         {tab === "settings" && (
           <AdvancedSettingsView
@@ -123,12 +120,17 @@ function AdvancedSettingsView({
       <h2>高级功能开关</h2>
       {error && <div className="advanced-error">设置同步失败:{error}</div>}
       <p className="advanced-help">每个模块独立可关。关闭后系统退回完整可用的第三阶段形态。</p>
+      <p className="advanced-help">
+        分布式执行尚未提供；完成认证传输和恢复协议后才会开放。
+      </p>
       <ul>
         <Toggle label="跨项目记忆与知识图谱" on={settings.globalMemoryEnabled} onToggle={toggle("globalMemoryEnabled")} />
         <Toggle label="编码风格画像" on={settings.styleProfileEnabled} onToggle={toggle("styleProfileEnabled")} />
         <Toggle label="持续学习闭环" on={settings.learningEnabled} onToggle={toggle("learningEnabled")} />
         <Toggle label="本地模型微调(高级)" on={settings.finetuneEnabled} onToggle={toggle("finetuneEnabled")} />
-        <Toggle label="分布式执行" on={settings.distributedEnabled} onToggle={toggle("distributedEnabled")} />
+        <li className="advanced-toggle">
+          <span>分布式执行（不可用：需要认证传输和恢复协议）</span>
+        </li>
         <Toggle label="主动工程伙伴" on={settings.proactiveEnabled} onToggle={toggle("proactiveEnabled")} />
         <Toggle label="插件机制" on={settings.pluginsEnabled} onToggle={toggle("pluginsEnabled")} />
       </ul>

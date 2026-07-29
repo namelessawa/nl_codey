@@ -2,6 +2,13 @@
 
 import type { WorkspaceContributionMode } from "./kg-types.js";
 
+/**
+ * The distributed package remains an internal algorithm scaffold. Production
+ * hosts must not enable it until an authenticated transport and dispatch path
+ * are implemented and reviewed.
+ */
+export const DISTRIBUTED_PRODUCTION_AVAILABLE = false;
+
 export type AdvancedSettings = {
   globalMemoryEnabled: boolean;
   styleProfileEnabled: boolean;
@@ -31,5 +38,9 @@ export const DEFAULT_ADVANCED_SETTINGS: AdvancedSettings = {
 export function mergeAdvancedSettings(
   partial: Partial<AdvancedSettings> | null | undefined,
 ): AdvancedSettings {
-  return { ...DEFAULT_ADVANCED_SETTINGS, ...(partial ?? {}) };
+  return {
+    ...DEFAULT_ADVANCED_SETTINGS,
+    ...(partial ?? {}),
+    distributedEnabled: false,
+  };
 }

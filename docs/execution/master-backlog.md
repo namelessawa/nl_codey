@@ -61,7 +61,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | VSCE-001 | VS Code host adapter using shared runtime/policy | Extension smoke + security tests + docs | Done in Batches 44-45; run/stop commands use a shell-disabled CLI child, exact-Run modal decisions feed the shared approval gate, malformed/oversized channels fail closed, deactivation stops the child, and nine extension assertions plus build/artifact smoke pass; VSIX/manual evidence remains a release gap |
 | EMBED-001 | Prove and constrain the production embedding provider path | Real local HTTP protocol/factory evidence; non-supporting chat credentials never reach guessed embedding endpoints | Done in Batch 46; OpenAI settings produce bounded validated `text-embedding-3-small` requests through the Desktop factory, while Anthropic/Gemini/DeepSeek/OpenRouter/Custom settings retain the deterministic local fallback |
 | FEATURE-001 | Intelligent diff, model router, Git workflow agent, MCP, Skills, diagnostics export | Desktop/TUI/CLI/headless/security/docs evidence for each, or documented alternative | Open |
-| DIST-001 | Authenticated distributed transport or explicit non-production removal | mTLS transport/recovery integration evidence, or feature remains scaffold/default-off | Open |
+| DIST-001 | Authenticated distributed transport or explicit non-production removal | mTLS transport/recovery integration evidence, or feature remains scaffold/default-off | Done in Batch 47 via explicit non-production boundary; old/new settings normalize to disabled, enable requests and both cluster IPC calls fail closed without storage access, and the production node-registration surface is removed |
 
 ## Release evidence
 

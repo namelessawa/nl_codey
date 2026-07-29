@@ -47,20 +47,21 @@ export class AdvancedSettingsStore {
   }
 
   set(next: AdvancedSettings): AdvancedSettings {
-    this.cache = next;
+    const normalized = mergeAdvancedSettings(next);
+    this.cache = normalized;
     try {
       fs.mkdirSync(this.userDataDir, { recursive: true });
       // Write owner-only (0o600) to mirror the main settings/store.ts
       // contract. Advanced settings don't carry secrets today, but the file
       // does record feature flags and worker-node endpoints that have no
       // business being world-readable on a multi-user POSIX system.
-      fs.writeFileSync(this.newFile(), JSON.stringify(next, null, 2), {
+      fs.writeFileSync(this.newFile(), JSON.stringify(normalized, null, 2), {
         encoding: "utf-8",
         mode: 0o600,
       });
     } catch {
       // best-effort persistence; in-memory cache still reflects the update
     }
-    return next;
+    return normalized;
   }
 }
