@@ -44,6 +44,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 34 | `codex/p1-tui-session-diagnostics` | Corrupt/partial Session diagnostics and safe resumed appends | Ready for draft review; corrupt/partial acceptance closed | Full offline gate green; 635 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 35 | `codex/p1-tui-page-navigation-contract` | Required PageUp/PageDown safe-no-op input contract | Ready for draft review; all 15 required key groups now have automated evidence | Full offline gate green; 635 unit, 16 TUI unit, 20 render, 4 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 36 | `codex/p1-tui-session-fault-isolation` | Visible Session write faults and resume/show path containment | Ready for draft review; write-failure/path-isolation acceptance closed | Full offline gate green; 638 unit, 16 TUI unit, 20 render, 4 lifecycle, 12 E2E and 13 recovery assertions pass |
+| 37 | `codex/p1-tui-session-lineage-breadth` | Multilevel/cross-parent Session lineage and invalid-target continuity | Ready for draft review; `TUI-SESSION-001` closed | Full offline gate green; 638 unit, 16 TUI unit, 20 render, 4 lifecycle, 13 E2E and 13 recovery assertions pass |
 
 ## Work log
 
@@ -1033,6 +1034,31 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - This batch makes no LLM call and does not read `custom.txt`. Rollback restores
   silent best-effort writes and unrestricted file-path resume/show behavior.
 
+### 2026-07-29 - Close Session lineage and invalid-target breadth
+
+- A dedicated native ConPTY journey now creates root → child → grandchild
+  ancestry through public `/branch` commands, then explicitly branches from the
+  active grandchild back to the root to create a sibling.
+- Unknown `/resume`, unknown parent-session and unknown message targets are
+  exercised through the real TUI. All three fail visibly, create no Session
+  file and preserve the sibling as active; a later task appends there.
+- On-disk assertions require both header ancestry and first-message `parentId`
+  at every branch level. A new process restores the latest sibling and renders
+  all four branches without rerunning tools.
+- The first E2E attempt reached the correct unknown-message error but compared a
+  visually wrapped session id as contiguous text. Whitespace normalization
+  fixed that test-only assertion; the final 13/13 native gate passed in 99
+  seconds and the restorative ABI wrapper re-verified Electron 33.4.11 /
+  modules 130.
+- The effective `nlc` package typecheck passed. This batch makes no LLM call and
+  does not read `custom.txt`; rollback removes only the additional lineage
+  acceptance journey and reopens `TUI-SESSION-001`.
+- The complete default offline gate passed 638 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 16 TUI unit, 20 render, 4 lifecycle,
+  13 E2E and 13 recovery assertions in 213 seconds. Every restorative matrix
+  restored and re-verified Electron 33.4.11 / modules 130.
+- Root typecheck and the production Desktop/CLI build passed.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1042,9 +1068,9 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    explicit user approval.
 2. All exact Goal v2 TUI scenarios pass; mouse disposition and corrupt/partial
    Session recovery are explicit, and all 15 required key groups have automated
-   evidence. Session write-failure/path containment now pass; multilevel/
-   cross-parent and nonexistent-id Session breadth, remaining UI-state cells
-   and release-candidate manual verification remain.
+   evidence. Session write-failure/path containment and multilevel/cross-parent/
+   invalid-target lineage now pass; remaining UI-state cells and
+   release-candidate manual verification remain.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

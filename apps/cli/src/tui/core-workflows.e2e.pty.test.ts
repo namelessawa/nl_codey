@@ -1116,6 +1116,216 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     });
   });
 
+  it("preserves multilevel and cross-parent lineage across invalid session targets", async () => {
+    const fixture = createFixture();
+    const session = start(fixture);
+
+    await session.waitForScreen((screen) => screen.includes("○ idle"));
+    await enter(session, "lineage root fixture");
+    await session.waitForBuffer(
+      (buffer) => buffer.includes("[verify] pending patch"),
+      20_000,
+    );
+    await pressCommandDecision(
+      session,
+      "n",
+      (screen) => screen.includes("cancelled"),
+    );
+
+    const [rootPath] = await waitForSessionFiles(fixture.dataRoot, 1);
+    const root = readSession(rootPath!);
+    const rootHeader = root.find((line) => line.type === "session")!;
+    const rootUser = root.find(
+      (line) =>
+        line.type === "message" &&
+        line.role === "user" &&
+        line.content === "lineage root fixture",
+    )!;
+
+    await enter(session, `/branch ${rootUser.id} ${rootHeader.id}`);
+    await session.waitForBuffer((buffer) =>
+      buffer.includes("next user message will hang off the branch point"),
+    );
+    const childFiles = await waitForSessionFiles(fixture.dataRoot, 2);
+    const childPath = childFiles.find((file) => file !== rootPath)!;
+    await enter(session, "lineage child fixture");
+    await session.waitForBuffer(
+      (buffer) => buffer.includes("[verify] pending patch"),
+      20_000,
+    );
+    await pressCommandDecision(
+      session,
+      "n",
+      (screen) => screen.includes("cancelled"),
+    );
+    const child = readSession(childPath);
+    const childHeader = child.find((line) => line.type === "session")!;
+    const childUser = child.find(
+      (line) =>
+        line.type === "message" &&
+        line.role === "user" &&
+        line.content === "lineage child fixture",
+    )!;
+
+    await enter(session, `/branch ${childUser.id} ${childHeader.id}`);
+    await session.waitForBuffer((buffer) =>
+      buffer.includes("next user message will hang off the branch point"),
+    );
+    const grandchildFiles = await waitForSessionFiles(fixture.dataRoot, 3);
+    const grandchildPath = grandchildFiles.find(
+      (file) => file !== rootPath && file !== childPath,
+    )!;
+    await enter(session, "lineage grandchild fixture");
+    await session.waitForBuffer(
+      (buffer) => buffer.includes("[verify] pending patch"),
+      20_000,
+    );
+    await pressCommandDecision(
+      session,
+      "n",
+      (screen) => screen.includes("cancelled"),
+    );
+    const grandchild = readSession(grandchildPath);
+    const grandchildHeader = grandchild.find(
+      (line) => line.type === "session",
+    )!;
+    const grandchildUser = grandchild.find(
+      (line) =>
+        line.type === "message" &&
+        line.role === "user" &&
+        line.content === "lineage grandchild fixture",
+    )!;
+
+    await enter(session, `/branch ${rootUser.id} ${rootHeader.id}`);
+    await session.waitForBuffer((buffer) =>
+      buffer.includes("next user message will hang off the branch point"),
+    );
+    const siblingFiles = await waitForSessionFiles(fixture.dataRoot, 4);
+    const siblingPath = siblingFiles.find(
+      (file) =>
+        file !== rootPath &&
+        file !== childPath &&
+        file !== grandchildPath,
+    )!;
+    await enter(session, "lineage cross-parent fixture");
+    await session.waitForBuffer(
+      (buffer) => buffer.includes("[verify] pending patch"),
+      20_000,
+    );
+    await pressCommandDecision(
+      session,
+      "n",
+      (screen) => screen.includes("cancelled"),
+    );
+    const sibling = readSession(siblingPath);
+    const siblingHeader = sibling.find((line) => line.type === "session")!;
+    const siblingUser = sibling.find(
+      (line) =>
+        line.type === "message" &&
+        line.role === "user" &&
+        line.content === "lineage cross-parent fixture",
+    )!;
+
+    await enter(session, "/resume ses_does_not_exist");
+    await session.waitForBuffer((buffer) =>
+      buffer.includes(
+        "/resume failed: unknown session id: ses_does_not_exist",
+      ),
+    );
+    await enter(
+      session,
+      `/branch msg_does_not_exist ${siblingHeader.id}`,
+    );
+    await session.waitForBuffer((buffer) =>
+      buffer
+        .replace(/\s+/gu, " ")
+        .includes(
+          `/branch failed: branchSession: message "msg_does_not_exist" not found in session "${siblingHeader.id}"`,
+        ),
+    );
+    await enter(
+      session,
+      `/branch ${rootUser.id} ses_does_not_exist`,
+    );
+    await session.waitForBuffer((buffer) =>
+      buffer
+        .replace(/\s+/gu, " ")
+        .includes(
+          '/branch failed: branchSession: parent session "ses_does_not_exist" not found',
+        ),
+    );
+    expect(await waitForSessionFiles(fixture.dataRoot, 4)).toHaveLength(4);
+
+    await enter(session, "continue after invalid session targets");
+    await session.waitForBuffer(
+      (buffer) => buffer.includes("[verify] pending patch"),
+      20_000,
+    );
+    await pressCommandDecision(
+      session,
+      "n",
+      (screen) => screen.includes("cancelled"),
+    );
+    await enter(session, "/tree");
+    await session.waitForBuffer(
+      (buffer) =>
+        buffer.includes("lineage root fixture") &&
+        buffer.includes("lineage child fixture") &&
+        buffer.includes("lineage grandchild fixture") &&
+        buffer.includes("lineage cross-parent fixture") &&
+        buffer.includes("continue after invalid session targets"),
+    );
+    await exit(session);
+
+    const store = new SessionStore({
+      root: path.join(fixture.dataRoot, "agent.session"),
+    });
+    const sessionsOnDisk = store.loadProjectSessions(fixture.workspaceRoot);
+    expect(sessionsOnDisk).toHaveLength(4);
+    expect(childHeader.parent).toEqual({
+      sessionId: rootHeader.id,
+      messageId: rootUser.id,
+    });
+    expect(childUser.parentId).toBe(rootUser.id);
+    expect(grandchildHeader.parent).toEqual({
+      sessionId: childHeader.id,
+      messageId: childUser.id,
+    });
+    expect(grandchildUser.parentId).toBe(childUser.id);
+    expect(siblingHeader.parent).toEqual({
+      sessionId: rootHeader.id,
+      messageId: rootUser.id,
+    });
+    expect(siblingUser.parentId).toBe(rootUser.id);
+    const persistedSibling = store.openProjectSession(
+      fixture.workspaceRoot,
+      siblingPath,
+    );
+    expect(
+      persistedSibling.messages.some(
+        (message) => message.content === "continue after invalid session targets",
+      ),
+    ).toBe(true);
+
+    const restarted = start(fixture);
+    await restarted.waitForBuffer(
+      (buffer) =>
+        buffer.includes(`restored ${siblingHeader.id}`) &&
+        buffer.includes("continue after invalid session targets") &&
+        buffer.includes("no tools were re-run"),
+      15_000,
+    );
+    await enter(restarted, "/tree");
+    await restarted.waitForBuffer(
+      (buffer) =>
+        buffer.includes("lineage root fixture") &&
+        buffer.includes("lineage child fixture") &&
+        buffer.includes("lineage grandchild fixture") &&
+        buffer.includes("lineage cross-parent fixture"),
+    );
+    await exit(restarted);
+  });
+
   it("reconciles a run killed at approval without replaying its patch", async () => {
     const fixture = createFixture();
     const notesPath = path.join(fixture.workspaceRoot, "AGENT_NOTES.md");

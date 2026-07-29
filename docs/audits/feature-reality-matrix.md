@@ -35,7 +35,7 @@ that the functional modules are unusable.
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, generated input inventory and acceptance matrices, PageUp/PageDown safe-no-op input contract, explicit Experimental mouse boundary, terminal-size matrix, read-only refusal, corrected-provider new Run, redacted failures, visible Session write failure, contained resume/show, corrupt/partial recovery, bounded output/native scrollback, real ConPTY workflows and crash soak pass | Session multilevel/cross-parent and nonexistent-id breadth, remaining UI-state cells and release-candidate manual verification remain incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, generated input inventory and acceptance matrices, PageUp/PageDown safe-no-op input contract, explicit Experimental mouse boundary, terminal-size matrix, read-only refusal, corrected-provider new Run, redacted failures, visible Session write failure, contained resume/show, corrupt/partial recovery, multilevel/cross-parent/invalid-target lineage, bounded output/native scrollback, real ConPTY workflows and crash soak pass | Remaining UI-state cells and release-candidate manual verification remain incomplete | Functional |
 
 ## Core
 
@@ -44,7 +44,7 @@ that the functional modules are unusable.
 | `packages/core/shared` | Shared models, IPC, settings and policy types used across apps/packages | Six suites | Browser-safe and Node-only path utilities are not split | Functional |
 | `packages/core/sandbox` | Workspace containment, command whitelist/router, WSL/Docker staging and verified cross-platform process-tree termination | Six suites including Docker-gated and descendant-cleanup paths | Host whitelist has no OS resource/syscall isolation; native Job Object/AppContainer host remains unimplemented | Functional |
 | `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Ten Node lifecycle/migration tests, historical backup/failure fixtures, rollback recovery and Electron native-load checks pass through restorative ABI matrices | Automated backup-retention policy and longer-duration corruption drills remain incomplete | Functional |
-| `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path plus native branch/resume/restart, malformed-header/partial-tail diagnostics, write-failure chain safety, lossy-folder collision isolation, contained resume/show and Run-linkage E2E pass | Desktop interoperability and broader multilevel/cross-parent history drills remain incomplete | Functional |
+| `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path plus native multilevel/cross-parent branch/resume/restart, invalid-target continuity, malformed-header/partial-tail diagnostics, write-failure chain safety, lossy-folder collision isolation, contained resume/show and Run-linkage E2E pass | Desktop interoperability and longer-duration/high-volume history drills remain incomplete | Functional |
 
 ## Runtime
 
