@@ -46,6 +46,7 @@ import { Approval } from "./approval.js";
 import { Footer } from "./footer.js";
 import { useLoop, type UseLoopOptions } from "./use-loop.js";
 import { renderHelp, type CommandEffect } from "./commands.js";
+import { renderTraceDetail } from "./trace.js";
 import { loadCliSettings } from "../lib/settings.js";
 import { initProjectSkeleton, renderInitOutcome } from "../lib/init-project.js";
 import {
@@ -123,6 +124,12 @@ function InnerApp(opts: TuiOptions) {
         return;
       case "show-help":
         loop.appendSystem(`commands\n${renderHelp()}`, "help");
+        return;
+      case "show-trace":
+        loop.appendSystem(
+          renderTraceDetail(loop.trace, effect.position),
+          "trace",
+        );
         return;
       case "list-workspaces":
         loop.appendSystem(

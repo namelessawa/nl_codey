@@ -100,6 +100,39 @@ export type FindSymbolInput = {
 };
 export type FindSymbolOutput = { symbols: SymbolInfo[]; truncated: boolean };
 
+// analyze_impact
+export type ImpactEdgeKind = "declares" | "imports" | "tests" | "calls";
+export type ImpactConfidence = "exact" | "heuristic";
+export type ImpactEdge = {
+  kind: ImpactEdgeKind;
+  /** Workspace-relative source module, or the target module for declarations. */
+  from: string;
+  /** Workspace-relative module or `module#symbol` node. */
+  to: string;
+  line?: number;
+  symbol?: string;
+  confidence: ImpactConfidence;
+};
+export type AnalyzeImpactInput = {
+  /** Workspace-relative TypeScript/JavaScript module to analyze. */
+  path: string;
+  /** Optional symbol; otherwise exported callable declarations are considered. */
+  symbol?: string;
+  maxResults?: number;
+};
+export type AnalyzeImpactOutput = {
+  target: string;
+  coverage: "typescript-javascript";
+  symbols: SymbolInfo[];
+  edges: ImpactEdge[];
+  /** Modules that import, test, or lexically call into the target. */
+  impactedFiles: string[];
+  scannedFiles: number;
+  selectionReason: string;
+  truncated: boolean;
+  limitations: string[];
+};
+
 // run_command
 export type RunCommandInput = { command: string; timeoutMs?: number };
 export type RunCommandOutput = {

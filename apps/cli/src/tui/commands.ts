@@ -15,6 +15,7 @@ export type CommandEffect =
   | { kind: "exit" }
   | { kind: "clear" }
   | { kind: "show-help" }
+  | { kind: "show-trace"; position: number | null }
   | { kind: "list-workspaces" }
   | { kind: "show-settings" }
   | { kind: "switch-workspace"; path: string }
@@ -43,6 +44,7 @@ export const MOUSE_SUPPORT_NOTICE =
 
 export const COMMANDS: readonly CommandSpec[] = [
   { name: "/help", hint: "Show this command catalogue." },
+  { name: "/trace [<n>]", hint: "Expand the latest (or nth-latest) tool result with provenance." },
   { name: "/init", hint: "Scaffold .nlc/ in the current workspace (--force to overwrite)." },
   { name: "/skills", hint: "List skills the agent loop currently sees." },
   { name: "/skills-generate <desc>", hint: "Use the LLM to author a new skill, then pick where to install." },
@@ -101,6 +103,15 @@ export function parseCommand(line: string): CommandEffect | null {
     case "help":
     case "?":
       return { kind: "show-help" };
+    case "trace": {
+      const raw = parts[1]?.trim() ?? "";
+      if (!raw) return { kind: "show-trace", position: null };
+      const position = Number(raw);
+      if (!Number.isInteger(position) || position < 1 || parts.length > 2) {
+        return { kind: "unknown", raw: trimmed };
+      }
+      return { kind: "show-trace", position };
+    }
     case "workspaces":
     case "ws":
       return { kind: "list-workspaces" };

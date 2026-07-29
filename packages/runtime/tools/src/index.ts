@@ -8,6 +8,7 @@ export { writeFileTool } from "./write-file.js";
 export { parseTestFailure } from "./parse-test-failure.js";
 export { readFileRangeTool } from "./read-file-range.js";
 export { findSymbolTool, extractSymbols } from "./symbols.js";
+export { analyzeImpactTool } from "./impact.js";
 export { gitStatus, gitDiff, parseGitStatus } from "./git.js";
 export { isV4APatch, parseV4A, applyV4AHunks, type V4AOp, type V4AHunk } from "./v4a.js";
 export { readOnlyTools, type ReadOnlyToolName, createPhase3Tools } from "./registry.js";

@@ -24,9 +24,12 @@ const noopStorage = {
 const denyMutation = () =>
   ({ allowed: false, reason: "test did not grant mutation capability" }) as const;
 
-function executor(allowShellExecution: boolean) {
+function executor(
+  allowShellExecution: boolean,
+  workspaceRoot = process.cwd(),
+) {
   return createToolExecutor({
-    ctx: { workspaceRoot: process.cwd(), runId: "test-run" },
+    ctx: { workspaceRoot, runId: "test-run" },
     storage: noopStorage,
     allowShellExecution,
     authorizeMutation: denyMutation,
@@ -47,6 +50,7 @@ describe("AGENT_TOOL_SCHEMAS", () => {
       "run_command",
       "read_file_range",
       "find_symbol",
+      "analyze_impact",
       "git_status",
       "git_diff",
       "record_plan",
@@ -71,6 +75,7 @@ describe("agentToolSchemas read-only mode", () => {
     expect(names).toContain("read_file");
     expect(names).toContain("search_text");
     expect(names).toContain("find_symbol");
+    expect(names).toContain("analyze_impact");
   });
 });
 
@@ -128,6 +133,32 @@ describe("createToolExecutor guards", () => {
     expect(res.isError).toBe(false);
     const parsed = JSON.parse(res.resultText) as { symbols: Array<{ name: string }> };
     expect(Array.isArray(parsed.symbols)).toBe(true);
+  });
+
+  it("runs bounded impact analysis and returns provenance for its graph", async () => {
+    const res = await executor(
+      true,
+      path.join(process.cwd(), "packages/runtime/tools/src"),
+    )(
+      call("analyze_impact", {
+        path: "impact.ts",
+        symbol: "analyzeImpactTool",
+        maxResults: 5,
+      }),
+    );
+    expect(res.isError).toBe(false);
+    const parsed = JSON.parse(res.resultText) as {
+      target: string;
+      coverage: string;
+      selectionReason: string;
+      edges: unknown[];
+    };
+    expect(parsed).toMatchObject({
+      target: "impact.ts",
+      coverage: "typescript-javascript",
+    });
+    expect(parsed.selectionReason).toContain("fresh bounded scan");
+    expect(Array.isArray(parsed.edges)).toBe(true);
   });
 });
 

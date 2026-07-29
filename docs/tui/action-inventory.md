@@ -7,8 +7,8 @@
 
 ## Discovery summary
 
-- Catalogued slash commands: 19
-- Parser alias groups: 18
+- Catalogued slash commands: 20
+- Parser alias groups: 19
 - Keyboard/input actions: 25
 - Keyboard rows without test identifiers: 0
 - Modal routes: 3
@@ -20,6 +20,7 @@
 | Action | Entry | Shortcut/command | Precondition | Result | Mutates state | Test |
 | --- | --- | --- | --- | --- | --- | --- |
 | /help | Prompt | /help, /? | Idle prompt | Append command catalogue to the message stream | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
+| /trace [<n>] | Prompt | /trace | At least one recorded tool result; optional one-based position from newest | Append a bounded, redacted request/result detail with context provenance | In-memory UI | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /init | Prompt | /init | Writable workspace; --force for replacement | Create or update the project .nlc skeleton | Workspace files | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /skills | Prompt | /skills, /sk | Readable global/project skill roots | Append discovered skills | No | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |
 | /skills-generate <desc> | Prompt | /skills-generate, /skill-gen, /sg | Description; configured LLM; install-target approval | Generate and install a skill | LLM call + project/global files | apps/cli/src/tui/commands.test.ts ([tui] registry/parser) |

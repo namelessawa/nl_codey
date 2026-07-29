@@ -7,6 +7,7 @@ import type {
 } from "@nlc/shared";
 import type { FileChange } from "@nlc/sandbox";
 import {
+  analyzeImpactTool,
   applyPatchTool,
   findSymbolTool,
   gitDiff,
@@ -123,6 +124,30 @@ export const AGENT_TOOL_SCHEMAS: ToolSchema[] = [
         path: { type: "string", description: "Restrict to one file; with no name, lists that file's symbols." },
         maxResults: { type: "number", description: "Maximum number of symbols to return." },
       },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "analyze_impact",
+    description:
+      "Analyze a TS/JS module before changing it: declarations, direct relative imports/importers, conventional tests, lexical callers, impacted modules, scan limits, and selection reason.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Workspace-relative TypeScript/JavaScript module.",
+        },
+        symbol: {
+          type: "string",
+          description: "Optional exact symbol to focus lexical callers.",
+        },
+        maxResults: {
+          type: "number",
+          description: "Maximum graph edges to return (hard-capped at 100).",
+        },
+      },
+      required: ["path"],
       additionalProperties: false,
     },
   },
@@ -425,6 +450,21 @@ export function createToolExecutor(
             ctx,
           );
           return ok("find_symbol", JSON.stringify(out));
+        }
+        case "analyze_impact": {
+          const path = stringArg(args.path);
+          if (!path) return err("analyze_impact", "Missing required argument: path");
+          const out = await analyzeImpactTool.run(
+            {
+              path,
+              ...(stringArg(args.symbol) ? { symbol: stringArg(args.symbol) } : {}),
+              ...(numberArg(args.maxResults) !== undefined
+                ? { maxResults: numberArg(args.maxResults) }
+                : {}),
+            },
+            ctx,
+          );
+          return ok("analyze_impact", JSON.stringify(out));
         }
         case "git_status": {
           const out = await gitStatus(ctx);

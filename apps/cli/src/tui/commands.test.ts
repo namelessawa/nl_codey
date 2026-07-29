@@ -44,6 +44,14 @@ describe("[tui] command registry", () => {
       runId: "run-1",
     });
     expect(parseCommand("/log")).toEqual({ kind: "tree" });
+    expect(parseCommand("/trace")).toEqual({
+      kind: "show-trace",
+      position: null,
+    });
+    expect(parseCommand("/trace 2")).toEqual({
+      kind: "show-trace",
+      position: 2,
+    });
   });
 
   it("preserves spaced arguments and rejects missing required values", () => {
@@ -53,6 +61,11 @@ describe("[tui] command registry", () => {
     });
     expect(parseCommand("/branch")).toEqual({ kind: "unknown", raw: "/branch" });
     expect(parseCommand("/resume   ")).toEqual({ kind: "unknown", raw: "/resume" });
+    expect(parseCommand("/trace 0")).toEqual({ kind: "unknown", raw: "/trace 0" });
+    expect(parseCommand("/trace two")).toEqual({
+      kind: "unknown",
+      raw: "/trace two",
+    });
   });
 
   it("filters command suggestions case-insensitively", () => {

@@ -47,6 +47,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 37 | `codex/p1-tui-session-lineage-breadth` | Multilevel/cross-parent Session lineage and invalid-target continuity | Ready for draft review; `TUI-SESSION-001` closed | Full offline gate green; 638 unit, 16 TUI unit, 20 render, 4 lifecycle, 13 E2E and 13 recovery assertions pass |
 | 38 | `codex/p1-shared-run-fsm-errors` | Shared Run transition table, atomic enforcement and stable failure codes | Ready for draft review; core `FSM-001` implementation complete | Full offline gate green; 643 unit, 17 recorded-eval, 80 Desktop-main, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 39 | `codex/p1-context-provenance` | Semantic context provenance, snippet truncation and stale-index visibility | Ready for draft review; `CTX-001` remains in progress for impact graphs and TUI presentation | Full offline gate green; 645 unit, 17 recorded-eval, 81 Desktop-main, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 40 | `codex/p1-context-impact-graph` | Bounded TS/JS impact graph and expandable TUI context detail | Ready for draft review; `CTX-001` remains in progress for stale eviction/refresh and token budgets | Full offline gate green; 648 unit, 17 recorded-eval, 81 Desktop-main, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1124,6 +1125,46 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   the provenance/freshness surface and restores unlabelled semantic hits;
   `CTX-001` remains open for impact graphs and TUI-specific presentation.
 
+### 2026-07-29 - Analyze modification impact and expand TUI trace detail
+
+- The new read-only `analyze_impact` tool performs a fresh, workspace-contained
+  TS/JS scan around a requested module. It returns declaration, direct relative
+  import/importer, conventional-test and lexical-call edges plus a sorted list
+  of impacted modules and a content-free selection reason.
+- Exact and heuristic edges are distinguished. The result states that bare
+  packages, tsconfig aliases, re-exports, runtime dispatch and identifier
+  shadowing are unresolved rather than presenting lexical calls as a compiler
+  graph.
+- File count, file bytes, symbol count, call targets, collected edges and
+  returned edges all have hard caps. Any scan, symbol or graph cap sets the
+  shared `truncated` flag; path resolution continues through the existing
+  workspace containment boundary.
+- The core read-only tool registry exposes the same contract to Agent runs.
+  Focused impact/dispatch tests cover `.js` specifier resolution to TypeScript,
+  declarations, importers, tests, callers, impacted modules, path escape
+  rejection, selection reason and edge-budget truncation.
+- TUI now provides local `/trace [n]`, where 1 is the newest tool result. It
+  expands the paired request and bounded result into terminal scrollback,
+  identifies recorded tool trace as the context source, reports TUI-level
+  truncation and applies secret redaction before display.
+- The generated inventory records 20 commands, 25 keyboard actions and 3
+  modals. Parser/input/render tests cover completion, submission, one-based
+  selection, invalid positions, semantic provenance visibility, redaction and
+  the 12,000-character display cap.
+- An initial complete run exposed a 5-second registry-test timeout because its
+  fixture scanned the entire repository under loaded concurrency; limiting the
+  fixture workspace retained real dispatch coverage and the 648/648 unit
+  matrix passed. A second run exposed the expected command-order assertion
+  after `/trace` was inserted; the real input assertion now verifies `/trace`.
+- The final complete default offline gate passed 648 unit, 17 recorded-eval,
+  81 Desktop-main, renderer/preload/CLI, 16 TUI unit, 21 render, 4 lifecycle,
+  13 E2E and 14 recovery assertions in 340 seconds. Root typecheck passed and
+  every restorative matrix re-verified Electron 33.4.11 / modules 130.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback removes
+  `analyze_impact`, `/trace` and their generated inventory row; `CTX-001`
+  remains open for stale-chunk eviction, incremental refresh and explicit
+  retrieval token-budget enforcement.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1136,7 +1177,8 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    evidence. Session write-failure/path containment and multilevel/cross-parent/
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
-3. The broader production goal still requires context impact graphs and
-   TUI-specific provenance presentation, browser-safe renderer split,
-   project-indexer coverage, VS Code adapter and the feature/experimental
-   disposition work listed in `docs/execution/master-backlog.md`.
+3. The broader production goal still requires stale semantic-chunk eviction,
+   incremental refresh and explicit context token budgets, browser-safe
+   renderer split, project-indexer coverage, VS Code adapter and the
+   feature/experimental disposition work listed in
+   `docs/execution/master-backlog.md`.

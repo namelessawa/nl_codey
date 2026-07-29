@@ -7,6 +7,7 @@ import { Prompt } from "./prompt.js";
 import { ProviderPicker } from "./provider-picker.js";
 import { SkillInstallPicker } from "./skill-install-picker.js";
 import { ThemeProvider } from "./theme-context.js";
+import { renderTraceDetail } from "./trace.js";
 
 afterEach(() => {
   cleanup();
@@ -77,11 +78,14 @@ describe("[tui-render] interactive inputs", () => {
     await inputReady();
     down.stdin.write("\t");
     await vi.waitFor(() => {
-      expect(plain(down.lastFrame())).toContain('q="/init"');
+      expect(plain(down.lastFrame())).toContain("/trace");
     });
     down.stdin.write("\r");
     await vi.waitFor(() => {
-      expect(onCommand).toHaveBeenCalledWith({ kind: "init", force: false });
+      expect(onCommand).toHaveBeenCalledWith({
+        kind: "show-trace",
+        position: null,
+      });
     });
     down.unmount();
 
@@ -97,6 +101,36 @@ describe("[tui-render] interactive inputs", () => {
     await vi.waitFor(() => {
       expect(onCommand).toHaveBeenCalledWith({ kind: "exit" });
     });
+  });
+
+  it("bounds and redacts expanded trace detail", () => {
+    const detail = renderTraceDetail(
+      [
+        {
+          id: "call",
+          kind: "tool_call",
+          label: "semantic_search Authorization: Bearer trace-secret",
+          detail: "",
+          ts: 1,
+        },
+        {
+          id: "result",
+          kind: "tool_result",
+          label: "result",
+          detail: `{"provenance":{"source":"semantic_index"}} token=query-secret ${"x".repeat(13_000)}`,
+          ts: 2,
+        },
+      ],
+      1,
+    );
+
+    expect(detail).toContain("trace detail 1/1");
+    expect(detail).toContain("context source: recorded tool trace");
+    expect(detail).toContain("TUI detail truncated: yes");
+    expect(detail).toContain("semantic_index");
+    expect(detail).toContain("[REDACTED]");
+    expect(detail).not.toMatch(/trace-secret|query-secret/);
+    expect(detail.length).toBeLessThan(14_000);
   });
 
   it("handles Windows DEL input before submitting a plain task", async () => {

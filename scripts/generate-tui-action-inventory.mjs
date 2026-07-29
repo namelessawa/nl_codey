@@ -151,6 +151,11 @@ const effectMetadata = {
     result: "Append command catalogue to the message stream",
     mutation: "In-memory UI",
   },
+  "show-trace": {
+    precondition: "At least one recorded tool result; optional one-based position from newest",
+    result: "Append a bounded, redacted request/result detail with context provenance",
+    mutation: "In-memory UI",
+  },
   "list-workspaces": {
     precondition: "Idle prompt",
     result: "Currently displays an ABI-gap notice instead of workspace data",
