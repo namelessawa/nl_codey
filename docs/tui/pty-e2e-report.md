@@ -33,7 +33,7 @@ tests and the separate five-cycle crash soak remain mandatory.
 | 13. Dynamic-tool construction failure | An explicit CLI service-composition fixture throws a multiline dynamic-tool factory error containing a forged Bearer token and the current user home. The real AgentService records one single-line `[security]` step; TUI, SQLite and JSONL contain only `[REDACTED]` / `[USER_HOME]`, the base agent degrades to `done`, and the prompt remains usable | Pass |
 | 14. Large output / scrollback | A public `read_file` returns a 10 KB fixture; SQLite retains at most 4,000 characters with `…(truncated)` and omits the tail. The response then renders 320 numbered message rows: native xterm navigation recovers row 1, bottom restore shows row 320, SQLite/JSONL retain all rows, and `/help` remains usable. Pure reducer tests separately prove 500 stream-item and 200 trace-item memory bounds | Pass |
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
-| 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted. A public-created child then receives a truncated tail plus an invalid-header sibling: restart restores valid history with a content-free warning, `/sessions` lists both issue classes without raw payloads, and a later user turn appends as valid JSON | Pass |
+| 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted. An outside absolute `/resume` is rejected without reading its private payload. A public-created child receives a truncated tail plus invalid-header sibling, recovers valid history, then has its active file replaced by a directory: TUI reports the real write failure, Agent work continues, the Run remains unlinked, and no failed-capture message enters JSONL | Pass |
 | 11. Resize | `pnpm test:tui:render` covers 120x40, 100x30, 80x24 and 60x20; real ConPTY hides trace below 80 columns, shows compact status/size chrome below 60x20 and restores the full frame after growth | Pass |
 | Prompt editing | `pnpm test:tui:pty` sends bracketed multiline CJK paste, Escape, Home/End/Left/forward Delete, recognizes PageUp/PageDown without changing the draft, resizes a live draft through 50x16 and back to 60x20, recalls history and repeats `/help` | Pass |
 | Mouse boundary | `/help` labels terminal-native wheel scrollback Experimental and clicks/input capture unsupported. The real lifecycle harness scans split terminal output and proves no known mouse tracking enable sequence was emitted before clean exit | Pass (explicit unsupported contract) |
@@ -48,5 +48,6 @@ Approval and rollback evidence similarly observes the workspace before and
 after public key/command input.
 
 All exact Goal v2 TUI scenarios now have native PTY or named render evidence.
-Session write-failure/path breadth, remaining UI-state cells and
-release-candidate manual verification remain separate product-completion work.
+Session multilevel/cross-parent and nonexistent-id breadth, remaining UI-state
+cells and release-candidate manual verification remain separate
+product-completion work.

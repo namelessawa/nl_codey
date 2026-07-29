@@ -259,17 +259,44 @@ export class SessionStore {
   }
 
   /**
-   * Re-open an existing session for appending. Reads the file once to find
-   * the head of the message chain, then returns a writer primed at that
-   * head. Returns the loaded view as the second tuple element for callers
-   * that need to replay history immediately.
+   * Resume only a direct JSON child of `cwd`'s project folder. Lexical and
+   * real-path checks prevent traversal and symlink escapes; the header check
+   * keeps lossy encoded-folder collisions isolated.
    */
-  resumeSession(filePath: string): { writer: SessionWriter; loaded: LoadedSession } {
-    const loaded = this.openSession(filePath);
-    isolateUnterminatedTail(filePath);
-    const head = loaded.messages.length > 0 ? loaded.messages[loaded.messages.length - 1]!.id : null;
-    const writer = new SessionWriter(filePath, loaded.header, head, this.#now);
-    return { writer, loaded };
+  resumeProjectSession(
+    cwd: string,
+    filePath: string,
+  ): { writer: SessionWriter; loaded: LoadedSession } {
+    const loaded = this.openProjectSession(cwd, filePath);
+    const safeFilePath = loaded.filePath;
+    isolateUnterminatedTail(safeFilePath);
+    const head =
+      loaded.messages.length > 0
+        ? loaded.messages[loaded.messages.length - 1]!.id
+        : null;
+    return {
+      writer: new SessionWriter(safeFilePath, loaded.header, head, this.#now),
+      loaded,
+    };
+  }
+
+  /** Read a current-workspace session after the same containment checks. */
+  openProjectSession(cwd: string, filePath: string): LoadedSession {
+    const safeFilePath = this.#resolveProjectSessionFile(cwd, filePath);
+    let loaded: LoadedSession;
+    try {
+      loaded = this.openSession(safeFilePath);
+    } catch (error) {
+      throw new Error(
+        `session access: session file could not be opened (${errorCode(error)})`,
+      );
+    }
+    if (!sameProjectPath(loaded.header.cwd, cwd)) {
+      throw new Error(
+        "session access: session file belongs to a different workspace",
+      );
+    }
+    return loaded;
   }
 
   /** Load a session file fully into memory. Throws on missing/invalid header. */
@@ -333,6 +360,7 @@ export class SessionStore {
       const filePath = path.join(folder, ent.name);
       try {
         const loaded = this.openSession(filePath);
+        if (!sameProjectPath(loaded.header.cwd, cwd)) continue;
         const last = loaded.messages[loaded.messages.length - 1];
         const first = loaded.messages[0];
         const summary: SessionSummary = {
@@ -379,6 +407,16 @@ export class SessionStore {
       const filePath = path.join(folder, entry.name);
       try {
         const loaded = this.openSession(filePath);
+        if (!sameProjectPath(loaded.header.cwd, cwd)) {
+          diagnostics.push({
+            kind: "workspace_mismatch",
+            fileName: entry.name,
+            sessionId: loaded.header.id,
+            line: 1,
+            recoverable: false,
+          });
+          continue;
+        }
         for (const diagnostic of loaded.diagnostics) {
           diagnostics.push({
             kind: diagnostic.kind,
@@ -403,6 +441,36 @@ export class SessionStore {
         left.fileName.localeCompare(right.fileName) ||
         (left.line ?? 0) - (right.line ?? 0),
     );
+  }
+
+  #resolveProjectSessionFile(cwd: string, filePath: string): string {
+    const folder = path.resolve(this.projectFolder(cwd));
+    const candidate = path.resolve(filePath);
+    if (
+      !sameFsPath(path.dirname(candidate), folder) ||
+      path.extname(candidate).toLowerCase() !== ".json"
+    ) {
+      throw new Error(
+        "session access: requested file is outside this project's session folder",
+      );
+    }
+
+    let realFolder: string;
+    let realCandidate: string;
+    try {
+      realFolder = fs.realpathSync(folder);
+      realCandidate = fs.realpathSync(candidate);
+    } catch (error) {
+      throw new Error(
+        `session access: session file is unavailable (${errorCode(error)})`,
+      );
+    }
+    if (!sameFsPath(path.dirname(realCandidate), realFolder)) {
+      throw new Error(
+        "session access: requested file escapes this project's session folder",
+      );
+    }
+    return realCandidate;
   }
 }
 
@@ -434,6 +502,31 @@ function isolateUnterminatedTail(filePath: string): void {
   if (raw.length > 0 && !raw.endsWith("\n")) {
     fs.appendFileSync(filePath, "\n", "utf8");
   }
+}
+
+function sameProjectPath(left: string, right: string): boolean {
+  return sameFsPath(path.resolve(left), path.resolve(right));
+}
+
+function sameFsPath(left: string, right: string): boolean {
+  const normalize = (value: string): string => {
+    const normalized = path.normalize(value);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  return normalize(left) === normalize(right);
+}
+
+function errorCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[A-Z0-9_]+$/u.test(error.code)
+  ) {
+    return error.code;
+  }
+  return "SESSION_IO_ERROR";
 }
 
 function deriveTitleFromMessage(content: string): string {

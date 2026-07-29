@@ -88,13 +88,22 @@ function treeSessions(store: SessionStore, cwd: string, wantsJson: boolean): num
 function showSession(store: SessionStore, cwd: string, idOrPath: string): number {
   let filePath = idOrPath;
   // If user passed an id rather than a path, look it up under the cwd's folder.
-  if (!idOrPath.endsWith(".json") || !fs.existsSync(idOrPath)) {
+  if (!idOrPath.endsWith(".json")) {
     const match = store.listProjectSessions(cwd).find((s) => s.id === idOrPath);
     if (!match) {
       writeErrLine(`nlc sessions show: id "${idOrPath}" not found under ${cwd}`);
       return 1;
     }
     filePath = match.filePath;
+  } else {
+    try {
+      filePath = store.openProjectSession(cwd, idOrPath).filePath;
+    } catch (error) {
+      writeErrLine(
+        `nlc sessions show: ${error instanceof Error ? error.message : "session file is unavailable"}`,
+      );
+      return 1;
+    }
   }
   const raw = fs.readFileSync(filePath, "utf8");
   process.stdout.write(raw);

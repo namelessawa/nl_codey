@@ -245,3 +245,27 @@ viewport movement would corrupt the static-output contract. Treating the
 sequences as generic unknown input hid their required-key disposition. Explicit
 reserved intents let unit, Ink-render and real ConPTY gates prove that neither
 coalesced nor split input leaks escape bytes or mutates the prompt.
+
+## D-020 - Continue Agent work after visible Session capture failure
+
+Date: 2026-07-29
+
+Decision: treat JSONL capture as durable audit history but not as authority to
+start an Agent Run. On a write failure, show one content-free warning, abandon
+the failed writer, disable further JSONL appends for that turn and start the
+Run without `sessionId` or `sessionFilePath`. A later submission may create a
+fresh session, as may a later local state event after the Run is terminal.
+Never advance the message parent pointer until append succeeds.
+
+Constrain resume and raw-show paths to a direct `.json` child of the encoded
+current-project folder, verify `realpath` remains there, and require the header
+workspace to match. Filter mismatched headers from list/tree and expose only a
+content-free diagnostic, closing both path traversal/symlink escapes and lossy
+folder-encoding collisions.
+
+Reason: silently swallowing a write error falsely implied that restart history
+was complete, while blocking the Run would make an auxiliary log an
+availability dependency. Visible degraded operation preserves user work and
+truthful provenance. Layered path checks are required because lexical checks
+alone miss symlinks and the intentionally readable folder encoder is not
+bijective.

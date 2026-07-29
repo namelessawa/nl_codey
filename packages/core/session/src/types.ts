@@ -163,7 +163,7 @@ export type SessionDiagnostic = {
 
 /** Project-level diagnostic safe to surface without raw content or paths. */
 export type SessionFileDiagnostic = {
-  kind: "malformed_json" | "unreadable_session";
+  kind: "malformed_json" | "unreadable_session" | "workspace_mismatch";
   fileName: string;
   sessionId: string | null;
   line: number | null;

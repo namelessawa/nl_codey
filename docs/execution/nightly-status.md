@@ -43,6 +43,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 33 | `codex/p1-tui-mouse-contract` | Explicit Experimental mouse boundary and required TUI acceptance ledgers | Ready for draft review; TUI-MOUSE-001 closed | Full offline gate green; 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 34 | `codex/p1-tui-session-diagnostics` | Corrupt/partial Session diagnostics and safe resumed appends | Ready for draft review; corrupt/partial acceptance closed | Full offline gate green; 635 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 35 | `codex/p1-tui-page-navigation-contract` | Required PageUp/PageDown safe-no-op input contract | Ready for draft review; all 15 required key groups now have automated evidence | Full offline gate green; 635 unit, 16 TUI unit, 20 render, 4 lifecycle, 12 E2E and 13 recovery assertions pass |
+| 36 | `codex/p1-tui-session-fault-isolation` | Visible Session write faults and resume/show path containment | Ready for draft review; write-failure/path-isolation acceptance closed | Full offline gate green; 638 unit, 16 TUI unit, 20 render, 4 lifecycle, 12 E2E and 13 recovery assertions pass |
 
 ## Work log
 
@@ -996,6 +997,42 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   the two explicit page intents and their evidence, returning them to generic
   ignored escape sequences.
 
+### 2026-07-29 - Surface Session write faults and contain session paths
+
+- Session writes are no longer silently best-effort. A failed user/event/state
+  append produces one content-free TUI warning, abandons that writer and
+  disables further JSONL writes for the turn. Agent work continues, but the
+  Run is deliberately created without `sessionId`/`sessionFilePath`; the next
+  submission or post-terminal local state event may open a fresh session.
+- `SessionWriter` advances its parent pointer only after a successful append.
+  Branch/resume writer swaps are transactional, so a rejected target does not
+  close the prior active session.
+- TUI `/resume` and noninteractive `nlc sessions show <file>` now accept only a
+  direct `.json` child of the current project's encoded session folder. Both
+  lexical and `realpath` containment are checked, then the Session header must
+  match the workspace. List/tree filter lossy folder-encoding collisions and
+  expose only a content-free `workspace_mismatch` diagnostic.
+- SessionStore now passes 16/16 tests covering external/nested rejection,
+  encoded-folder collisions, write-failure parent-chain consistency and the
+  prior append/recovery behavior.
+- The native Session scenario rejects an outside absolute resume without
+  reading its private payload. It then replaces the active Session file with a
+  directory, observes `EISDIR`, continues through real Agent approval/rejection,
+  proves prompt recovery, restores the forensic file, verifies the failed user
+  text was not persisted, confirms the Run has null Session linkage, then
+  records `/theme ocean` in a fresh valid Session.
+- Two initial E2E attempts reached the expected warning and approval but their
+  assertion compared visually wrapped text as a contiguous string. Folding
+  terminal whitespace fixed the test-only issue; both failure paths restored
+  and re-verified Electron ABI. The final complete 12/12 native E2E gate passed.
+- The complete default offline gate passed 638 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 16 TUI unit, 20 render, 4 lifecycle,
+  12 E2E and 13 recovery assertions in 240 seconds. Root typecheck and
+  production build passed; every restorative matrix re-verified Electron
+  33.4.11 / modules 130.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback restores
+  silent best-effort writes and unrestricted file-path resume/show behavior.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1005,8 +1042,9 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    explicit user approval.
 2. All exact Goal v2 TUI scenarios pass; mouse disposition and corrupt/partial
    Session recovery are explicit, and all 15 required key groups have automated
-   evidence. Session write-failure/path breadth, remaining UI-state cells and
-   release-candidate manual verification remain.
+   evidence. Session write-failure/path containment now pass; multilevel/
+   cross-parent and nonexistent-id Session breadth, remaining UI-state cells
+   and release-candidate manual verification remain.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

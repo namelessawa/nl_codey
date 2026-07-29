@@ -100,7 +100,10 @@ describe("SessionStore", () => {
       { kind: "malformed_json", line: 3, trailing: true },
     ]);
 
-    const { writer: resumed, loaded } = store.resumeSession(writer.filePath);
+    const { writer: resumed, loaded } = store.resumeProjectSession(
+      "E:\\proj\\foo",
+      writer.filePath,
+    );
     expect(loaded.diagnostics).toEqual(beforeResume.diagnostics);
     const next = resumed.appendMessage({ role: "assistant", content: "recovered" });
     const reopened = store.openSession(writer.filePath);
@@ -211,13 +214,88 @@ describe("SessionStore", () => {
     const m1 = w1.appendMessage({ role: "user", content: "hi" });
     const m2 = w1.appendMessage({ role: "assistant", content: "yo" });
 
-    const { writer: w1b } = store.resumeSession(w1.filePath);
+    const { writer: w1b } = store.resumeProjectSession(cwd, w1.filePath);
     expect(w1b.lastMessageId).toBe(m2.id);
     const m3 = w1b.appendMessage({ role: "user", content: "again" });
     expect(m3.parentId).toBe(m2.id);
 
     const loaded = store.openSession(w1.filePath);
     expect(loaded.messages.map((m) => m.id)).toEqual([m1.id, m2.id, m3.id]);
+  });
+
+  it("resumes only direct files owned by the requested workspace", () => {
+    const cwd = "E:\\proj\\foo";
+    const writer = store.createSession(cwd);
+    writer.appendMessage({ role: "user", content: "inside" });
+
+    const valid = store.resumeProjectSession(cwd, writer.filePath);
+    expect(valid.loaded.header.id).toBe(writer.header.id);
+
+    const outsidePath = path.join(tmp, "outside-private-session.json");
+    fs.copyFileSync(writer.filePath, outsidePath);
+    let outsideError = "";
+    try {
+      store.resumeProjectSession(cwd, outsidePath);
+    } catch (error) {
+      outsideError = error instanceof Error ? error.message : String(error);
+    }
+    expect(outsideError).toContain("outside this project's session folder");
+    expect(outsideError).not.toContain(tmp);
+
+    const nestedFolder = path.join(store.projectFolder(cwd), "nested");
+    fs.mkdirSync(nestedFolder);
+    const nestedPath = path.join(nestedFolder, "nested-session.json");
+    fs.copyFileSync(writer.filePath, nestedPath);
+    expect(() => store.resumeProjectSession(cwd, nestedPath)).toThrow(
+      /outside this project's session folder/,
+    );
+  });
+
+  it("isolates encoded-folder collisions by the session header workspace", () => {
+    const ownerCwd = "C:\\proj?collision";
+    const collidingCwd = "C:\\proj*collision";
+    expect(store.projectFolder(ownerCwd)).toBe(store.projectFolder(collidingCwd));
+
+    const writer = store.createSession(ownerCwd);
+    writer.appendMessage({ role: "user", content: "private owner history" });
+
+    expect(store.listProjectSessions(collidingCwd)).toEqual([]);
+    expect(store.listProjectSessionDiagnostics(collidingCwd)).toEqual([
+      {
+        kind: "workspace_mismatch",
+        fileName: path.basename(writer.filePath),
+        sessionId: writer.header.id,
+        line: 1,
+        recoverable: false,
+      },
+    ]);
+    expect(() =>
+      store.resumeProjectSession(collidingCwd, writer.filePath),
+    ).toThrow(/belongs to a different workspace/);
+  });
+
+  it("does not advance the parent chain when an append write fails", () => {
+    const writer = store.createSession("E:\\proj\\foo");
+    const first = writer.appendMessage({ role: "user", content: "persisted" });
+    const backupPath = `${writer.filePath}.backup`;
+    fs.renameSync(writer.filePath, backupPath);
+    fs.mkdirSync(writer.filePath);
+
+    expect(() =>
+      writer.appendMessage({ role: "assistant", content: "must not persist" }),
+    ).toThrow();
+    expect(writer.lastMessageId).toBe(first.id);
+
+    fs.rmSync(writer.filePath, { recursive: true });
+    fs.renameSync(backupPath, writer.filePath);
+    const recovered = writer.appendMessage({
+      role: "assistant",
+      content: "recovered",
+    });
+    expect(recovered.parentId).toBe(first.id);
+    expect(
+      store.openSession(writer.filePath).messages.map((message) => message.content),
+    ).toEqual(["persisted", "recovered"]);
   });
 
   it("returns an empty list for projects that have no folder yet", () => {

@@ -27,7 +27,7 @@ surface is not implemented and is not advertised.
 | Provider picker modal | Open, navigate, edit, cancel, save, invalid Run, reload/correct/save, focus return | `inputs.render.test.tsx`; provider E2E | Pass |
 | Skill install picker modal | Navigate, confirm, Escape/Q cancel, busy input ownership | `inputs.render.test.tsx` | Partial: no native PTY install journey |
 | Tab bars | No public tab-bar component or route is implemented | generated `action-inventory.md` | N/A; must be added to discovery if introduced |
-| Session tree | `/sessions` and `/tree` append stream views; resume/branch/restart lineage; corrupt header and malformed/partial JSONL diagnostics; resumed append isolation | session core tests; native session E2E | Partial: store-write failure, path isolation and remaining multi-session breadth remain |
+| Session tree | `/sessions` and `/tree` append stream views; resume/branch/restart lineage; corrupt/partial diagnostics; resumed append isolation; visible write failure; contained resume/show and collision isolation | session core tests; native session E2E | Partial: multilevel/cross-parent lineage and nonexistent-id breadth remain |
 | Help view | Generated command catalogue plus explicit mouse support boundary | `commands.test.ts`; ConPTY `/help` journey | Pass |
 | Settings view | `/settings` appends resolved non-secret settings; `/model` and `/think` disclose current limitations | command registry tests | Partial: no interactive settings modal or full setting matrix |
 | Feature-specific panels | Current Provider and Skill pickers are inventoried above | generated `action-inventory.md` | Partial: future panels must enter discovery and evidence gates |

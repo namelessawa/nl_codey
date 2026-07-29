@@ -187,6 +187,24 @@ export function useLoop(opts: UseLoopOptions = {}) {
   // Independent of `servicesRef` — works even when SQLite-backed storage
   // fails to open, so the conversation tree is captured regardless.
   const bridgeRef = useRef<SessionBridge | null>(null);
+  const sessionPersistenceDisabledRef = useRef(false);
+
+  const reportSessionFailure = (operation: string, error: unknown): void => {
+    if (sessionPersistenceDisabledRef.current) return;
+    sessionPersistenceDisabledRef.current = true;
+    bridgeRef.current?.abandonActiveWriter();
+    dispatch({
+      type: "append",
+      item: {
+        id: `session-error-${Date.now()}`,
+        role: "error",
+        label: "session",
+        text:
+          `session persistence failed during ${operation} (${sessionErrorCode(error)}); ` +
+          "agent work will continue, but new JSONL history is disabled for this turn.",
+      },
+    });
+  };
 
   const getServices = (): CliServices | null => {
     if (servicesRef.current) return servicesRef.current;
@@ -196,8 +214,17 @@ export function useLoop(opts: UseLoopOptions = {}) {
       servicesRef.current = serviceFactory({
         dataRoot,
         emit: (event) => {
-          bridgeRef.current?.handleAgentEvent(event);
+          if (!sessionPersistenceDisabledRef.current) {
+            try {
+              bridgeRef.current?.handleAgentEvent(event);
+            } catch (error) {
+              reportSessionFailure("agent event write", error);
+            }
+          }
           handleEvent(event, dispatch, autoApprove, servicesRef);
+          if (event.kind === "run_updated" && isTerminal(event.run.status)) {
+            sessionPersistenceDisabledRef.current = false;
+          }
         },
       });
       return servicesRef.current;
@@ -303,13 +330,14 @@ export function useLoop(opts: UseLoopOptions = {}) {
     // the file always contains the prompt even if the run dies mid-flight.
     let sessionId: string | null = null;
     let sessionFilePath: string | null = null;
+    sessionPersistenceDisabledRef.current = false;
     try {
       const bridge = getBridge();
       bridge.recordUserMessage(trimmed);
       sessionId = bridge.currentSessionId;
       sessionFilePath = bridge.currentFilePath;
-    } catch {
-      /* best-effort — session capture must never block a run */
+    } catch (error) {
+      reportSessionFailure("user message write", error);
     }
     const services = getServices();
     if (!services) return;
@@ -334,6 +362,7 @@ export function useLoop(opts: UseLoopOptions = {}) {
         },
       });
       dispatch({ type: "set-running", value: false });
+      sessionPersistenceDisabledRef.current = false;
     }
   };
 
@@ -462,10 +491,11 @@ export function useLoop(opts: UseLoopOptions = {}) {
     from: string | { provider: string; model: string } | null,
     to: string | { provider: string; model: string },
   ): void => {
+    if (sessionPersistenceDisabledRef.current) return;
     try {
       getBridge().recordStateEvent(kind, from, to);
-    } catch {
-      /* best-effort */
+    } catch (error) {
+      reportSessionFailure("state event write", error);
     }
   };
 
@@ -671,4 +701,17 @@ function sameWorkspacePath(left: string, right: string): boolean {
     return process.platform === "win32" ? resolved.toLowerCase() : resolved;
   };
   return normalize(left) === normalize(right);
+}
+
+function sessionErrorCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[A-Z0-9_]+$/u.test(error.code)
+  ) {
+    return error.code;
+  }
+  return "SESSION_IO_ERROR";
 }

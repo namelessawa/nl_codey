@@ -190,22 +190,37 @@ export class SessionBridge {
   branchFrom(parentSessionId: string, parentMessageId: string): SessionWriter {
     // Flush the current turn before swapping writers so we don't lose state.
     this.#flushAssistantTurn();
-    this.#writer?.close();
-    this.#writer = this.store.branchSession({
+    const nextWriter = this.store.branchSession({
       sessionId: parentSessionId,
       messageId: parentMessageId,
       cwd: this.cwd,
     });
+    this.#writer?.close();
+    this.#writer = nextWriter;
     return this.#writer;
   }
 
   /** Resume an existing session file and return its loaded replay view. */
   resume(filePath: string): { writer: SessionWriter; loaded: LoadedSession } {
     this.#flushAssistantTurn();
+    const { writer, loaded } = this.store.resumeProjectSession(
+      this.cwd,
+      filePath,
+    );
     this.#writer?.close();
-    const { writer, loaded } = this.store.resumeSession(filePath);
     this.#writer = writer;
     return { writer, loaded };
+  }
+
+  /**
+   * Stop writing the current turn after an I/O failure without attempting a
+   * final flush. The next user submission may lazily create a fresh session.
+   */
+  abandonActiveWriter(): void {
+    this.#writer?.close();
+    this.#writer = null;
+    this.#pendingAssistantText = "";
+    this.#pendingAssistantCalls = [];
   }
 
   /** Lookup by exact id or a unique prefix; null when not found. */

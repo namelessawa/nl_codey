@@ -298,7 +298,9 @@ function InnerApp(opts: TuiOptions) {
               lines.push(
                 diagnostic.kind === "malformed_json"
                   ? `  ! ${fileName} line ${diagnostic.line}: malformed JSON skipped (recoverable)`
-                  : `  ! ${fileName}: unreadable or missing a valid session header`,
+                  : diagnostic.kind === "workspace_mismatch"
+                    ? `  ! ${fileName}: belongs to a different workspace and was ignored`
+                    : `  ! ${fileName}: unreadable or missing a valid session header`,
               );
             }
             if (visible.length < diagnostics.length) {

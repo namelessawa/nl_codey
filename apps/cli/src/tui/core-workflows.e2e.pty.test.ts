@@ -915,6 +915,41 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     );
     expect(fs.existsSync(notesPath)).toBe(false);
 
+    const outsideMarker = "outside-session-private-payload";
+    const outsideSessionPath = path.join(
+      fixture.dataRoot,
+      "outside-private-session.json",
+    );
+    fs.writeFileSync(
+      outsideSessionPath,
+      [
+        JSON.stringify({
+          type: "session",
+          version: 1,
+          id: "ses_outside_private",
+          timestamp: Date.now(),
+          cwd: path.join(fixture.root, "other-workspace"),
+        }),
+        JSON.stringify({
+          type: "message",
+          id: "msg_outside_private",
+          parentId: null,
+          timestamp: Date.now(),
+          role: "user",
+          content: outsideMarker,
+        }),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await enter(restored, `/resume ${outsideSessionPath}`);
+    const outsideResumeBuffer = await restored.waitForBuffer((buffer) =>
+      buffer.includes(
+        "/resume failed: session access: requested file is outside this project's session folder",
+      ),
+    );
+    expect(outsideResumeBuffer).not.toContain(outsideMarker);
+
     await enter(restored, `/resume ${originalHeader.id!.slice(0, 18)}`);
     await restored.waitForBuffer((buffer) =>
       buffer.includes(`resumed ${originalHeader.id}; replayed`),
@@ -987,13 +1022,52 @@ describeWindows("[tui-e2e] core agent workflows", () => {
       (buffer) => buffer.includes("[verify] pending patch"),
       20_000,
     );
-    restarted.write("n");
-    await restarted.waitForScreen(
+    await pressCommandDecision(
+      restarted,
+      "n",
       (screen) => screen.includes("cancelled"),
+    );
+
+    const writeFailureTask = "continue after forced session write failure";
+    const childBackupPath = `${childPath}.write-failure-backup`;
+    fs.renameSync(childPath, childBackupPath);
+    fs.mkdirSync(childPath);
+    await enter(restarted, writeFailureTask);
+    await restarted.waitForBuffer(
+      (buffer) => {
+        const unwrapped = buffer.replace(/\s+/gu, " ");
+        return (
+          unwrapped.includes(
+            "session persistence failed during user message write",
+          ) &&
+          unwrapped.includes(
+            "agent work will continue, but new JSONL history is disabled for this turn",
+          )
+        );
+      },
+      15_000,
+    );
+    await restarted.waitForBuffer(
+      (buffer) => buffer.includes("[verify] pending patch"),
       20_000,
+    );
+    await pressCommandDecision(
+      restarted,
+      "n",
+      (screen) => screen.includes("cancelled"),
+    );
+    await enter(restarted, "/theme ocean");
+    await restarted.waitForBuffer((buffer) =>
+      buffer.includes('theme switched to "ocean"'),
+    );
+    await enter(restarted, "/help");
+    await restarted.waitForBuffer((buffer) =>
+      buffer.includes("Show this command catalogue"),
     );
     await exit(restarted);
 
+    fs.rmSync(childPath, { recursive: true });
+    fs.renameSync(childBackupPath, childPath);
     const sessionStore = new SessionStore({
       root: path.join(fixture.dataRoot, "agent.session"),
     });
@@ -1004,12 +1078,42 @@ describeWindows("[tui-e2e] core agent workflows", () => {
         (message) => message.content === "continue after partial session recovery",
       ),
     ).toBe(true);
+    expect(
+      recoveredChild.messages.some(
+        (message) => message.content === writeFailureTask,
+      ),
+    ).toBe(false);
+    const freshSession = sessionStore
+      .loadProjectSessions(fixture.workspaceRoot)
+      .find(
+        (loaded) =>
+          loaded.header.id !== originalHeader.id &&
+          loaded.header.id !== childHeader.id,
+      );
+    expect(
+      freshSession?.events.some(
+        (event) => event.type === "theme_change" && event.to === "ocean",
+      ),
+    ).toBe(true);
     const finalLine = fs
       .readFileSync(childPath, "utf8")
       .trimEnd()
       .split(/\r?\n/)
       .at(-1)!;
     expect(() => JSON.parse(finalLine)).not.toThrow();
+
+    const runStorage = new Storage(
+      path.join(fixture.dataRoot, "data", "workspace-state.db"),
+    );
+    const workspace = runStorage.listWorkspaces(1)[0]!;
+    const unlinkedRun = runStorage
+      .listRuns(workspace.id)
+      .find((run) => run.userTask === writeFailureTask);
+    runStorage.close();
+    expect(unlinkedRun).toMatchObject({
+      sessionId: null,
+      sessionFilePath: null,
+    });
   });
 
   it("reconciles a run killed at approval without replaying its patch", async () => {
