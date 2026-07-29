@@ -39,7 +39,7 @@ export function registerSemanticIpc(services: Services, requireRoot: RequireRoot
       status: { ...indexer.status(args.workspaceId, files), building: true },
     });
     try {
-      await indexer.indexFiles(args.workspaceId, files);
+      await indexer.reindexChanged(args.workspaceId, files);
     } finally {
       const final = indexer.status(args.workspaceId, files);
       services.emit({ kind: "index_status", workspaceId: args.workspaceId, status: final });
@@ -85,7 +85,9 @@ async function collectIndexFiles(
     try {
       const abs = path.join(root, rel);
       const stat = fs.statSync(abs);
-      out.push({ path: rel, content: fs.readFileSync(abs, "utf8"), mtime: stat.mtimeMs });
+      const content = fs.readFileSync(abs, "utf8");
+      if (content.trim().length === 0) continue;
+      out.push({ path: rel, content, mtime: stat.mtimeMs });
     } catch {
       // Skip unreadable files (deleted between scan and read, perms, etc.).
     }
@@ -100,7 +102,9 @@ async function collectIndexFileStates(
   const out: { path: string; mtime: number }[] = [];
   for (const rel of files) {
     try {
-      out.push({ path: rel, mtime: fs.statSync(path.join(root, rel)).mtimeMs });
+      const abs = path.join(root, rel);
+      if (fs.readFileSync(abs, "utf8").trim().length === 0) continue;
+      out.push({ path: rel, mtime: fs.statSync(abs).mtimeMs });
     } catch {
       // A concurrent delete becomes a stale/missing file on the next poll.
     }

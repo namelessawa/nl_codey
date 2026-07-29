@@ -29,6 +29,8 @@ export type RawChunk = {
 export type SemanticSearchOptions = {
   topK?: number;
   kinds?: ChunkKind[];
+  /** Hard budget for snippets returned as retrieval context. */
+  maxContextTokens?: number;
 };
 
 export type SemanticHitStaleness =
@@ -53,6 +55,16 @@ export type ContextProvenance = {
   /** Whether the returned snippet omitted source characters. */
   truncated: boolean;
   originalChars: number;
+  /** Conservative estimate for this returned snippet. */
+  estimatedTokens: number;
+  /** Normalized budget shared by the complete returned hit set. */
+  contextTokenBudget: number;
+  /** Estimated tokens consumed by the complete returned hit set. */
+  contextTokensUsed: number;
+  /** True when the budget shortened a snippet or omitted a ranked hit. */
+  budgetLimited: boolean;
+  budgetOmittedHits: number;
+  tokenEstimator: "ascii_4_non_ascii_1";
 };
 
 export type SemanticHit = {
@@ -100,6 +112,33 @@ export const SEMANTIC_MAX_CHUNK_CHARS = 1500;
 export const SEMANTIC_MAX_CHUNK_LINES = 80;
 /** Default top-K for semantic_search. */
 export const SEMANTIC_DEFAULT_TOP_K = 8;
+/** Maximum top-K accepted at the retrieval boundary. */
+export const SEMANTIC_MAX_TOP_K = 50;
+/** Default and maximum snippet-context budgets. */
+export const SEMANTIC_DEFAULT_CONTEXT_TOKENS = 512;
+export const SEMANTIC_MAX_CONTEXT_TOKENS = 8_192;
+export const SEMANTIC_TOKEN_ESTIMATOR = "ascii_4_non_ascii_1" as const;
+
+export function normalizeSemanticContextTokenBudget(
+  value: number | undefined,
+): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return SEMANTIC_DEFAULT_CONTEXT_TOKENS;
+  }
+  return Math.max(
+    1,
+    Math.min(SEMANTIC_MAX_CONTEXT_TOKENS, Math.floor(value)),
+  );
+}
+
+/** ASCII is estimated at four chars/token; non-ASCII at one char/token. */
+export function estimateSemanticTokens(text: string): number {
+  let quarterTokenUnits = 0;
+  for (const character of text) {
+    quarterTokenUnits += character.codePointAt(0)! <= 0x7f ? 1 : 4;
+  }
+  return Math.ceil(quarterTokenUnits / 4);
+}
 /** File extensions that get indexed. */
 export const SEMANTIC_INDEXED_EXTENSIONS = [
   ".ts",

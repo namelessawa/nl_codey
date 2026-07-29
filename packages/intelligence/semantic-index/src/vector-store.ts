@@ -7,7 +7,13 @@ import type {
   SemanticHit,
   SemanticSearchOptions,
 } from "@nlc/shared";
-import { SEMANTIC_DEFAULT_TOP_K } from "@nlc/shared";
+import {
+  estimateSemanticTokens,
+  normalizeSemanticContextTokenBudget,
+  SEMANTIC_DEFAULT_TOP_K,
+  SEMANTIC_MAX_TOP_K,
+  SEMANTIC_TOKEN_ESTIMATOR,
+} from "@nlc/shared";
 
 const SNIPPET_CHARS = 200;
 
@@ -71,7 +77,14 @@ export async function searchChunks(
   if (!queryVec) return [];
 
   const kinds = opts.kinds && opts.kinds.length > 0 ? new Set<ChunkKind>(opts.kinds) : null;
-  const topK = opts.topK ?? SEMANTIC_DEFAULT_TOP_K;
+  const requestedTopK =
+    opts.topK === undefined || !Number.isFinite(opts.topK)
+      ? SEMANTIC_DEFAULT_TOP_K
+      : Math.floor(opts.topK);
+  const topK = Math.max(0, Math.min(SEMANTIC_MAX_TOP_K, requestedTopK));
+  const contextTokenBudget = normalizeSemanticContextTokenBudget(
+    opts.maxContextTokens,
+  );
 
   const indexedMtimes = store.getIndexedFileMtimes(workspaceId);
   const scored: { chunk: IndexedChunk; score: number }[] = [];
@@ -82,16 +95,52 @@ export async function searchChunks(
   }
 
   scored.sort((a, b) => b.score - a.score);
-  return scored
-    .slice(0, Math.max(0, topK))
-    .map(({ chunk, score }, index) =>
-      toHit(
-        chunk,
-        score,
-        index + 1,
-        indexedMtimes.get(chunk.filePath) ?? null,
-      ),
-    );
+  const candidates = scored.slice(0, topK);
+  const selected: Array<{
+    chunk: IndexedChunk;
+    score: number;
+    rank: number;
+    snippet: string;
+    estimatedTokens: number;
+    budgetShortened: boolean;
+  }> = [];
+  let contextTokensUsed = 0;
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index];
+    if (!candidate) continue;
+    const remaining = contextTokenBudget - contextTokensUsed;
+    if (remaining <= 0) break;
+    const fullSnippet = candidate.chunk.content.slice(0, SNIPPET_CHARS);
+    const snippet = takeTokenBudget(fullSnippet, remaining);
+    if (snippet.length === 0) break;
+    const estimatedTokens = estimateSemanticTokens(snippet);
+    contextTokensUsed += estimatedTokens;
+    selected.push({
+      ...candidate,
+      rank: index + 1,
+      snippet,
+      estimatedTokens,
+      budgetShortened: snippet.length < fullSnippet.length,
+    });
+  }
+  const budgetOmittedHits = candidates.length - selected.length;
+  const budgetLimited =
+    budgetOmittedHits > 0 ||
+    selected.some((candidate) => candidate.budgetShortened);
+  return selected.map((candidate) =>
+    toHit(
+      candidate.chunk,
+      candidate.score,
+      candidate.rank,
+      indexedMtimes.get(candidate.chunk.filePath) ?? null,
+      candidate.snippet,
+      candidate.estimatedTokens,
+      contextTokenBudget,
+      contextTokensUsed,
+      budgetLimited,
+      budgetOmittedHits,
+    ),
+  );
 }
 
 /**
@@ -130,8 +179,14 @@ function toHit(
   score: number,
   rank: number,
   indexedMtime: number | null,
+  snippet: string,
+  estimatedTokens: number,
+  contextTokenBudget: number,
+  contextTokensUsed: number,
+  budgetLimited: boolean,
+  budgetOmittedHits: number,
 ): SemanticHit {
-  const truncated = chunk.content.length > SNIPPET_CHARS;
+  const truncated = chunk.content.length > snippet.length;
   const subject = chunk.symbolName
     ? `${chunk.kind} symbol ${chunk.symbolName}`
     : `${chunk.kind} chunk`;
@@ -140,7 +195,7 @@ function toHit(
     startLine: chunk.startLine,
     endLine: chunk.endLine,
     kind: chunk.kind,
-    snippet: chunk.content.slice(0, SNIPPET_CHARS),
+    snippet,
     score,
     provenance: {
       source: "semantic_index",
@@ -150,11 +205,34 @@ function toHit(
       staleness: "unknown",
       rank,
       selectionReason:
-        `rank ${rank} by cosine similarity (${score.toFixed(4)}); ${subject}`,
+        `rank ${rank} by cosine similarity (${score.toFixed(4)}); ${subject}; ` +
+        `${estimatedTokens} estimated tokens within ${contextTokenBudget}-token context budget` +
+        (budgetLimited ? "; context budget limited returned snippets" : "") +
+        (budgetOmittedHits > 0
+          ? `; budget omitted ${budgetOmittedHits} lower-ranked hit(s)`
+          : ""),
       truncated,
       originalChars: chunk.content.length,
+      estimatedTokens,
+      contextTokenBudget,
+      contextTokensUsed,
+      budgetLimited,
+      budgetOmittedHits,
+      tokenEstimator: SEMANTIC_TOKEN_ESTIMATOR,
     },
   };
   if (chunk.symbolName) hit.symbolName = chunk.symbolName;
   return hit;
+}
+
+function takeTokenBudget(text: string, maxTokens: number): string {
+  let quarterTokenUnits = 0;
+  let end = 0;
+  for (const character of text) {
+    const units = character.codePointAt(0)! <= 0x7f ? 1 : 4;
+    if (Math.ceil((quarterTokenUnits + units) / 4) > maxTokens) break;
+    quarterTokenUnits += units;
+    end += character.length;
+  }
+  return text.slice(0, end);
 }

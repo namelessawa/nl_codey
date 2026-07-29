@@ -25,6 +25,7 @@ import type { ExtendedAgentPorts } from "@nlc/agent-core";
 import type {
   MemoryRetrievalOptions,
   ReadMemoryHit,
+  SemanticSearchOptions,
   SemanticSearchToolHit,
   WebFetchToolInput,
   WebSearchToolInput,
@@ -54,7 +55,7 @@ export function buildExtendedPorts(
     semanticSearch: {
       async search(
         query: string,
-        opts?: { topK?: number; kinds?: ("code" | "doc" | "comment")[] },
+        opts?: SemanticSearchOptions,
       ): Promise<SemanticSearchToolHit[]> {
         const storedHits = await searchChunks(
           services.storage,

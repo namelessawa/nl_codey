@@ -185,6 +185,7 @@ export type SemanticSearchToolInput = {
   query: string;
   topK?: number;
   kinds?: ("code" | "doc" | "comment")[];
+  maxContextTokens?: number;
 };
 export type SemanticSearchToolHit = {
   filePath: string;
@@ -198,7 +199,17 @@ export type SemanticSearchToolHit = {
   /** Optional for compatibility; built-in results always carry provenance. */
   provenance?: ContextProvenance;
 };
-export type SemanticSearchToolOutput = { query: string; hits: SemanticSearchToolHit[] };
+export type SemanticSearchToolOutput = {
+  query: string;
+  hits: SemanticSearchToolHit[];
+  budget: {
+    maxTokens: number;
+    usedTokens: number;
+    limited: boolean;
+    omittedHits: number;
+    estimator: "ascii_4_non_ascii_1";
+  };
+};
 
 // propose_task_breakdown (Planner): submit a TaskNode DAG.
 export type ProposeTaskBreakdownInput = {

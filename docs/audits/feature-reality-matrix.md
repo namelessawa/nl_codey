@@ -60,7 +60,7 @@ that the functional modules are unusable.
 | --- | --- | --- | --- | --- |
 | `packages/intelligence/project-indexer` | Repository scan/ignore/project detection feeds AgentService | No colocated suite | Ignore, symlink, binary and multi-language behavior lack regression evidence | Partial |
 | `packages/intelligence/memory` | Cross-session facts/preferences/failures and retrieval | Five suites | Cross-process recovery and privacy lifecycle evidence is thin | Functional |
-| `packages/intelligence/semantic-index` | Chunk/embed/vector search and incremental index service | Five suites now cover rank/selection provenance, snippet truncation and fresh/modified/missing mtime states | Import/test/call impact graphs, TUI-specific presentation and production embedding evidence remain incomplete | Functional |
+| `packages/intelligence/semantic-index` | Chunk/embed/vector search and incremental index service wired to Desktop rebuild/search | Five package suites plus Desktop IPC coverage prove incremental changed-file refresh, missing/blank-source eviction, rank/selection provenance, explicit context budgets, snippet truncation and fresh/modified/missing mtime states | Production embedding compatibility evidence remains incomplete | Functional |
 | `packages/intelligence/planner` | DAG decomposition, dependency validation and waves | Four suites | Benchmark success and restart persistence are incomplete | Functional |
 | `packages/intelligence/orchestrator` | Planner/Coder/Reviewer roles, locks, bus, worker pool | Five suites plus Agent Core role-boundary tests | Restart recovery and distributed execution contract incomplete | Functional |
 

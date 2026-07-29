@@ -48,6 +48,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 38 | `codex/p1-shared-run-fsm-errors` | Shared Run transition table, atomic enforcement and stable failure codes | Ready for draft review; core `FSM-001` implementation complete | Full offline gate green; 643 unit, 17 recorded-eval, 80 Desktop-main, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 39 | `codex/p1-context-provenance` | Semantic context provenance, snippet truncation and stale-index visibility | Ready for draft review; `CTX-001` remains in progress for impact graphs and TUI presentation | Full offline gate green; 645 unit, 17 recorded-eval, 81 Desktop-main, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 40 | `codex/p1-context-impact-graph` | Bounded TS/JS impact graph and expandable TUI context detail | Ready for draft review; `CTX-001` remains in progress for stale eviction/refresh and token budgets | Full offline gate green; 648 unit, 17 recorded-eval, 81 Desktop-main, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 41 | `codex/p1-semantic-index-refresh-budget` | Production incremental semantic refresh and explicit retrieval token budgets | Ready for draft review; `CTX-001` closed | Full offline gate green; 650 unit, 17 recorded-eval, 82 Desktop-main, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1165,6 +1166,36 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   remains open for stale-chunk eviction, incremental refresh and explicit
   retrieval token-budget enforcement.
 
+### 2026-07-29 - Refresh semantic context incrementally within explicit budgets
+
+- Desktop semantic rebuilds now call the existing incremental indexer instead
+  of unconditionally embedding every scanned file. The production path skips
+  unchanged mtimes, replaces changed chunks and evicts chunks for files no
+  longer present; blank files are consistently excluded from rebuild and
+  freshness scans so they cannot remain perpetually stale.
+- Semantic retrieval accepts an explicit shared context budget with a
+  512-token default and 8,192-token hard maximum. A conservative estimator
+  counts four ASCII characters or one non-ASCII character per token, and the
+  ranked snippet set is clipped before it crosses the normalized budget.
+- Every built-in hit records its own estimate plus the complete set's budget,
+  usage, limitation state, omitted-hit count and estimator. Its content-free
+  selection reason distinguishes similarity rank from budget limitation.
+- Agent Core exposes `maxContextTokens` in the `semantic_search` schema, passes
+  it through the typed port and returns a separate budget summary. `topK` is
+  also normalized at the vector boundary with a hard maximum of 50.
+- Focused semantic, port, dispatcher and Desktop IPC tests passed 32/32. They
+  cover mixed-language clipping, omitted lower-ranked hits, option propagation,
+  explicit audit output, the production incremental call and blank-file
+  exclusion. Root typecheck passed across all 23 selected workspace projects.
+- The complete offline gate passed 650 unit, 17 recorded-eval, 82 Desktop-main,
+  renderer/preload/CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14
+  recovery assertions in 257 seconds. The production Desktop/CLI build passed,
+  and restorative matrices re-verified Electron 33.4.11 / modules 130.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback restores
+  full semantic rebuilds and removes retrieval-budget fields/enforcement.
+  Together with Batches 39-40, it closes `CTX-001`; production embedding
+  compatibility evidence remains a separate feature-reality gap.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1177,8 +1208,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    evidence. Session write-failure/path containment and multilevel/cross-parent/
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
-3. The broader production goal still requires stale semantic-chunk eviction,
-   incremental refresh and explicit context token budgets, browser-safe
-   renderer split, project-indexer coverage, VS Code adapter and the
-   feature/experimental disposition work listed in
+3. The broader production goal still requires a browser-safe renderer split,
+   project-indexer coverage, VS Code adapter, production embedding compatibility
+   evidence and the feature/experimental disposition work listed in
    `docs/execution/master-backlog.md`.

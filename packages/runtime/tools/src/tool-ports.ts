@@ -8,6 +8,7 @@ import type {
   RequestChangesOutput,
   RequestReviewInput,
   RequestReviewOutput,
+  SemanticSearchOptions,
   SemanticSearchToolHit,
   UpdateTaskStatusInput,
   UpdateTaskStatusOutput,
@@ -29,7 +30,7 @@ import type {
 export interface SemanticSearchPort {
   search(
     query: string,
-    opts?: { topK?: number; kinds?: ("code" | "doc" | "comment")[] },
+    opts?: SemanticSearchOptions,
   ): Promise<SemanticSearchToolHit[]>;
 }
 

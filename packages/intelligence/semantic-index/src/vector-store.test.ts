@@ -71,6 +71,12 @@ describe("searchChunks", () => {
       staleness: "unknown",
       rank: 1,
       truncated: false,
+      estimatedTokens: 8,
+      contextTokenBudget: 512,
+      contextTokensUsed: 16,
+      budgetLimited: false,
+      budgetOmittedHits: 0,
+      tokenEstimator: "ascii_4_non_ascii_1",
     });
     expect(hits[0]?.provenance.selectionReason).toContain(
       "rank 1 by cosine similarity",
@@ -99,6 +105,103 @@ describe("searchChunks", () => {
     }
     const hits = await searchChunks(store, embedder, "ws", "chunk", { topK: 2 });
     expect(hits).toHaveLength(2);
+  });
+
+  it("enforces one shared conservative token budget across ranked snippets", async () => {
+    const store = new FakeChunkStore();
+    const embedder = new MockEmbeddingProvider();
+    const [vec] = await embedder.embed(["budget"]);
+    store.replaceChunksForFile(
+      "ws",
+      "first.ts",
+      [
+        chunk({
+          id: "first",
+          filePath: "first.ts",
+          content: "中文测试更多",
+          embedding: vec ?? [],
+        }),
+      ],
+      1,
+    );
+    store.replaceChunksForFile(
+      "ws",
+      "second.ts",
+      [
+        chunk({
+          id: "second",
+          filePath: "second.ts",
+          content: "另一个片段",
+          embedding: vec ?? [],
+        }),
+      ],
+      1,
+    );
+
+    const hits = await searchChunks(store, embedder, "ws", "budget", {
+      topK: 2,
+      maxContextTokens: 3,
+    });
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.snippet).toBe("中文测");
+    expect(hits[0]?.provenance).toMatchObject({
+      estimatedTokens: 3,
+      contextTokenBudget: 3,
+      contextTokensUsed: 3,
+      budgetLimited: true,
+      budgetOmittedHits: 1,
+      tokenEstimator: "ascii_4_non_ascii_1",
+      truncated: true,
+    });
+    expect(hits[0]?.provenance.selectionReason).toContain(
+      "3 estimated tokens within 3-token context budget",
+    );
+    expect(hits[0]?.provenance.selectionReason).toContain(
+      "budget omitted 1 lower-ranked hit",
+    );
+  });
+
+  it("normalizes non-finite requests and clamps hard retrieval limits", async () => {
+    const store = new FakeChunkStore();
+    const embedder = new MockEmbeddingProvider();
+    const [vec] = await embedder.embed(["limits"]);
+    for (let index = 0; index < 60; index++) {
+      store.replaceChunksForFile(
+        "ws",
+        `file-${index}.ts`,
+        [
+          chunk({
+            id: `chunk-${index}`,
+            filePath: `file-${index}.ts`,
+            content: "abcd",
+            embedding: vec ?? [],
+          }),
+        ],
+        1,
+      );
+    }
+
+    const defaulted = await searchChunks(store, embedder, "ws", "limits", {
+      topK: Number.POSITIVE_INFINITY,
+      maxContextTokens: 0,
+    });
+    expect(defaulted).toHaveLength(1);
+    expect(defaulted[0]?.provenance).toMatchObject({
+      contextTokenBudget: 1,
+      contextTokensUsed: 1,
+      budgetOmittedHits: 7,
+    });
+
+    const clamped = await searchChunks(store, embedder, "ws", "limits", {
+      topK: 60,
+      maxContextTokens: 100_000,
+    });
+    expect(clamped).toHaveLength(50);
+    expect(clamped[0]?.provenance).toMatchObject({
+      contextTokenBudget: 8_192,
+      contextTokensUsed: 50,
+    });
   });
 
   it("returns empty for blank query or empty store", async () => {

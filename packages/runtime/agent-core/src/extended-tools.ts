@@ -60,6 +60,11 @@ export const EXTENDED_AGENT_TOOL_SCHEMAS: ToolSchema[] = [
       properties: {
         query: { type: "string", description: "自然语言查询。" },
         topK: { type: "number", description: "返回前 K 个命中（默认由实现决定）。" },
+        maxContextTokens: {
+          type: "number",
+          description:
+            "返回片段的总上下文 token 预算（默认 512，硬上限 8192）。",
+        },
       },
       required: ["query"],
       additionalProperties: false,
@@ -162,8 +167,15 @@ export function createExtendedDispatcher(
           const query = stringArg(args.query);
           if (!query) return err("semantic_search", "Missing required argument: query");
           const topK = numberArg(args.topK);
+          const maxContextTokens = numberArg(args.maxContextTokens);
           const out = await semanticSearch.run(
-            topK !== undefined ? { query, topK } : { query },
+            {
+              query,
+              ...(topK !== undefined ? { topK } : {}),
+              ...(maxContextTokens !== undefined
+                ? { maxContextTokens }
+                : {}),
+            },
             ctx,
           );
           return ok("semantic_search", JSON.stringify(out));
