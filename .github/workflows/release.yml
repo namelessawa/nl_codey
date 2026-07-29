@@ -54,6 +54,11 @@ jobs:
       - name: Pack, install and smoke the CLI artifact
         run: pnpm smoke:cli:artifact
 
+      - name: Package and inspect VS Code extension
+        run: |
+          pnpm package:vscode
+          pnpm smoke:vscode:artifact
+
       - name: Package Windows installer
         run: pnpm --filter @nlc/desktop exec electron-builder --win --publish never
         env:
@@ -69,10 +74,12 @@ jobs:
             Get-ChildItem release -File |
               Where-Object { $_.Extension -in '.exe', '.zip' }
           )
-          if ($artifacts.Count -eq 0) {
-            throw 'electron-builder produced no Windows installer or archive'
+          $vsix = @(Get-ChildItem release -File -Filter '*.vsix')
+          if ($artifacts.Count -eq 0 -or $vsix.Count -eq 0) {
+            throw 'release is missing a Windows package or VSIX'
           }
           $artifacts | Select-Object FullName, Length
+          $vsix | Select-Object FullName, Length
 
       - name: Smoke silent install and uninstall
         run: pnpm smoke:windows:installer
@@ -84,6 +91,7 @@ jobs:
           path: |
             release/*.exe
             release/*.zip
+            release/*.vsix
           if-no-files-found: error
           retention-days: 30
 
@@ -94,6 +102,7 @@ jobs:
           files: |
             release/*.exe
             release/*.zip
+            release/*.vsix
           draft: false
           prerelease: false
           generate_release_notes: true

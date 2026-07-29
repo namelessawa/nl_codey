@@ -25,3 +25,17 @@ next CLI/Desktop launch.
 The adapter always spawns with `shell: false` and passes the task and workspace
 as separate arguments. Multi-root workspaces are currently rejected explicitly
 rather than guessing which repository should receive a mutation.
+
+## Build and package
+
+From the repository root:
+
+```powershell
+pnpm package:vscode
+pnpm smoke:vscode:artifact
+```
+
+The first command builds a versioned `release/nl-codey-vscode-<version>.vsix`
+with the official VSCE packager. The second extracts the archive and requires
+the manifest, bundled entry point and both public commands while rejecting
+source, source maps, dependencies and local secret files.

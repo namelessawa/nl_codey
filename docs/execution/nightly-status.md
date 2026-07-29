@@ -58,6 +58,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EV
 | 48 | `codex/p1-diagnostics-export-core` | Content-minimized shared diagnostics schema and CLI/headless export | Ready for draft review; `FEATURE-001` diagnostics core complete | Full offline gate green; 690 unit, 17 recorded-eval, 93 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 49 | `codex/p1-diagnostics-export-desktop` | Main-owned native Desktop diagnostics export | Ready for draft review; `FEATURE-001` closed | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 50 | `codex/p1-tui-release-evidence` | Strict command inputs and terminal-mode restoration evidence | Ready for draft review; `TUI-UNIT-001` and `TUI-PTY-001` closed | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 51 | `codex/p1-vscode-vsix-artifact` | Versioned VSIX packaging, archive smoke and CI upload | Ready for draft review; `VSCE-001` packaging evidence complete | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1438,6 +1439,34 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EV
   Rollback restores permissive stray-argument parsing and removes terminal-mode
   evidence; it does not affect Run or Session data.
 
+### 2026-07-29 - Produce and audit a VSIX release artifact
+
+- The official pinned `@vscode/vsce` packager initially exposed two real
+  release blockers: scoped npm name `@nlc/vscode` is not a legal extension
+  name, and VSCE rejects simultaneous `files` plus `.vscodeignore` rules.
+  The extension now uses publishable id `nl-codey.nl-codey` and one explicit
+  allowlist containing only README and `dist/extension.cjs`.
+- `pnpm package:vscode` emits the versioned
+  `release/nl-codey-vscode-0.1.0.vsix`. The archive smoke extracts it and
+  requires manifest identity, both public commands and the bundled main entry,
+  while rejecting source, maps, dependencies, `.env` and `custom.txt`.
+- PR and Release workflows package, inspect and upload the VSIX alongside the
+  Windows artifacts. A local isolated VS Code 1.127 CLI install listed
+  `nl-codey.nl-codey@0.1.0`; its temporary extension/user-data directories
+  were removed afterward without touching the user's normal profile.
+- Interactive Extension Host verification remains manual and now has an exact
+  release-candidate checklist. Root typecheck, production build and the full
+  composite passed: 690 unit, 17 recorded-eval, 96 Desktop-main,
+  renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14
+  recovery assertions in 251 seconds, with Electron 33.4.11 / modules 130
+  restored. The final five-file VSIX was then rebuilt, content-audited and
+  installed again in an isolated VS Code profile. Production dependency audit
+  reports one existing low-severity advisory and no high-severity finding.
+- No model call occurs and `custom.txt` is not read. The package manager
+  accessed npm only to resolve/install the pinned VSCE development dependency.
+  Rollback removes the VSIX scripts/CI artifact and restores the invalid,
+  non-packageable extension identity.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1450,5 +1479,5 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EV
    evidence. Session write-failure/path containment and multilevel/cross-parent/
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
-3. The broader production goal still requires VSIX/manual VS Code release
-   evidence and release-candidate manual verification.
+3. The broader production goal still requires interactive VS Code Extension
+   Host evidence and release-candidate manual verification.

@@ -356,3 +356,18 @@ Reason: `/exit now`, `/init --unknown` or a branch command with ignored trailing
 tokens should never execute a nearby interpretation. Strict arity makes typos
 visible and deterministic without imposing artificial ASCII or single-word
 limits on paths and descriptions.
+
+## D-026 - Use a publishable VS Code extension identity
+
+Date: 2026-07-29
+
+Decision: name the extension package `nl-codey` with publisher `nl-codey`,
+yielding extension id `nl-codey.nl-codey`. Keep `@nlc/*` scoped names for
+internal workspace libraries, but do not use npm scope syntax in a VS Code
+extension manifest.
+
+Reason: the official VSCE validator rejects `@nlc/vscode`; a slash/scoped npm
+name is not a valid VS Code extension name. No workspace package imports the
+extension, so changing its package identity affects only build filters and
+turns an impossible manifest into a reproducible publishable artifact without
+changing commands or runtime behavior.

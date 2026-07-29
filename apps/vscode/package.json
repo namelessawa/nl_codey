@@ -1,10 +1,16 @@
 {
-  "name": "@nlc/vscode",
+  "name": "nl-codey",
   "displayName": "NL Codey",
   "publisher": "nl-codey",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Run the NL Codey agent from a VS Code workspace through the shared CLI host protocol.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/namelessawa/nl_codey.git",
+    "directory": "apps/vscode"
+  },
   "engines": {
     "vscode": "^1.95.0"
   },
@@ -17,7 +23,7 @@
   ],
   "main": "./dist/extension.cjs",
   "files": [
-    "dist",
+    "dist/extension.cjs",
     "README.md"
   ],
   "contributes": {

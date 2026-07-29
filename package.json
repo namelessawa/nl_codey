@@ -5,7 +5,7 @@
   "description": "NL_Codey — local Windows GUI coding agent",
   "scripts": {
     "dev": "pnpm --filter @nlc/desktop dev",
-    "build": "pnpm -r --filter \"./packages/*/*\" build && pnpm --filter @nlc/desktop build && pnpm --filter nlc build && pnpm --filter @nlc/vscode build",
+    "build": "pnpm -r --filter \"./packages/*/*\" build && pnpm --filter @nlc/desktop build && pnpm --filter nlc build && pnpm --filter nl-codey build",
     "build:packages": "pnpm -r --filter \"./packages/*/*\" build",
     "docs:tui-actions": "node scripts/generate-tui-action-inventory.mjs",
     "docs:mutations": "node scripts/generate-mutation-inventory.mjs",
@@ -34,12 +34,15 @@
     "test:integration": "pnpm test:storage:abi && vitest run --config vitest.integration.config.ts",
     "test:all": "pnpm test && pnpm test:integration",
     "smoke:cli:artifact": "node scripts/smoke-cli-package.mjs",
+    "package:vscode": "pnpm --filter nl-codey build && node scripts/package-vscode-vsix.mjs",
+    "smoke:vscode:artifact": "node scripts/smoke-vscode-vsix.mjs",
     "smoke:desktop:runtime": "node scripts/smoke-desktop-runtime.mjs",
     "smoke:windows:installer": "node scripts/smoke-windows-installer.mjs",
     "test:watch": "vitest --config vitest.unit.config.ts",
     "rebuild:native": "pnpm --filter @nlc/desktop exec electron-rebuild -f -w better-sqlite3"
   },
   "devDependencies": {
+    "@vscode/vsce": "3.9.2",
     "@types/node": "^22.10.0",
     "electron-builder": "^26.15.7",
     "node-gyp": "12.2.0",

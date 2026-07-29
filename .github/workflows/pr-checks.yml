@@ -87,6 +87,11 @@ jobs:
       - name: Pack, install and smoke the CLI artifact
         run: pnpm smoke:cli:artifact
 
+      - name: Package and inspect VS Code extension
+        run: |
+          pnpm package:vscode
+          pnpm smoke:vscode:artifact
+
       - name: Package Windows installer
         run: pnpm --filter @nlc/desktop exec electron-builder --win --publish never
         env:
@@ -105,6 +110,7 @@ jobs:
           path: |
             release/*.exe
             release/*.zip
+            release/*.vsix
           if-no-files-found: error
           retention-days: 7
 
