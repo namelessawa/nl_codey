@@ -42,6 +42,8 @@ export type PromptInputIntent =
   | { type: "interrupt" }
   | { type: "up" }
   | { type: "down" }
+  | { type: "page-up" }
+  | { type: "page-down" }
   | { type: "ignore" };
 
 export type PromptTerminalDecoderState = {
@@ -90,6 +92,8 @@ const LEFT_SEQUENCES = new Set(["\u001b[D", "\u001bOD"]);
 const RIGHT_SEQUENCES = new Set(["\u001b[C", "\u001bOC"]);
 const UP_SEQUENCES = new Set(["\u001b[A", "\u001bOA"]);
 const DOWN_SEQUENCES = new Set(["\u001b[B", "\u001bOB"]);
+const PAGE_UP_SEQUENCES = new Set(["\u001b[5~"]);
+const PAGE_DOWN_SEQUENCES = new Set(["\u001b[6~"]);
 const DELETE_SEQUENCES = new Set(["\u001b[3~"]);
 const CTRL_ENTER_SEQUENCES = new Set([
   "\u001b[13;5u",
@@ -103,6 +107,8 @@ const TERMINAL_KEY_SEQUENCES = [
   ...RIGHT_SEQUENCES,
   ...UP_SEQUENCES,
   ...DOWN_SEQUENCES,
+  ...PAGE_UP_SEQUENCES,
+  ...PAGE_DOWN_SEQUENCES,
   ...DELETE_SEQUENCES,
   "\u001b[Z",
   "\u001b\b",
@@ -340,6 +346,8 @@ export function decodePromptInput(value: string): PromptInputIntent {
   if (RIGHT_SEQUENCES.has(value)) return edit({ type: "right" });
   if (UP_SEQUENCES.has(value)) return { type: "up" };
   if (DOWN_SEQUENCES.has(value)) return { type: "down" };
+  if (PAGE_UP_SEQUENCES.has(value)) return { type: "page-up" };
+  if (PAGE_DOWN_SEQUENCES.has(value)) return { type: "page-down" };
   if (DELETE_SEQUENCES.has(value)) return edit({ type: "delete" });
   if (CTRL_ENTER_SEQUENCES.has(value)) return edit({ type: "insert", text: "\n" });
   if (value.startsWith("\u001b")) return { type: "ignore" };

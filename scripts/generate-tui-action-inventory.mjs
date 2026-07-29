@@ -270,6 +270,7 @@ const keyboardRows = [
   ["Prompt", "Ctrl+W", promptImplementationSource, /value\s*===\s*"\\u0017"[\s\S]*type:\s*"delete-word"/, "Erase the previous word at the cursor"],
   ["Prompt", "Ctrl+U", promptImplementationSource, /value\s*===\s*"\\u0015"[\s\S]*type:\s*"clear"/, "Clear the input"],
   ["Prompt", "Up/Down", promptImplementationSource, /case\s+"up"[\s\S]*history-previous[\s\S]*case\s+"down"[\s\S]*history-next/, "Move through command suggestions or prompt history"],
+  ["Prompt", "PageUp/PageDown", promptImplementationSource, /case\s+"page-up"[\s\S]*case\s+"page-down"[\s\S]*PAGE_UP_SEQUENCES[\s\S]*PAGE_DOWN_SEQUENCES/, "Reserve terminal page-navigation sequences without mutating the prompt draft; terminal scrollback remains terminal-owned"],
   ["Prompt", "Tab/Shift+Tab", promptEditorSource, /value\s*===\s*"\\t"[\s\S]*value\s*===\s*"\\u001b\[Z"[\s\S]*type:\s*"tab"/, "Complete or reverse-select slash-command suggestions"],
   ["Prompt", "Escape", promptSource, /case\s+"escape"[\s\S]*type:\s*"clear"/, "Clear prompt and command suggestions"],
   ["Prompt", "Ctrl+C", promptEditorSource, /value\s*===\s*"\\u0003"[\s\S]*type:\s*"interrupt"/, "Clear a non-empty prompt; exit when already empty"],
@@ -297,6 +298,7 @@ const inputRenderEvidence = new Map([
   ["Prompt\u0000Ctrl+W", "word erase"],
   ["Prompt\u0000Ctrl+U", "line clear"],
   ["Prompt\u0000Up/Down", "suggestion navigation and history recall"],
+  ["Prompt\u0000PageUp/PageDown", "safe reserved no-op with draft preservation"],
   ["Prompt\u0000Tab/Shift+Tab", "forward/reverse command selection"],
   ["Prompt\u0000Escape", "prompt/palette clear"],
   ["Prompt\u0000Ctrl+C", "clear-then-cancel behavior"],
@@ -315,6 +317,7 @@ const requiredInputEvidence = [
   "handles Windows DEL input",
   "edits CJK text with Home, End, Left, Backspace and forward Delete",
   "recalls prompt history and prevents duplicate blank submission",
+  "preserves the prompt draft when PageUp and PageDown are reserved",
   "navigates command suggestions with Down and reverse Tab",
   "handles Ctrl+W, Ctrl+U, Escape and two-stage idle Ctrl+C",
   "preserves input across hidden modal focus and submits multiline paste",
@@ -333,7 +336,10 @@ const promptUnitEvidenceReady =
   promptEditorTestSource.includes('describe("[tui] prompt editor state machine"') &&
   promptEditorTestSource.includes("decodes Windows and ANSI editing keys") &&
   promptEditorTestSource.includes("normalizes multiline paste") &&
-  promptEditorTestSource.includes("tokenizes coalesced ConPTY editing keys");
+  promptEditorTestSource.includes("tokenizes coalesced ConPTY editing keys") &&
+  promptEditorTestSource.includes(
+    "recognizes coalesced and split PageUp/PageDown without text insertion",
+  );
 const promptUnitTestLabel =
   "apps/cli/src/tui/prompt-editor.test.ts ([tui])";
 const ptyEvidenceReady =
@@ -342,6 +348,7 @@ const ptyEvidenceReady =
   ptyTestSource.includes("Terminal 59x19 is too small.") &&
   ptyTestSource.includes("Terminal 50x16 is too small.") &&
   ptyTestSource.includes("turns idle Ctrl+C into deterministic process cleanup") &&
+  ptyTestSource.includes("preserves a prompt draft across PageUp and PageDown") &&
   ptyTestSource.includes(
     "edits Unicode paste, preserves a draft across resize and recalls history",
   );
@@ -386,7 +393,7 @@ const keyboardInventoryRows = keyboardRows.map(
     if (
       promptUnitEvidenceReady &&
       surface === "Prompt" &&
-      ["Ctrl+Enter", "Text / bracketed paste"].includes(key)
+      ["Ctrl+Enter", "PageUp/PageDown", "Text / bracketed paste"].includes(key)
     ) {
       evidence.push(promptUnitTestLabel);
     }
@@ -396,9 +403,13 @@ const keyboardInventoryRows = keyboardRows.map(
         (surface === "Terminal" &&
           ["Resize below 80 columns", "Resize below 60x20"].includes(key)) ||
         (surface === "Prompt" &&
-          ["Left/Right", "Home/End", "Up/Down", "Text / bracketed paste"].includes(
-            key,
-          )));
+          [
+            "Left/Right",
+            "Home/End",
+            "Up/Down",
+            "PageUp/PageDown",
+            "Text / bracketed paste",
+          ].includes(key)));
     if (ptyEvidence) evidence.push(ptyTestLabel);
     return [surface, key, result, evidence.length > 0 ? evidence.join("; ") : "None"];
   },
@@ -460,7 +471,8 @@ ${keyboardTable}
 The prompt editor has committed unit, Ink-render and native ConPTY evidence for
 Unicode cursor editing, Home/End, history, bounded multiline paste, control
 filtering, resize preservation and modal/run input ownership. PageUp/PageDown
-message navigation is outside the prompt editor and remains incomplete.
+are explicitly recognized as safe reserved no-ops: they preserve the draft,
+while scrollback remains owned by the terminal.
 
 ## Modal routes
 

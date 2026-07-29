@@ -42,6 +42,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 32 | `codex/p1-tui-provider-run-use` | Exact Goal Scenario 9 invalid configuration, correction and new-Run use | Ready for draft review; TUI-E2E-001 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 33 | `codex/p1-tui-mouse-contract` | Explicit Experimental mouse boundary and required TUI acceptance ledgers | Ready for draft review; TUI-MOUSE-001 closed | Full offline gate green; 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 34 | `codex/p1-tui-session-diagnostics` | Corrupt/partial Session diagnostics and safe resumed appends | Ready for draft review; corrupt/partial acceptance closed | Full offline gate green; 635 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
+| 35 | `codex/p1-tui-page-navigation-contract` | Required PageUp/PageDown safe-no-op input contract | Ready for draft review; all 15 required key groups now have automated evidence | Full offline gate green; 635 unit, 16 TUI unit, 20 render, 4 lifecycle, 12 E2E and 13 recovery assertions pass |
 
 ## Work log
 
@@ -966,16 +967,46 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - This batch makes no LLM call and does not read `custom.txt`. Rollback removes
   diagnostics and tail isolation, returning to silent malformed-line skipping.
 
+### 2026-07-29 - Validate the PageUp/PageDown prompt contract
+
+- The raw terminal decoder now recognizes standard PageUp (`CSI 5 ~`) and
+  PageDown (`CSI 6 ~`) sequences, including coalesced and split input. The
+  Prompt handles them as explicit safe reserved no-ops: the draft is preserved
+  and scrollback remains terminal-owned.
+- Unit, Ink-render and real Windows ConPTY gates require the contract. The
+  native journey sends both page keys into a live draft, appends another
+  character to prove ordered input processing, clears the prompt and exits
+  cleanly.
+- The generated inventory now reports 19 commands, 25 keyboard/input actions,
+  3 modals and zero input rows without test identifiers. The keyboard matrix
+  records automated evidence for all 15 required key groups without claiming
+  an application-owned scrollback viewport.
+- Focused gates passed: CLI typecheck, 16/16 TUI unit, 20/20 Ink render and 4/4
+  native ConPTY lifecycle tests. Root typecheck and production build also
+  passed.
+- The complete default offline gate passed 635 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 16 TUI unit, 20 render, 4 lifecycle,
+  12 E2E and 13 recovery assertions in 204 seconds. Every restorative matrix
+  restored and re-verified Electron 33.4.11 / modules 130.
+- Main-target PR #66 now passes Node 22, Node 24, Windows package/installed CLI
+  and all CodeQL jobs. Dependency review still fails before audit because the
+  repository has Dependency graph disabled; enabling that repository setting
+  remains subject to explicit user approval.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback removes
+  the two explicit page intents and their evidence, returning them to generic
+  ignored escape sequences.
+
 ## Current blockers
 
-1. `CI-MAIN-001` still needs the required Node 22/24, package,
-   dependency-review and audit jobs on a main-target GitHub PR. The clean
-   hosted Release workflow and branch CodeQL checks are green, but the
-   main-target event contract must not be inferred from them.
+1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
+   package/installed CLI and CodeQL evidence. Dependency review fails because
+   the repository Dependency graph is disabled, and the combined job stops
+   before `pnpm audit`; enabling that repository-level setting requires
+   explicit user approval.
 2. All exact Goal v2 TUI scenarios pass; mouse disposition and corrupt/partial
-   Session recovery are explicit. Session write-failure/path breadth,
-   PageUp/PageDown, remaining UI-state cells and release-candidate manual
-   verification remain.
+   Session recovery are explicit, and all 15 required key groups have automated
+   evidence. Session write-failure/path breadth, remaining UI-state cells and
+   release-candidate manual verification remain.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

@@ -18,7 +18,7 @@ no output bytes with system ConPTY, the bundled ConPTY DLL, or winpty. The
 hosted workflows therefore set the explicit `NLC_SKIP_NATIVE_PTY=1` capability
 flag. They still run the deterministic TUI unit/render suites and every other
 default, integration, package, and installer gate. Interactive and self-hosted
-Windows validation must leave the flag unset so the default fifteen native PTY
+Windows validation must leave the flag unset so the default sixteen native PTY
 tests and the separate five-cycle crash soak remain mandatory.
 
 | Document scenario | Evidence in the current gate | Result |
@@ -35,7 +35,7 @@ tests and the separate five-cycle crash soak remain mandatory.
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
 | 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted. A public-created child then receives a truncated tail plus an invalid-header sibling: restart restores valid history with a content-free warning, `/sessions` lists both issue classes without raw payloads, and a later user turn appends as valid JSON | Pass |
 | 11. Resize | `pnpm test:tui:render` covers 120x40, 100x30, 80x24 and 60x20; real ConPTY hides trace below 80 columns, shows compact status/size chrome below 60x20 and restores the full frame after growth | Pass |
-| Prompt editing | `pnpm test:tui:pty` sends bracketed multiline CJK paste, Escape, Home/End/Left/forward Delete, resizes a live draft through 50x16 and back to 60x20, recalls history and repeats `/help` | Pass |
+| Prompt editing | `pnpm test:tui:pty` sends bracketed multiline CJK paste, Escape, Home/End/Left/forward Delete, recognizes PageUp/PageDown without changing the draft, resizes a live draft through 50x16 and back to 60x20, recalls history and repeats `/help` | Pass |
 | Mouse boundary | `/help` labels terminal-native wheel scrollback Experimental and clicks/input capture unsupported. The real lifecycle harness scans split terminal output and proves no known mouse tracking enable sequence was emitted before clean exit | Pass (explicit unsupported contract) |
 | 12. Crash recovery | The process is killed at patch approval; restart links SQLite Run to JSONL Session, marks it interrupted once, and leaves the patch absent | Pass |
 | Crash-tail soak | `pnpm test:tui:crash-soak` repeats approval termination/recovery five times; every root PID exits within the bound, recovery is visible, normal exit succeeds, and the fixture directory is immediately removable | Pass |
@@ -48,6 +48,5 @@ Approval and rollback evidence similarly observes the workspace before and
 after public key/command input.
 
 All exact Goal v2 TUI scenarios now have native PTY or named render evidence.
-Session write-failure/path breadth, PageUp/PageDown, remaining UI-state cells
-and release-candidate manual verification remain separate product-completion
-work.
+Session write-failure/path breadth, remaining UI-state cells and
+release-candidate manual verification remain separate product-completion work.

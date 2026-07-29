@@ -19,7 +19,7 @@ surface is not implemented and is not advertised.
 | Streaming assistant message | Streaming text, stop/cancel, final message separation | `chrome.render.test.tsx`; stop E2E | Pass |
 | Tool trace | Empty, running/completed/error rows, hidden below 80 columns, 200-item memory bound | `chrome.render.test.tsx`; `stream-bounds.test.ts`; ConPTY resize | Pass |
 | Budget information | Normal budget and explicit `budget_exceeded` reason | `chrome.render.test.tsx`; budget E2E | Pass |
-| Prompt input | Empty, plain/CJK/multiline/long input, cursor editing, history, modal/run ownership, resize preservation | `prompt-editor.test.ts`; `inputs.render.test.tsx`; ConPTY prompt journey | Pass |
+| Prompt input | Empty, plain/CJK/multiline/long input, cursor editing, history, PageUp/PageDown safe no-op, modal/run ownership, resize preservation | `prompt-editor.test.ts`; `inputs.render.test.tsx`; ConPTY prompt journeys | Pass |
 | Footer shortcuts | Wide and narrow shortcut copy; modal input supersedes prompt | `chrome.render.test.tsx`; `inputs.render.test.tsx` | Pass |
 | Status notifications | Idle, running, done, failed, cancelled, interrupted, budget exceeded | render and core workflow E2E suites | Pass for current runtime states; shared FSM taxonomy remains open |
 | Error notifications | Provider HTTP error, policy refusal, redacted security failure | read-only, provider and dynamic-tool E2E cases | Pass for covered error classes; shared typed error taxonomy remains open |

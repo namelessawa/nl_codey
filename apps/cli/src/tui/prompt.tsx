@@ -171,6 +171,12 @@ export function Prompt({
           else callbacksRef.current.onSubmit(submitted.line);
           return;
         }
+        case "page-up":
+        case "page-down":
+          // Scrollback belongs to the terminal. Recognize these sequences so
+          // they cannot leak into or mutate the draft, but do not emulate a
+          // viewport inside Ink.
+          return;
         case "ignore":
           return;
       }

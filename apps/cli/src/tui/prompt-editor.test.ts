@@ -113,6 +113,8 @@ describe("[tui] prompt editor state machine", () => {
       type: "tab",
       reverse: true,
     });
+    expect(decodePromptInput("\u001b[5~")).toEqual({ type: "page-up" });
+    expect(decodePromptInput("\u001b[6~")).toEqual({ type: "page-down" });
     expect(decodePromptInput("\u001b[999~")).toEqual({ type: "ignore" });
   });
 
@@ -156,6 +158,29 @@ describe("[tui] prompt editor state machine", () => {
       { type: "edit", action: { type: "left" } },
       { type: "edit", action: { type: "delete" } },
     ]);
+  });
+
+  it("recognizes coalesced and split PageUp/PageDown without text insertion", () => {
+    const coalesced = consumePromptTerminalChunk(
+      { pasteBuffer: null, pendingInput: "" },
+      "\u001b[5~\u001b[6~",
+    );
+    expect(coalesced.intents).toEqual([
+      { type: "page-up" },
+      { type: "page-down" },
+    ]);
+    expect(coalesced.state.pendingInput).toBe("");
+
+    const partial = consumePromptTerminalChunk(
+      { pasteBuffer: null, pendingInput: "" },
+      "\u001b[",
+    );
+    expect(partial.intents).toEqual([]);
+    expect(partial.state.pendingInput).toBe("\u001b[");
+
+    const completed = consumePromptTerminalChunk(partial.state, "5~");
+    expect(completed.intents).toEqual([{ type: "page-up" }]);
+    expect(completed.state.pendingInput).toBe("");
   });
 
   it("clears submitted state synchronously and ignores blank submission", () => {

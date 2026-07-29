@@ -35,7 +35,7 @@ that the functional modules are unusable.
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, generated input inventory and acceptance matrices, explicit Experimental mouse boundary, terminal-size matrix, read-only refusal, corrected-provider new Run, redacted failures, corrupt/partial Session diagnostics with safe resumed appends, bounded output/native scrollback, real ConPTY workflows and crash soak pass | Session write-failure/path breadth, PageUp/PageDown, remaining UI-state cells and release-candidate manual verification remain incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, generated input inventory and acceptance matrices, PageUp/PageDown safe-no-op input contract, explicit Experimental mouse boundary, terminal-size matrix, read-only refusal, corrected-provider new Run, redacted failures, corrupt/partial Session diagnostics with safe resumed appends, bounded output/native scrollback, real ConPTY workflows and crash soak pass | Session write-failure/path breadth, remaining UI-state cells and release-candidate manual verification remain incomplete | Functional |
 
 ## Core
 
@@ -100,9 +100,9 @@ that the functional modules are unusable.
   gate passes with a restorative Node/Electron Storage ABI matrix. Windows
   abort has a named 12-run isolated plus 8-way loaded soak, preserves
   `AbortError`, and proves descendant cleanup without timeout inflation.
-- TUI discovery currently finds 19 catalogued slash commands, 24 keyboard/input
-  actions, three modal routes, no mouse implementation and seven committed
-  CLI/TUI Vitest files. All 24 input rows have committed identifiers. Three
+- TUI discovery currently finds 19 catalogued slash commands, 25 keyboard/input
+  actions, three modal routes, no mouse implementation and eight committed
+  CLI/TUI Vitest files. All 25 input rows have committed identifiers. Four
   native lifecycle/prompt journeys, 12 core E2E workflows and a separate
   five-cycle crash soak pass. Stream and trace state are bounded to 500 and
   200 items; persisted Tool Output is capped at 4,000 characters. See

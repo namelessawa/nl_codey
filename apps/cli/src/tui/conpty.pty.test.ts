@@ -138,6 +138,35 @@ describeWindows("[tui-pty] Windows PTY lifecycle", () => {
     expect(Date.now() - started).toBeLessThan(5_000);
   });
 
+  it("preserves a prompt draft across PageUp and PageDown", async () => {
+    const session = start();
+    await session.waitForScreen(
+      (screen) => screen.includes("(idle)") && screen.includes("❯"),
+    );
+
+    session.write("page-safe-draft");
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ page-safe-draft")),
+    );
+    session.write("\u001B[5~");
+    session.write("\u001B[6~");
+    session.write("!");
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ page-safe-draft!")),
+    );
+
+    session.write("\u0015");
+    await session.waitForScreen(
+      (screen) =>
+        screen.split("\n").some((line) => line.includes("❯")) &&
+        !screen.includes("page-safe-draft"),
+    );
+    session.write("\u0003");
+    const exit = await session.waitForExit();
+
+    expect(exit.exitCode).toBe(0);
+  });
+
   it("edits Unicode paste, preserves a draft across resize and recalls history", async () => {
     const session = start();
     await session.waitForScreen(

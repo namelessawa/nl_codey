@@ -230,3 +230,18 @@ but allowed the next JSON record to concatenate with the fragment and disappear
 on subsequent reads. Rewriting or deleting the fragment would erase evidence.
 Line isolation plus a visible, content-free warning preserves both recovery and
 diagnosability without exposing private conversation text.
+
+## D-019 - Reserve page-navigation keys without emulating terminal scrollback
+
+Date: 2026-07-29
+
+Decision: recognize the standard PageUp (`CSI 5 ~`) and PageDown (`CSI 6 ~`)
+input sequences as explicit prompt intents, then perform a safe no-op that
+preserves the draft. Keep scrollback terminal-owned and do not advertise these
+keys as application viewport controls.
+
+Reason: Ink does not own the terminal emulator's scrollback, and synthesizing
+viewport movement would corrupt the static-output contract. Treating the
+sequences as generic unknown input hid their required-key disposition. Explicit
+reserved intents let unit, Ink-render and real ConPTY gates prove that neither
+coalesced nor split input leaks escape bytes or mutates the prompt.

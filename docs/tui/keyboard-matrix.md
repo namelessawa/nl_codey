@@ -4,7 +4,7 @@ Date: 2026-07-29
 
 The generated source of truth for implemented inputs is
 `docs/tui/action-inventory.md`. This matrix adds the Goal v2 focus/state
-dimensions and explicitly records required keys that are not implemented.
+dimensions and explicitly records every required key's supported disposition.
 
 ## Required keys
 
@@ -21,8 +21,8 @@ dimensions and explicitly records required keys that are not implemented.
 | Tab | Complete/select next command suggestion | No public generic modal-tab route | Prompt inactive | `inputs.render.test.tsx` | Pass for implemented route |
 | Shift+Tab | Reverse-select command suggestion | No public generic modal-tab route | Prompt inactive | `inputs.render.test.tsx` | Pass for implemented route |
 | Arrow keys | Left/right cursor; up/down suggestion/history | Up/down Provider/Skill selection | Prompt inactive | render plus native prompt journey | Pass |
-| PageUp | No application binding | No application binding | Terminal scrollback remains terminal-owned | generated inventory | Not implemented |
-| PageDown | No application binding | No application binding | Terminal scrollback remains terminal-owned | generated inventory | Not implemented |
+| PageUp | Recognized safe reserved no-op; draft is unchanged | No modal binding | Prompt inactive; terminal scrollback remains terminal-owned | decoder unit, Ink render and native ConPTY | Pass for explicit no-op contract |
+| PageDown | Recognized safe reserved no-op; draft is unchanged | No modal binding | Prompt inactive; terminal scrollback remains terminal-owned | decoder unit, Ink render and native ConPTY | Pass for explicit no-op contract |
 | Home | Move cursor to start | No modal binding | Prompt inactive | render plus native prompt journey | Pass |
 | End | Move cursor to end | No modal binding | Prompt inactive | render plus native prompt journey | Pass |
 
@@ -36,7 +36,8 @@ dimensions and explicitly records required keys that are not implemented.
 | Skill install picker | Up/Down, Enter, Escape/Q | Ink render tests | Pass at component level |
 | Terminal | Resize across 120x40, 100x30, 80x24, 60x20 and below minimum | render and native ConPTY | Pass |
 
-Thirteen of the fifteen required key groups have committed automated evidence.
-PageUp and PageDown are not advertised as application shortcuts; native
-terminal scrollback is the current alternative. Focus coverage includes idle,
+All fifteen required key groups have committed automated evidence. PageUp and
+PageDown are intentionally not advertised as application scrolling shortcuts:
+the TUI recognizes their terminal sequences, preserves the draft and leaves
+scrollback to terminal-native controls. Focus coverage includes idle,
 modal/approval, streaming/cancellation, completion and post-restart flows.

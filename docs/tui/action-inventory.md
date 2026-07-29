@@ -9,7 +9,7 @@
 
 - Catalogued slash commands: 19
 - Parser alias groups: 18
-- Keyboard/input actions: 24
+- Keyboard/input actions: 25
 - Keyboard rows without test identifiers: 0
 - Modal routes: 3
 - Mouse implementation discovered: no
@@ -53,6 +53,7 @@
 | Prompt | Ctrl+W | Erase the previous word at the cursor | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - word erase |
 | Prompt | Ctrl+U | Clear the input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - line clear |
 | Prompt | Up/Down | Move through command suggestions or prompt history | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - suggestion navigation and history recall; apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
+| Prompt | PageUp/PageDown | Reserve terminal page-navigation sequences without mutating the prompt draft; terminal scrollback remains terminal-owned | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - safe reserved no-op with draft preservation; apps/cli/src/tui/prompt-editor.test.ts ([tui]); apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
 | Prompt | Tab/Shift+Tab | Complete or reverse-select slash-command suggestions | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - forward/reverse command selection |
 | Prompt | Escape | Clear prompt and command suggestions | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - prompt/palette clear |
 | Prompt | Ctrl+C | Clear a non-empty prompt; exit when already empty | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - clear-then-cancel behavior |
@@ -71,7 +72,8 @@
 The prompt editor has committed unit, Ink-render and native ConPTY evidence for
 Unicode cursor editing, Home/End, history, bounded multiline paste, control
 filtering, resize preservation and modal/run input ownership. PageUp/PageDown
-message navigation is outside the prompt editor and remains incomplete.
+are explicitly recognized as safe reserved no-ops: they preserve the draft,
+while scrollback remains owned by the terminal.
 
 ## Modal routes
 

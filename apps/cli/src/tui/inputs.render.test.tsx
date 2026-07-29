@@ -162,6 +162,36 @@ describe("[tui-render] interactive inputs", () => {
     });
   });
 
+  it("preserves the prompt draft when PageUp and PageDown are reserved", async () => {
+    const onSubmit = vi.fn();
+    const view = render(
+      <ThemeProvider>
+        <Prompt
+          disabled={false}
+          onSubmit={onSubmit}
+          onCommand={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    await inputReady();
+    view.stdin.write("keep this draft");
+    await inputReady();
+    view.stdin.write("\u001B[5~");
+    view.stdin.write("\u001B[6~");
+    view.stdin.write("!");
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).toContain("keep this draft!");
+    });
+    view.stdin.write("\r");
+
+    await vi.waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledOnce();
+      expect(onSubmit).toHaveBeenCalledWith("keep this draft!");
+    });
+  });
+
   it("recalls prompt history and prevents duplicate blank submission", async () => {
     const onSubmit = vi.fn();
     const view = render(
