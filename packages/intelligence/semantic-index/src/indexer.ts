@@ -88,13 +88,39 @@ export class SemanticIndexer {
     }
   }
 
-  /** Snapshot of index coverage for the UI / status reporting. */
-  status(workspaceId: string, totalFiles: number): SemanticIndexStatus {
+  /**
+   * Snapshot of index coverage and freshness for UI/status reporting.
+   * Current paths+mtimes come from the host's fresh workspace scan.
+   */
+  status(
+    workspaceId: string,
+    currentFiles: readonly Pick<IndexFile, "path" | "mtime">[],
+    now = Date.now(),
+  ): SemanticIndexStatus {
     const mtimes = this.store.getIndexedFileMtimes(workspaceId);
+    const current = new Map(
+      currentFiles.map((file) => [file.path, file.mtime]),
+    );
+    let freshFiles = 0;
+    let staleFiles = 0;
+    for (const [filePath, currentMtime] of current) {
+      const indexedMtime = mtimes.get(filePath);
+      if (indexedMtime === currentMtime) freshFiles++;
+      else staleFiles++;
+    }
+    let missingFiles = 0;
+    for (const filePath of mtimes.keys()) {
+      if (!current.has(filePath)) missingFiles++;
+    }
     return {
-      totalFiles,
+      totalFiles: current.size,
       indexedFiles: mtimes.size,
+      freshFiles,
+      staleFiles,
+      missingFiles,
+      isStale: staleFiles > 0 || missingFiles > 0,
       lastUpdated: lastUpdated(mtimes),
+      lastChecked: now,
       building: false,
     };
   }

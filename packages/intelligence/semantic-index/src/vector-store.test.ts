@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { IndexedChunk } from "@nlc/shared";
-import { cosineSimilarity, searchChunks } from "./vector-store.js";
+import {
+  annotateSemanticHitStaleness,
+  cosineSimilarity,
+  searchChunks,
+} from "./vector-store.js";
 import { FakeChunkStore } from "./fake-store.js";
 import { MockEmbeddingProvider } from "./embedder.js";
 
@@ -59,6 +63,18 @@ describe("searchChunks", () => {
     expect(hits[0]?.filePath).toBe("db.ts");
     expect(hits[0]).not.toHaveProperty("embedding");
     expect(hits[0]?.snippet.length).toBeLessThanOrEqual(200);
+    expect(hits[0]?.provenance).toMatchObject({
+      source: "semantic_index",
+      chunkId: "db",
+      indexedMtime: 1,
+      currentMtime: null,
+      staleness: "unknown",
+      rank: 1,
+      truncated: false,
+    });
+    expect(hits[0]?.provenance.selectionReason).toContain(
+      "rank 1 by cosine similarity",
+    );
   });
 
   it("filters by kind", async () => {
@@ -90,5 +106,58 @@ describe("searchChunks", () => {
     const embedder = new MockEmbeddingProvider();
     expect(await searchChunks(store, embedder, "ws", "   ")).toEqual([]);
     expect(await searchChunks(store, embedder, "ws", "anything")).toEqual([]);
+  });
+
+  it("annotates fresh, modified, and missing sources without source content", async () => {
+    const store = new FakeChunkStore();
+    const embedder = new MockEmbeddingProvider();
+    const longContent = `function target() {}\n${"x".repeat(250)}`;
+    const [vec] = await embedder.embed([longContent]);
+    store.replaceChunksForFile(
+      "ws",
+      "target.ts",
+      [
+        chunk({
+          id: "target",
+          filePath: "target.ts",
+          content: longContent,
+          embedding: vec ?? [],
+          symbolName: "target",
+        }),
+      ],
+      10,
+    );
+
+    const [stored] = await searchChunks(store, embedder, "ws", "target");
+    expect(stored?.provenance).toMatchObject({
+      indexedMtime: 10,
+      staleness: "unknown",
+      truncated: true,
+      originalChars: longContent.length,
+    });
+
+    const fresh = annotateSemanticHitStaleness(
+      stored ? [stored] : [],
+      new Map([["target.ts", 10]]),
+    );
+    expect(fresh[0]?.provenance).toMatchObject({
+      currentMtime: 10,
+      staleness: "fresh",
+    });
+
+    const modified = annotateSemanticHitStaleness(
+      stored ? [stored] : [],
+      new Map([["target.ts", 11]]),
+    );
+    expect(modified[0]?.provenance.staleness).toBe("modified");
+
+    const missing = annotateSemanticHitStaleness(
+      stored ? [stored] : [],
+      new Map(),
+    );
+    expect(missing[0]?.provenance).toMatchObject({
+      currentMtime: null,
+      staleness: "missing",
+    });
   });
 });

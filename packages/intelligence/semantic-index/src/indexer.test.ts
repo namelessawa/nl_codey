@@ -95,15 +95,44 @@ describe("SemanticIndexer.indexFiles", () => {
 });
 
 describe("SemanticIndexer.status", () => {
-  it("reports indexed file count and last update", async () => {
+  it("reports fresh, changed, new, and missing source coverage", async () => {
+    const store = new FakeChunkStore();
+    const indexer = new SemanticIndexer(store, new MockEmbeddingProvider());
+    await indexer.indexFile(WS, "a.ts", "function a() {}", 42);
+    await indexer.indexFile(WS, "removed.ts", "function removed() {}", 50);
+
+    const status = indexer.status(
+      WS,
+      [
+        { path: "a.ts", mtime: 43 },
+        { path: "new.ts", mtime: 60 },
+      ],
+      100,
+    );
+    expect(status).toEqual({
+      totalFiles: 2,
+      indexedFiles: 2,
+      freshFiles: 0,
+      staleFiles: 2,
+      missingFiles: 1,
+      isStale: true,
+      lastUpdated: 50,
+      lastChecked: 100,
+      building: false,
+    });
+  });
+
+  it("reports a current index when every scanned mtime matches", async () => {
     const store = new FakeChunkStore();
     const indexer = new SemanticIndexer(store, new MockEmbeddingProvider());
     await indexer.indexFile(WS, "a.ts", "function a() {}", 42);
 
-    const status = indexer.status(WS, 10);
-    expect(status.totalFiles).toBe(10);
-    expect(status.indexedFiles).toBe(1);
-    expect(status.lastUpdated).toBe(42);
-    expect(status.building).toBe(false);
+    expect(indexer.status(WS, [{ path: "a.ts", mtime: 42 }], 101)).toMatchObject({
+      freshFiles: 1,
+      staleFiles: 0,
+      missingFiles: 0,
+      isStale: false,
+      lastChecked: 101,
+    });
   });
 });

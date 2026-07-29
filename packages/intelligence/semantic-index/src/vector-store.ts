@@ -73,18 +73,68 @@ export async function searchChunks(
   const kinds = opts.kinds && opts.kinds.length > 0 ? new Set<ChunkKind>(opts.kinds) : null;
   const topK = opts.topK ?? SEMANTIC_DEFAULT_TOP_K;
 
-  const scored: SemanticHit[] = [];
+  const indexedMtimes = store.getIndexedFileMtimes(workspaceId);
+  const scored: { chunk: IndexedChunk; score: number }[] = [];
   for (const chunk of chunks) {
     if (kinds && !kinds.has(chunk.kind)) continue;
     const score = cosineSimilarity(queryVec, chunk.embedding);
-    scored.push(toHit(chunk, score));
+    scored.push({ chunk, score });
   }
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, Math.max(0, topK));
+  return scored
+    .slice(0, Math.max(0, topK))
+    .map(({ chunk, score }, index) =>
+      toHit(
+        chunk,
+        score,
+        index + 1,
+        indexedMtimes.get(chunk.filePath) ?? null,
+      ),
+    );
 }
 
-function toHit(chunk: IndexedChunk, score: number): SemanticHit {
+/**
+ * Compare search provenance with the current workspace view. The search
+ * itself stays storage-only; host adapters supply mtimes after resolving
+ * workspace paths through their own trust boundary.
+ */
+export function annotateSemanticHitStaleness(
+  hits: readonly SemanticHit[],
+  currentMtimes: ReadonlyMap<string, number>,
+): SemanticHit[] {
+  return hits.map((hit) => {
+    const currentMtime = currentMtimes.get(hit.filePath) ?? null;
+    const indexedMtime = hit.provenance.indexedMtime;
+    const staleness =
+      currentMtime === null
+        ? "missing"
+        : indexedMtime === null
+          ? "unknown"
+          : currentMtime === indexedMtime
+            ? "fresh"
+            : "modified";
+    return {
+      ...hit,
+      provenance: {
+        ...hit.provenance,
+        currentMtime,
+        staleness,
+      },
+    };
+  });
+}
+
+function toHit(
+  chunk: IndexedChunk,
+  score: number,
+  rank: number,
+  indexedMtime: number | null,
+): SemanticHit {
+  const truncated = chunk.content.length > SNIPPET_CHARS;
+  const subject = chunk.symbolName
+    ? `${chunk.kind} symbol ${chunk.symbolName}`
+    : `${chunk.kind} chunk`;
   const hit: SemanticHit = {
     filePath: chunk.filePath,
     startLine: chunk.startLine,
@@ -92,6 +142,18 @@ function toHit(chunk: IndexedChunk, score: number): SemanticHit {
     kind: chunk.kind,
     snippet: chunk.content.slice(0, SNIPPET_CHARS),
     score,
+    provenance: {
+      source: "semantic_index",
+      chunkId: chunk.id,
+      indexedMtime,
+      currentMtime: null,
+      staleness: "unknown",
+      rank,
+      selectionReason:
+        `rank ${rank} by cosine similarity (${score.toFixed(4)}); ${subject}`,
+      truncated,
+      originalChars: chunk.content.length,
+    },
   };
   if (chunk.symbolName) hit.symbolName = chunk.symbolName;
   return hit;

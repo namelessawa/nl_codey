@@ -55,7 +55,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | --- | --- | --- | --- |
 | FSM-001 | Shared explicit Run transition table and error taxonomy | Invalid transitions rejected; Desktop/TUI render shared state/error codes | Done in Batch 38; Storage rejects illegal edges transactionally, AgentService persists stable failure codes, and Desktop/TUI share their presentation |
 | EVAL-001 | Required deterministic, recorded, opt-in live and TUI workflow fixtures | Published scorecard meets Goal thresholds with zero unsafe regression | Done in Batches 24-25; deterministic 13/13, recorded 13/13, approved live 12/13 (92.31%), unsafe refusal 100%, regression 0%, rollback 3/3 and TUI workflow 8/8 |
-| CTX-001 | Provenance, impact graph, stale-index and selection-reason surface | Trace/detail output and correctness fixtures | Open |
+| CTX-001 | Provenance, impact graph, stale-index and selection-reason surface | Trace/detail output and correctness fixtures | In progress in Batch 39; semantic hits now carry source/chunk/rank/reason/truncation and live mtime freshness through Desktop detail and Agent tool traces; import/test/call impact graphs and TUI-specific presentation remain |
 | RENDERER-001 | Split browser-safe paths from Node helpers | Renderer/preload tests and packaged runtime smoke | Open |
 | INDEX-001 | Add project-indexer ignore/symlink/binary/language tests | Dedicated suite green | Open |
 | VSCE-001 | VS Code host adapter using shared runtime/policy | Extension smoke + security tests + docs | Open |

@@ -31,6 +31,30 @@ export type SemanticSearchOptions = {
   kinds?: ChunkKind[];
 };
 
+export type SemanticHitStaleness =
+  | "fresh"
+  | "modified"
+  | "missing"
+  | "unknown";
+
+export type ContextProvenance = {
+  source: "semantic_index";
+  /** Stable audit id for the stored chunk; never contains source content. */
+  chunkId: string;
+  /** Source-file mtime captured when this chunk was indexed. */
+  indexedMtime: number | null;
+  /** Current source-file mtime at retrieval time, or null when unavailable. */
+  currentMtime: number | null;
+  staleness: SemanticHitStaleness;
+  /** One-based position after kind filtering and similarity ranking. */
+  rank: number;
+  /** Human-readable, content-free explanation of why this hit was selected. */
+  selectionReason: string;
+  /** Whether the returned snippet omitted source characters. */
+  truncated: boolean;
+  originalChars: number;
+};
+
 export type SemanticHit = {
   filePath: string;
   startLine: number;
@@ -40,12 +64,20 @@ export type SemanticHit = {
   kind: ChunkKind;
   symbolName?: string;
   score: number;
+  provenance: ContextProvenance;
 };
 
 export type SemanticIndexStatus = {
   totalFiles: number;
   indexedFiles: number;
+  freshFiles: number;
+  /** New or modified source files not represented by a current chunk set. */
+  staleFiles: number;
+  /** Indexed files that no longer exist in the current workspace scan. */
+  missingFiles: number;
+  isStale: boolean;
   lastUpdated: number | null;
+  lastChecked: number;
   /** True while a background (re)build is running. */
   building: boolean;
 };

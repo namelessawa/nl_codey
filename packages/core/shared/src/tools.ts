@@ -1,5 +1,7 @@
 /** Tool system contracts. Tools are pure functions over a ToolContext. */
 
+import type { ContextProvenance, ChunkKind } from "./semantic.js";
+
 export type ToolContext = {
   workspaceRoot: string;
   runId: string;
@@ -158,6 +160,10 @@ export type SemanticSearchToolHit = {
   snippet: string;
   score: number;
   symbolName?: string;
+  /** Optional for third-party ports; built-in semantic search always sets it. */
+  kind?: ChunkKind;
+  /** Optional for compatibility; built-in results always carry provenance. */
+  provenance?: ContextProvenance;
 };
 export type SemanticSearchToolOutput = { query: string; hits: SemanticSearchToolHit[] };
 

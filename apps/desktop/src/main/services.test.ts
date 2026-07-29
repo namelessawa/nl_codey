@@ -165,6 +165,42 @@ describe("buildServices dynamic tool wiring", () => {
   });
 });
 
+describe("semantic freshness host boundary", () => {
+  it("reads mtimes only for real files contained by the workspace", async () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "nlc-semantic-freshness-"));
+    roots.push(base);
+    const workspaceRoot = path.join(base, "workspace");
+    const outsideRoot = path.join(base, "outside");
+    fs.mkdirSync(workspaceRoot);
+    fs.mkdirSync(outsideRoot);
+    const inside = path.join(workspaceRoot, "inside.ts");
+    fs.writeFileSync(inside, "export const inside = true;\n", "utf8");
+    fs.writeFileSync(
+      path.join(outsideRoot, "private.ts"),
+      "export const privateValue = true;\n",
+      "utf8",
+    );
+    fs.symlinkSync(
+      outsideRoot,
+      path.join(workspaceRoot, "linked"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    const actual = await vi.importActual<
+      typeof import("./extended-ports.js")
+    >("./extended-ports.js");
+    const mtimes = actual.currentMtimesForSemanticHits(workspaceRoot, [
+      { filePath: "inside.ts" },
+      { filePath: "missing.ts" },
+      { filePath: "../outside/private.ts" },
+      { filePath: "linked/private.ts" },
+    ]);
+
+    expect(mtimes.get("inside.ts")).toBe(fs.statSync(inside).mtimeMs);
+    expect([...mtimes.keys()]).toEqual(["inside.ts"]);
+  });
+});
+
 function createMemoryStorage(
   workspaceRoot: string,
   startupRecoveries: ReturnType<

@@ -46,6 +46,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 36 | `codex/p1-tui-session-fault-isolation` | Visible Session write faults and resume/show path containment | Ready for draft review; write-failure/path-isolation acceptance closed | Full offline gate green; 638 unit, 16 TUI unit, 20 render, 4 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 37 | `codex/p1-tui-session-lineage-breadth` | Multilevel/cross-parent Session lineage and invalid-target continuity | Ready for draft review; `TUI-SESSION-001` closed | Full offline gate green; 638 unit, 16 TUI unit, 20 render, 4 lifecycle, 13 E2E and 13 recovery assertions pass |
 | 38 | `codex/p1-shared-run-fsm-errors` | Shared Run transition table, atomic enforcement and stable failure codes | Ready for draft review; core `FSM-001` implementation complete | Full offline gate green; 643 unit, 17 recorded-eval, 80 Desktop-main, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 39 | `codex/p1-context-provenance` | Semantic context provenance, snippet truncation and stale-index visibility | Ready for draft review; `CTX-001` remains in progress for impact graphs and TUI presentation | Full offline gate green; 645 unit, 17 recorded-eval, 81 Desktop-main, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1094,6 +1095,35 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   the shared transition/error contract and returns Storage to unchecked status
   overwrites and UI surfaces to raw failure strings.
 
+### 2026-07-29 - Trace semantic context provenance and index freshness
+
+- Every built-in semantic result now carries a shared provenance record:
+  source, stable chunk id, rank, indexed/current source times, freshness,
+  selection reason, truncation state and original character count. Ranking is
+  assigned after filtering so the reported reason matches the delivered hit.
+- Semantic-index status now compares indexed records with the current project
+  scan and reports fresh, modified and missing files plus the last freshness
+  check. Search results remain available when stale, but are explicitly
+  labelled instead of being presented as current.
+- Current mtimes are resolved only through the Desktop Host boundary. Lexical
+  and physical workspace containment reject `..`, missing targets and
+  junction/symbolic-link escapes before host metadata reaches intelligence
+  code.
+- Desktop search exposes source, selection reason, freshness and snippet
+  truncation. The built-in Agent semantic-search tool receives the same
+  provenance; optional fields preserve compatibility with third-party ports.
+- Focused semantic/port tests passed 22/22, including exact provenance,
+  truncation, modified/missing status and freshness annotation. Desktop-main
+  tests cover a valid file plus lexical, missing and physical-link escapes.
+- The complete default offline gate passed 645 unit, 17 recorded-eval,
+  81 Desktop-main, renderer/preload/CLI, 16 TUI unit, 20 render, 4 lifecycle,
+  13 E2E and 14 recovery assertions in 278 seconds. Root typecheck and the
+  production Desktop/CLI build passed; every restorative matrix re-verified
+  Electron 33.4.11 / modules 130.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback removes
+  the provenance/freshness surface and restores unlabelled semantic hits;
+  `CTX-001` remains open for impact graphs and TUI-specific presentation.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1106,7 +1136,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    evidence. Session write-failure/path containment and multilevel/cross-parent/
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
-3. The broader production goal still requires context provenance/index
-   correctness, browser-safe renderer split, project-indexer coverage, VS Code
-   adapter and the feature/experimental disposition work listed in
-   `docs/execution/master-backlog.md`.
+3. The broader production goal still requires context impact graphs and
+   TUI-specific provenance presentation, browser-safe renderer split,
+   project-indexer coverage, VS Code adapter and the feature/experimental
+   disposition work listed in `docs/execution/master-backlog.md`.

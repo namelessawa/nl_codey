@@ -23,6 +23,18 @@ describe("createSemanticSearchTool", () => {
       snippet: "function foo() {}",
       score: 0.9,
       symbolName: "foo",
+      kind: "code",
+      provenance: {
+        source: "semantic_index",
+        chunkId: "chunk-a",
+        indexedMtime: 10,
+        currentMtime: 11,
+        staleness: "modified",
+        rank: 1,
+        selectionReason: "rank 1 by cosine similarity (0.9000); code symbol foo",
+        truncated: false,
+        originalChars: 17,
+      },
     };
     const port: SemanticSearchPort = {
       async search() {

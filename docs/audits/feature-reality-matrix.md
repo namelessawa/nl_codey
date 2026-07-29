@@ -52,7 +52,7 @@ that the functional modules are unusable.
 | --- | --- | --- | --- | --- |
 | `packages/runtime/llm` | OpenAI-compatible and Anthropic streaming providers, timeout/retry/redaction | Six suites plus explicit opt-in smoke definitions | Live provider compatibility/release evidence is incomplete | Functional |
 | `packages/runtime/tools` | Bounded file/search/patch/command/git/symbol/port tools | Eight suites plus the generated 31-path mutation inventory | Supported mutation paths share single-use approval/capability enforcement; OS-level host whitelist isolation remains limited | Functional |
-| `packages/runtime/agent-core` | Shared autonomous loop, budget, verify/repair, rollback, compression and multi-agent entry | Unit/recovery suites, 13/13 deterministic/recorded fixtures and a 12/13 approved live benchmark pass | Explicit production state machine/error taxonomy remains incomplete | Functional |
+| `packages/runtime/agent-core` | Shared autonomous loop, budget, verify/repair, rollback, compression and multi-agent entry | Unit/recovery suites, 13/13 deterministic/recorded fixtures, a 12/13 approved live benchmark and shared FSM/error-code tests pass | Multi-agent restart recovery and broader host-adapter parity remain incomplete | Functional |
 
 ## Intelligence
 
@@ -60,7 +60,7 @@ that the functional modules are unusable.
 | --- | --- | --- | --- | --- |
 | `packages/intelligence/project-indexer` | Repository scan/ignore/project detection feeds AgentService | No colocated suite | Ignore, symlink, binary and multi-language behavior lack regression evidence | Partial |
 | `packages/intelligence/memory` | Cross-session facts/preferences/failures and retrieval | Five suites | Cross-process recovery and privacy lifecycle evidence is thin | Functional |
-| `packages/intelligence/semantic-index` | Chunk/embed/vector search and incremental index service | Five suites | Production embedding/index staleness and provenance are not surfaced end to end | Functional |
+| `packages/intelligence/semantic-index` | Chunk/embed/vector search and incremental index service | Five suites now cover rank/selection provenance, snippet truncation and fresh/modified/missing mtime states | Import/test/call impact graphs, TUI-specific presentation and production embedding evidence remain incomplete | Functional |
 | `packages/intelligence/planner` | DAG decomposition, dependency validation and waves | Four suites | Benchmark success and restart persistence are incomplete | Functional |
 | `packages/intelligence/orchestrator` | Planner/Coder/Reviewer roles, locks, bus, worker pool | Five suites plus Agent Core role-boundary tests | Restart recovery and distributed execution contract incomplete | Functional |
 

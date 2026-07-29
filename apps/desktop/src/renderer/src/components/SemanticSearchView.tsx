@@ -92,6 +92,9 @@ export function SemanticSearchView({ workspaceId }: SemanticSearchViewProps): JS
   const lastUpdated = status?.lastUpdated
     ? new Date(status.lastUpdated).toLocaleString()
     : "—";
+  const freshness = status?.isStale
+    ? `过期 · ${status.staleFiles} 个新增/修改 · ${status.missingFiles} 个已删除`
+    : "最新";
 
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -109,7 +112,11 @@ export function SemanticSearchView({ workspaceId }: SemanticSearchViewProps): JS
         }}
       >
         <div>
-          <strong>索引状态</strong>: {status ? `${status.indexedFiles}/${status.totalFiles} 文件 · 最近更新 ${lastUpdated} · ${status.building ? "正在构建" : "空闲"}` : "—"}
+          <strong>索引状态</strong>:{" "}
+          {status
+            ? `${status.indexedFiles}/${status.totalFiles} 文件 · ${freshness} · ` +
+              `索引源最近修改 ${lastUpdated} · ${status.building ? "正在构建" : "空闲"}`
+            : "—"}
         </div>
         <div style={{ marginTop: 8 }}>
           <button type="button" onClick={() => void rebuild()} disabled={rebuilding}>
@@ -188,7 +195,21 @@ export function SemanticSearchView({ workspaceId }: SemanticSearchViewProps): JS
                 <span>{h.filePath}:{h.startLine}-{h.endLine}</span>
                 <span>· {h.kind}</span>
                 {h.symbolName && <span>· {h.symbolName}</span>}
+                <span>· {stalenessLabel(h.provenance.staleness)}</span>
                 <span style={{ marginLeft: "auto" }}>score {h.score.toFixed(3)}</span>
+              </div>
+              <div
+                style={{
+                  marginTop: 5,
+                  fontFamily: "var(--mono)",
+                  fontSize: 11,
+                  color: "var(--muted)",
+                }}
+              >
+                来源 {h.provenance.source} · {h.provenance.selectionReason}
+                {h.provenance.truncated
+                  ? ` · 已截断 ${h.provenance.originalChars - h.snippet.length} 字符`
+                  : " · 未截断"}
               </div>
               <pre
                 style={{
@@ -208,4 +229,19 @@ export function SemanticSearchView({ workspaceId }: SemanticSearchViewProps): JS
       </section>
     </div>
   );
+}
+
+function stalenessLabel(
+  value: SemanticHit["provenance"]["staleness"],
+): string {
+  switch (value) {
+    case "fresh":
+      return "索引最新";
+    case "modified":
+      return "源文件已修改";
+    case "missing":
+      return "源文件已删除/不可读";
+    case "unknown":
+      return "新鲜度未知";
+  }
 }
