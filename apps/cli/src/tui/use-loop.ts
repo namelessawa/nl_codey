@@ -74,8 +74,8 @@ type Action =
   | { type: "set-status"; value: string }
   | { type: "clear" };
 
-const MAX_STREAM = 500;
-const MAX_TRACE = 200;
+export const MAX_STREAM_ITEMS = 500;
+export const MAX_TRACE_ITEMS = 200;
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -83,24 +83,27 @@ function reducer(state: State, action: Action): State {
       // Any non-delta event finalises the streaming agent message: push it
       // to the Static stream before the new item so order is preserved.
       const flushed = state.liveAgent
-        ? trimTail(state.stream, state.liveAgent, MAX_STREAM)
+        ? appendBounded(state.stream, state.liveAgent, MAX_STREAM_ITEMS)
         : state.stream;
       return {
         ...state,
-        stream: trimTail(flushed, action.item, MAX_STREAM),
+        stream: appendBounded(flushed, action.item, MAX_STREAM_ITEMS),
         liveAgent: null,
       };
     }
     case "replace-stream":
       return {
         ...state,
-        stream: action.items.slice(-MAX_STREAM),
+        stream: action.items.slice(-MAX_STREAM_ITEMS),
         streamVersion: state.streamVersion + 1,
         liveAgent: null,
         trace: [],
       };
     case "trace":
-      return { ...state, trace: trimTail(state.trace, action.item, MAX_TRACE) };
+      return {
+        ...state,
+        trace: appendBounded(state.trace, action.item, MAX_TRACE_ITEMS),
+      };
     case "delta": {
       const live = state.liveAgent;
       const id = live?.id ?? `delta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -114,7 +117,7 @@ function reducer(state: State, action: Action): State {
       if (!state.liveAgent) return state;
       return {
         ...state,
-        stream: trimTail(state.stream, state.liveAgent, MAX_STREAM),
+        stream: appendBounded(state.stream, state.liveAgent, MAX_STREAM_ITEMS),
         liveAgent: null,
       };
     }
@@ -135,7 +138,7 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-function trimTail<T>(arr: T[], item: T, max: number): T[] {
+export function appendBounded<T>(arr: readonly T[], item: T, max: number): T[] {
   const next = [...arr, item];
   return next.length > max ? next.slice(next.length - max) : next;
 }

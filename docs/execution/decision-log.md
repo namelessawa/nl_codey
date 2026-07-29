@@ -152,3 +152,18 @@ Reason: proving that `apply_patch` is absent from the schema establishes model
 guidance, not enforcement. The source document explicitly requires a forged
 write-tool attempt; only dispatch-layer refusal plus an unchanged workspace
 proves the hard boundary.
+
+## D-014 - Test terminal retention separately from in-memory bounds
+
+Date: 2026-07-29
+
+Decision: exercise Scenario 14 through one public 10 KB `read_file` result and
+one 320-row assistant response in real ConPTY. Assert the 4,000-character
+persisted Tool Output cap and truncation marker, native xterm navigation,
+complete SQLite/JSONL response, and a still-usable prompt. Test the 500-item
+stream and 200-item trace reducer caps as pure state transitions.
+
+Reason: terminal scrollback, durable audit/session storage and live React state
+have different ownership and limits. A single runaway loop would couple those
+boundaries to iteration/tool-call budgets and make failures ambiguous; separate
+assertions prove every limit without relaxing the production circuit breakers.

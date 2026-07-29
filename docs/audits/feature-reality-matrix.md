@@ -35,7 +35,7 @@ that the functional modules are unusable.
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, complete generated input inventory and terminal-size matrix, read-only forged-write refusal, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Exact Provider/error/long-tool-output scenario breadth, malformed-session UX and explicit mouse disposition remain incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, complete generated input inventory and terminal-size matrix, read-only forged-write refusal, bounded 10 KB Tool Output plus 320-row native scrollback, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Exact provider invalid→valid→new-run use, dynamic-tool construction failure, malformed-session UX and explicit mouse disposition remain incomplete | Functional |
 
 ## Core
 
@@ -104,7 +104,9 @@ that the functional modules are unusable.
   actions, three modal routes, no mouse implementation and seven committed
   CLI/TUI Vitest files. All 24 input rows have committed identifiers. Three
   native lifecycle/prompt journeys, 12 core E2E workflows and a separate
-  five-cycle crash soak pass. See `docs/tui/action-inventory.md`.
+  five-cycle crash soak pass. Stream and trace state are bounded to 500 and
+  200 items; persisted Tool Output is capped at 4,000 characters. See
+  `docs/tui/action-inventory.md`.
 
 ## Production-rating gate
 

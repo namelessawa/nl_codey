@@ -239,13 +239,15 @@ async function pressModalEnter(
   for (let attempt = 0; attempt < 3; attempt += 1) {
     session.write("\r");
     try {
-      await session.waitForScreen(advanced, 2_000);
+      // Provider fields can be taller than the active viewport after replayed
+      // Static output. The terminal buffer still records the modal transition.
+      await session.waitForBuffer(advanced, 2_000);
       return;
     } catch {
       // A modal can paint one tick before its useInput effect mounts.
     }
   }
-  await session.waitForScreen(advanced, 1);
+  await session.waitForBuffer(advanced, 1);
 }
 
 async function replaceProviderUrl(
@@ -624,52 +626,67 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await exit(session);
   });
 
-  it("retains and navigates large agent output in terminal scrollback", async () => {
+  it("bounds long tool output and navigates hundreds of message rows", async () => {
     const fixture = createFixture();
+    fs.writeFileSync(
+      path.join(fixture.workspaceRoot, "LONG_TOOL_OUTPUT.txt"),
+      `TOOL_OUTPUT_HEAD\n${"x".repeat(10_000)}\nTOOL_OUTPUT_TAIL\n`,
+      "utf8",
+    );
     const session = start(fixture, {
-      NLC_MOCK_SCENARIO: "large-output",
+      NLC_MOCK_SCENARIO: "large-tool-output",
     });
 
     await session.waitForScreen((screen) => screen.includes("(idle)"));
-    await enter(session, "fill the terminal scrollback");
+    await enter(session, "exercise bounded large output");
     const buffer = await session.waitForBuffer(
       (output) =>
-        output.includes("scrollback-line-001") &&
-        output.includes("scrollback-line-080") &&
+        output.includes("bulk-message-row-001 retained") &&
+        output.includes("bulk-message-row-320 retained") &&
         output.includes("done"),
-      20_000,
+      30_000,
     );
-    expect(buffer.indexOf("scrollback-line-001")).toBeLessThan(
-      buffer.indexOf("scrollback-line-080"),
+    expect(buffer.indexOf("bulk-message-row-001 retained")).toBeLessThan(
+      buffer.indexOf("bulk-message-row-320 retained"),
     );
-    expect(session.scrollbackLineCount()).toBeGreaterThan(50);
-    expect(session.viewport()).toContain("scrollback-line-080");
-    expect(session.viewport()).not.toContain("scrollback-line-001");
+    expect(session.scrollbackLineCount()).toBeGreaterThan(250);
+    expect(session.viewport()).toContain("bulk-message-row-320 retained");
+    expect(session.viewport()).not.toContain("bulk-message-row-001 retained");
 
     session.scrollLines(-1_000);
-    expect(session.viewport()).toContain("scrollback-line-001");
+    expect(session.viewport()).toContain("bulk-message-row-001 retained");
     session.scrollToBottom();
-    expect(session.viewport()).toContain("scrollback-line-080");
+    expect(session.viewport()).toContain("bulk-message-row-320 retained");
 
     const audit = readRunAudit(fixture);
     expect(audit.status).toBe("done");
+    const toolResult = audit.steps.find(
+      (step) =>
+        step.type === "tool_result" &&
+        step.content.includes("LONG_TOOL_OUTPUT.txt"),
+    );
+    expect(toolResult).toBeDefined();
+    expect(toolResult!.content.length).toBeLessThanOrEqual(4_000);
+    expect(toolResult!.content).toContain("TOOL_OUTPUT_HEAD");
+    expect(toolResult!.content).toContain("…(truncated)");
+    expect(toolResult!.content).not.toContain("TOOL_OUTPUT_TAIL");
     const outputStep = audit.steps.find(
       (step) =>
         step.type === "message" &&
-        step.content.includes("scrollback-line-001"),
+        step.content.includes("bulk-message-row-001 retained"),
     );
-    expect(outputStep?.content.split("\n")).toHaveLength(80);
-    expect(outputStep?.content).toContain("scrollback-line-080");
+    expect(outputStep?.content.split("\n")).toHaveLength(320);
+    expect(outputStep?.content).toContain("bulk-message-row-320 retained");
 
     const [sessionPath] = await waitForSessionFiles(fixture.dataRoot, 1);
     const assistant = readSession(sessionPath!).find(
       (line) =>
         line.type === "message" &&
         line.role === "assistant" &&
-        line.content?.includes("scrollback-line-001"),
+        line.content?.includes("bulk-message-row-001 retained"),
     );
-    expect(assistant?.content?.split("\n")).toHaveLength(80);
-    expect(assistant?.content).toContain("scrollback-line-080");
+    expect(assistant?.content?.split("\n")).toHaveLength(320);
+    expect(assistant?.content).toContain("bulk-message-row-320 retained");
 
     await enter(session, "/help");
     await session.waitForBuffer((output) => output.includes("/rollback"));

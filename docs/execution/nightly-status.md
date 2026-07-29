@@ -37,6 +37,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 27 | `codex/p1-tui-input-inventory` | Complete generated modal/input evidence | Ready for draft review; TUI-INV-001 closed | 17 Ink render assertions; 23/23 generated input rows have test identifiers |
 | 28 | `codex/p1-tui-minimum-layout` | Full terminal-size matrix and height-aware fallback | Ready for draft review; TUI-RENDER-001 and TUI-MIN-001 closed | Full offline gate green; 19 Ink render and 3 real ConPTY lifecycle/prompt assertions pass |
 | 29 | `codex/p1-tui-read-only-analysis` | Exact Goal Scenario 2 read-only analysis and forged-write refusal | Ready for draft review; exact Scenario 2 closed | Full offline gate green; 4 Mock scenario, 19 Ink render and 12 native TUI E2E assertions pass |
+| 30 | `codex/p1-tui-large-tool-output` | Exact Goal Scenario 14 output limits and native scrollback | Ready for draft review; exact Scenario 14 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 
 ## Work log
 
@@ -819,6 +820,37 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   removes the hostile Mock fixture/E2E and the visual indicator; read-only
   dispatcher enforcement itself remains unchanged.
 
+### 2026-07-29 - Bound long Tool Output and native scrollback
+
+- Replaced the small 80-line display fixture with a controlled public
+  `read_file` of a 10 KB file followed by 320 numbered assistant rows. The
+  default Mock behavior remains unchanged.
+- The native ConPTY workflow proves row ordering, more than 250 retained
+  scrollback lines, navigation back to row 1, restoration to row 320 and a
+  usable `/help` prompt after completion.
+- SQLite must retain no more than 4,000 characters of the Tool Output, include
+  the production `…(truncated)` marker and omit the fixture tail. SQLite and
+  append-only JSONL must both retain all 320 assistant rows.
+- Pure reducer evidence separately proves that live stream state keeps only
+  the newest 500 items and trace state only the newest 200, without mutating
+  prior arrays.
+- Focused verification passed 5/5 Mock scenario tests, 15/15 TUI unit
+  assertions and 12/12 native TUI E2E assertions in 77 seconds. The ABI wrapper
+  restored and re-verified Electron 33.4.11 / modules 130.
+- The first complete gate exposed an existing observer race after provider
+  restart: the restored modal advanced correctly, but its field could sit
+  outside the current 30-line viewport, so the helper sent duplicate Enter
+  keys and eventually saved. Modal transitions are now observed in xterm's
+  retained buffer; the product flow and provider assertions are unchanged.
+- After a focused 12/12 E2E rerun, the corrected complete default offline gate
+  passed 634 unit, 17 recorded-eval, 80 Desktop-main, renderer/preload/CLI,
+  15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions in
+  193 seconds. Every native matrix restored and re-verified Electron 33.4.11 /
+  modules 130.
+- This batch is entirely offline and does not read `custom.txt`. Rollback
+  restores the former 80-line fixture and removes the pure boundary tests; it
+  does not change production persistence caps or default provider behavior.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
@@ -826,9 +858,8 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
 2. TUI acceptance still needs exact Scenario 9 invalid→valid→new-run provider
-   use, Scenario 13 dynamic-tool construction failure, Scenario 14 long Tool
-   Output limits, broader session invalid-input UX and final unsupported-mouse
-   product copy.
+   use, Scenario 13 dynamic-tool construction failure, broader session
+   invalid-input UX and final unsupported-mouse product copy.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

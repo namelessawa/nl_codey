@@ -33,6 +33,9 @@ const MOCK_MODEL = "mock-model";
  * so downstream persistence and display boundaries can prove redaction.
  * `large-output` emits 80 numbered lines and stops without tools so a native
  * terminal can prove scrollback retention and navigation.
+ * `large-tool-output` reads one oversized fixture, then emits 320 numbered
+ * message rows so persistence truncation and bounded TUI scrollback can be
+ * proved together.
  * `read-only-analysis` reads, searches, then deliberately forges an
  * unadvertised apply_patch call so the runtime's hard read-only dispatch guard
  * can be exercised through the real TUI.
@@ -81,6 +84,25 @@ export class MockLLMProvider implements ChatLLMProvider {
 
     if (process.env["NLC_MOCK_SCENARIO"] === "large-output") {
       const text = largeOutputFixture();
+      yield* emitText(text, input.signal);
+      yield finish("stop", input.messages, text);
+      return;
+    }
+
+    if (process.env["NLC_MOCK_SCENARIO"] === "large-tool-output") {
+      if (turn === 0) {
+        const text = "Reading a deliberately long tool-output fixture.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_large_tool_output",
+          name: "read_file",
+          args: { path: "LONG_TOOL_OUTPUT.txt" },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      const text = largeMessageFixture();
       yield* emitText(text, input.signal);
       yield finish("stop", input.messages, text);
       return;
@@ -232,6 +254,14 @@ function largeOutputFixture(): string {
     { length: 80 },
     (_, index) =>
       `scrollback-line-${String(index + 1).padStart(3, "0")} retained output`,
+  ).join("\n");
+}
+
+function largeMessageFixture(): string {
+  return Array.from(
+    { length: 320 },
+    (_, index) =>
+      `bulk-message-row-${String(index + 1).padStart(3, "0")} retained`,
   ).join("\n");
 }
 
