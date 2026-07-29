@@ -20,8 +20,8 @@ evidence.
 
 ```text
 Production: 0
-Functional: 20
-Partial: 2
+Functional: 21
+Partial: 1
 Scaffold: 1
 Dead: 0
 Unknown: 0
@@ -58,7 +58,7 @@ that the functional modules are unusable.
 
 | Module | Runtime and entry | Test evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
-| `packages/intelligence/project-indexer` | Repository scan/ignore/project detection feeds AgentService | No colocated suite | Ignore, symlink, binary and multi-language behavior lack regression evidence | Partial |
+| `packages/intelligence/project-indexer` | Deterministic capped repository scan/fixed-ignore handling and Node/Python/Go/Rust project detection feed AgentService and tools | Three dedicated suites cover limits/order, ignored names/case variants, internal/external link non-traversal, binary enumeration, missing roots, package-manager commands, malformed manifests and polyglot precedence | Custom `.gitignore` patterns and richer monorepo/multi-root language detection remain incomplete | Functional |
 | `packages/intelligence/memory` | Cross-session facts/preferences/failures and retrieval | Five suites | Cross-process recovery and privacy lifecycle evidence is thin | Functional |
 | `packages/intelligence/semantic-index` | Chunk/embed/vector search and incremental index service wired to Desktop rebuild/search | Five package suites plus Desktop IPC coverage prove incremental changed-file refresh, missing/blank-source eviction, rank/selection provenance, explicit context budgets, snippet truncation and fresh/modified/missing mtime states | Production embedding compatibility evidence remains incomplete | Functional |
 | `packages/intelligence/planner` | DAG decomposition, dependency validation and waves | Four suites | Benchmark success and restart persistence are incomplete | Functional |
