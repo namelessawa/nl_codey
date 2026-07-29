@@ -60,6 +60,20 @@ describe("redactSensitiveText", () => {
     );
   });
 
+  it("strips long OSC sequences in linear passes", () => {
+    const repeatedControlText = "\u001b]".repeat(100_000);
+    const terminated = redactSensitiveText(
+      `before \u001b]0;${repeatedControlText}\u0007 after`,
+    );
+    const unterminated = redactSensitiveText(repeatedControlText, {
+      maxLength: 128,
+    });
+
+    expect(terminated).toBe("before  after");
+    expect(unterminated).not.toContain("\u001b");
+    expect(unterminated.length).toBeLessThanOrEqual(128);
+  });
+
   it("is idempotent", () => {
     const once = redactSensitiveText("token=abc123 Authorization: Bearer abc123");
     expect(redactSensitiveText(once)).toBe(once);

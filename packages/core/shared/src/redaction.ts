@@ -29,9 +29,8 @@ export function redactSensitiveText(
   const fallback = options.fallback ?? "Unknown error";
   let text = safeString(value, fallback);
 
-  text = text
-    .replace(/\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\))/g, "")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001a\u001c-\u001f\u007f-\u009f]/g, " ")
+  text = stripTerminalEscapeSequences(text)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, " ")
     .trim();
   if (!text) text = fallback;
 
@@ -94,6 +93,79 @@ function safeString(value: unknown, fallback: string): string {
   } catch {
     return fallback;
   }
+}
+
+function stripTerminalEscapeSequences(input: string): string {
+  const chunks: string[] = [];
+  let plainStart = 0;
+  let index = 0;
+
+  while (index < input.length) {
+    if (input.charCodeAt(index) !== 0x1b) {
+      index += 1;
+      continue;
+    }
+    if (index > plainStart) chunks.push(input.slice(plainStart, index));
+
+    const introducer = input[index + 1];
+    if (introducer === "[") {
+      let cursor = index + 2;
+      while (
+        cursor < input.length &&
+        input.charCodeAt(cursor) >= 0x30 &&
+        input.charCodeAt(cursor) <= 0x3f
+      ) {
+        cursor += 1;
+      }
+      while (
+        cursor < input.length &&
+        input.charCodeAt(cursor) >= 0x20 &&
+        input.charCodeAt(cursor) <= 0x2f
+      ) {
+        cursor += 1;
+      }
+      if (
+        cursor < input.length &&
+        input.charCodeAt(cursor) >= 0x40 &&
+        input.charCodeAt(cursor) <= 0x7e
+      ) {
+        index = cursor + 1;
+        plainStart = index;
+        continue;
+      }
+    } else if (introducer === "]") {
+      let cursor = index + 2;
+      let sequenceEnd: number | null = null;
+      while (cursor < input.length) {
+        if (input.charCodeAt(cursor) === 0x07) {
+          sequenceEnd = cursor + 1;
+          break;
+        }
+        if (
+          input.charCodeAt(cursor) === 0x1b &&
+          input.charCodeAt(cursor + 1) === 0x5c
+        ) {
+          sequenceEnd = cursor + 2;
+          break;
+        }
+        cursor += 1;
+      }
+      if (sequenceEnd !== null) {
+        index = sequenceEnd;
+        plainStart = index;
+        continue;
+      }
+      chunks.push(input.slice(index));
+      return chunks.join("");
+    }
+
+    chunks.push(input[index] ?? "");
+    index += 1;
+    plainStart = index;
+  }
+
+  if (plainStart < input.length) chunks.push(input.slice(plainStart));
+  return chunks.join("");
 }
 
 function replaceLiteralInsensitive(

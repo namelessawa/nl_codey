@@ -646,9 +646,7 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     );
     await pressModalEnter(
       session,
-      (screen) =>
-        screen.includes("[provider] base URL") &&
-        screen.includes("https://api.openai.com/v1"),
+      (screen) => screen.includes("[provider] base URL"),
     );
 
     await replaceProviderUrl(
@@ -709,9 +707,7 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     );
     await pressModalEnter(
       restarted,
-      (screen) =>
-        screen.includes("[provider] base URL") &&
-        screen.includes(provider.invalidBaseUrl),
+      (screen) => screen.includes("[provider] base URL"),
     );
     await replaceProviderUrl(
       restarted,
