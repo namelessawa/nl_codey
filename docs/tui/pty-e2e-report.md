@@ -2,7 +2,8 @@
 
 Date: 2026-07-29
 Gate: `pnpm test:tui:e2e`
-Provider: deterministic `mock`; ambient provider keys explicitly cleared
+Provider: deterministic `mock` plus a loopback OpenAI-compatible protocol stub;
+ambient provider keys explicitly cleared
 Credential file: `custom.txt` was not read
 
 The gate launches the CLI through the real Windows ConPTY path in an isolated
@@ -28,7 +29,7 @@ tests and the separate five-cycle crash soak remain mandatory.
 | 4. Patch reject | `n` reaches `cancelled`; the target file never appears and the prompt remains usable | Pass |
 | Command approve / reject | A whitelisted command stays pending until `y`, then persists command/exit audit output; `n` reaches `cancelled` with no command step | Pass |
 | Budget exhaustion | A one-iteration fixture reaches `budget_exceeded`, displays `max_iterations`, persists the exit reason, makes no patch, and returns prompt control | Pass |
-| 9. Provider configuration (partial) | `/provider` selects OpenAI, saves an empty-key `.invalid` endpoint, persists the active provider and `model_change`, then reloads that endpoint after restart without creating an agent Run. Invalid→valid correction plus a new Run using it remain | Partial |
+| 9. Provider configuration | `/provider` selects OpenAI with a synthetic key and a loopback endpoint that returns HTTP 400. The first Run persists `failed`; after restart the modal reloads the invalid setting, corrects only its endpoint, preserves the masked key, and a new Run receives deterministic SSE. The stub records `/v1/chat/completions`, Bearer auth, `gpt-4o` and `stream: true`; SQLite/JSONL persist the two model changes and the second `done` Run without displaying the key | Pass |
 | 13. Dynamic-tool construction failure | An explicit CLI service-composition fixture throws a multiline dynamic-tool factory error containing a forged Bearer token and the current user home. The real AgentService records one single-line `[security]` step; TUI, SQLite and JSONL contain only `[REDACTED]` / `[USER_HOME]`, the base agent degrades to `done`, and the prompt remains usable | Pass |
 | 14. Large output / scrollback | A public `read_file` returns a 10 KB fixture; SQLite retains at most 4,000 characters with `…(truncated)` and omits the tail. The response then renders 320 numbered message rows: native xterm navigation recovers row 1, bottom restore shows row 320, SQLite/JSONL retain all rows, and `/help` remains usable. Pure reducer tests separately prove 500 stream-item and 200 trace-item memory bounds | Pass |
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
@@ -43,6 +44,6 @@ only after driving public TUI input, to assert the session header and message
 parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
-The mapped lifecycle, prompt, agent/session and crash-tail behaviors above have
-native PTY evidence. Exact completion of Scenario 9 plus explicit unsupported-
-mouse product copy remain open.
+All exact Goal v2 TUI scenarios now have native PTY or named render evidence.
+The broader malformed-session UX and explicit unsupported-mouse product copy
+remain separate product-completion work.

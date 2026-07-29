@@ -39,6 +39,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 29 | `codex/p1-tui-read-only-analysis` | Exact Goal Scenario 2 read-only analysis and forged-write refusal | Ready for draft review; exact Scenario 2 closed | Full offline gate green; 4 Mock scenario, 19 Ink render and 12 native TUI E2E assertions pass |
 | 30 | `codex/p1-tui-large-tool-output` | Exact Goal Scenario 14 output limits and native scrollback | Ready for draft review; exact Scenario 14 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 31 | `codex/p1-tui-dynamic-tool-redaction` | Exact Goal Scenario 13 dynamic-tool construction failure | Ready for draft review; exact Scenario 13 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
+| 32 | `codex/p1-tui-provider-run-use` | Exact Goal Scenario 9 invalid configuration, correction and new-Run use | Ready for draft review; TUI-E2E-001 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 
 ## Work log
 
@@ -880,15 +881,40 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   12 E2E and 13 recovery assertions in 190 seconds. Every native matrix
   restored and re-verified Electron 33.4.11 / modules 130.
 
+### 2026-07-29 - Prove corrected provider use on a new Run
+
+- Replaced the persistence-only provider case with the exact Scenario 9 flow.
+  Public `/provider` input saves an OpenAI preset with a synthetic key and an
+  invalid loopback URL; its first task reaches a real non-retryable HTTP 400
+  and persists a `failed` Run.
+- Restarting the TUI reloads the invalid provider. The modal changes only the
+  endpoint, preserves the stored masked key, saves a second `model_change`, and
+  submits a new task that consumes a deterministic OpenAI-compatible SSE
+  response and persists `done`.
+- The local stub captures `/v1/chat/completions`, the expected Bearer header,
+  `gpt-4o` and `stream: true`. The full synthetic key never appears in the
+  terminal, and `/help` proves prompt ownership returns after both outcomes.
+- The first focused typecheck found a missing test-object brace at line 733;
+  correcting that syntax left production code unchanged. CLI typecheck and the
+  complete 12/12 native TUI E2E gate then passed in 91 seconds, with Electron
+  ABI restored and re-verified.
+- The complete default offline gate passed 634 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 15 TUI unit, 19 render, 3 lifecycle,
+  12 E2E and 13 recovery assertions in 199 seconds. Every native matrix
+  restored and re-verified Electron 33.4.11 / modules 130; root typecheck and
+  production build passed.
+- This batch is offline: the server binds only to `127.0.0.1`, no live model or
+  external network is used, and `custom.txt` is not read. Rollback restores the
+  earlier persistence-only test and reopens exact Scenario 9.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. TUI acceptance still needs exact Scenario 9 invalid→valid→new-run provider
-   use, broader session invalid-input UX and final unsupported-mouse product
-   copy.
+2. All exact Goal v2 TUI scenarios pass. Broader session invalid-input UX and
+   final unsupported-mouse product copy remain.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

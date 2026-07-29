@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import http, { type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +18,7 @@ const dynamicFailureEntry = fileURLToPath(
 );
 const sessions: TuiPtyHarness[] = [];
 const tempRoots: string[] = [];
+const servers: Server[] = [];
 
 type Fixture = {
   root: string;
@@ -36,6 +39,9 @@ type SessionLine = {
 
 afterEach(async () => {
   for (const session of sessions.splice(0)) await session.dispose();
+  for (const server of servers.splice(0)) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
   for (const tempRoot of tempRoots.splice(0)) {
     fs.rmSync(tempRoot, {
       recursive: true,
@@ -45,6 +51,89 @@ afterEach(async () => {
     });
   }
 });
+
+async function startProviderStub(): Promise<{
+  invalidBaseUrl: string;
+  validBaseUrl: string;
+  requests: Array<{
+    url: string;
+    authorization: string;
+    body: Record<string, unknown>;
+  }>;
+}> {
+  const requests: Array<{
+    url: string;
+    authorization: string;
+    body: Record<string, unknown>;
+  }> = [];
+  const server = http.createServer((request, response) => {
+    let raw = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => {
+      raw += chunk;
+    });
+    request.on("end", () => {
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        body = {};
+      }
+      requests.push({
+        url: request.url ?? "",
+        authorization: request.headers.authorization ?? "",
+        body,
+      });
+
+      if (request.url?.startsWith("/invalid/")) {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            error: { message: "invalid local provider configuration" },
+          }),
+        );
+        return;
+      }
+
+      response.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+      });
+      response.end(
+        [
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: { content: "local provider accepted corrected config" },
+                finish_reason: null,
+              },
+            ],
+          })}`,
+          `data: ${JSON.stringify({
+            choices: [{ delta: {}, finish_reason: "stop" }],
+          })}`,
+          "data: [DONE]",
+          "",
+        ].join("\n\n"),
+      );
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error): void => reject(error);
+    server.once("error", onError);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
+  servers.push(server);
+  const port = (server.address() as AddressInfo).port;
+  return {
+    invalidBaseUrl: `http://127.0.0.1:${port}/invalid/v1`,
+    validBaseUrl: `http://127.0.0.1:${port}/v1`,
+    requests,
+  };
+}
 
 function createFixture(): Fixture {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nlc-tui-e2e-"));
@@ -509,9 +598,10 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await exit(session);
   });
 
-  it("configures a provider, persists it, and reloads it without a model run", async () => {
+  it("rejects invalid provider config, corrects it, and uses it on a new run", async () => {
     const fixture = createFixture();
-    const configuredUrl = "https://provider-fixture.invalid/v1";
+    const provider = await startProviderStub();
+    const apiKey = "sk-local-provider-fixture-1234";
     const session = start(fixture);
 
     await session.waitForScreen((screen) => screen.includes("(idle)"));
@@ -531,17 +621,18 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     await replaceProviderUrl(
       session,
       "https://api.openai.com/v1",
-      configuredUrl,
+      provider.invalidBaseUrl,
     );
     await pressModalEnter(
       session,
       (screen) => screen.includes("[provider] API key"),
     );
+    session.write(apiKey);
+    await session.waitForScreen((screen) => screen.includes(apiKey.slice(-4)));
     await pressModalEnter(
       session,
       (screen) =>
         screen.includes("[provider] review and save") &&
-        screen.includes("(not set)") &&
         screen.includes("gpt-4o"),
     );
     await pressModalEnter(
@@ -549,30 +640,24 @@ describeWindows("[tui-e2e] core agent workflows", () => {
       (screen) => screen.includes("provider saved: OpenAI (openai)"),
     );
 
-    const store = loadProviderStore(fixture.dataRoot);
-    expect(store.active).toBe("openai");
-    expect(store.providers.openai).toMatchObject({
-      key: "openai",
-      name: "OpenAI",
-      baseUrl: configuredUrl,
-      apiKey: "",
-      model: "gpt-4o",
-      protocol: "openai-compat",
-    });
-    expect(
-      fs.existsSync(path.join(fixture.dataRoot, "data", "workspace-state.db")),
-    ).toBe(false);
-    await exit(session);
-
-    const [sessionPath] = await waitForSessionFiles(fixture.dataRoot, 1);
-    const modelChanges = readSession(sessionPath!).filter(
-      (line) => line.type === "model_change",
+    await enter(session, "prove invalid provider configuration");
+    const invalidBuffer = await session.waitForBuffer(
+      (output) =>
+        output.includes("invalid local provider configuration") &&
+        output.includes("failed"),
+      20_000,
     );
-    expect(modelChanges).toHaveLength(1);
-    expect(modelChanges[0]?.to).toEqual({
-      provider: "openai-compat",
-      model: "gpt-4o",
+    expect(invalidBuffer).not.toContain(apiKey);
+    const invalidAudit = readRunAudit(fixture);
+    expect(invalidAudit.status).toBe("failed");
+    expect(invalidAudit.exitReason).toBe("failed");
+    expect(provider.requests).toHaveLength(1);
+    expect(provider.requests[0]).toMatchObject({
+      url: "/invalid/v1/chat/completions",
+      authorization: `Bearer ${apiKey}`,
+      body: { model: "gpt-4o", stream: true },
     });
+    await exit(session);
 
     const restarted = start(fixture);
     await restarted.waitForScreen((screen) => screen.includes("(idle)"));
@@ -584,12 +669,71 @@ describeWindows("[tui-e2e] core agent workflows", () => {
       restarted,
       (screen) =>
         screen.includes("[provider] base URL") &&
-        screen.includes(configuredUrl),
+        screen.includes(provider.invalidBaseUrl),
     );
-    restarted.write("\x1b");
-    await restarted.waitForScreen((screen) =>
-      screen.includes("/provider cancelled."),
+    await replaceProviderUrl(
+      restarted,
+      provider.invalidBaseUrl,
+      provider.validBaseUrl,
     );
+    await pressModalEnter(
+      restarted,
+      (screen) =>
+        screen.includes("[provider] API key") &&
+        screen.includes(apiKey.slice(-4)),
+    );
+    await pressModalEnter(
+      restarted,
+      (screen) =>
+        screen.includes("[provider] review and save") &&
+        screen.includes("gpt-4o"),
+    );
+    await pressModalEnter(
+      restarted,
+      (screen) => screen.includes("provider saved: OpenAI (openai)"),
+    );
+
+    const store = loadProviderStore(fixture.dataRoot);
+    expect(store.active).toBe("openai");
+    expect(store.providers.openai).toMatchObject({
+      key: "openai",
+      name: "OpenAI",
+      baseUrl: provider.validBaseUrl,
+      apiKey,
+      model: "gpt-4o",
+      protocol: "openai-compat",
+    });
+
+    await enter(restarted, "prove corrected provider configuration");
+    const validBuffer = await restarted.waitForBuffer(
+      (output) =>
+        output.includes("local provider accepted corrected config") &&
+        output.includes("done"),
+      20_000,
+    );
+    expect(validBuffer).not.toContain(apiKey);
+    const validAudit = readRunAudit(fixture);
+    expect(validAudit.status).toBe("done");
+    expect(validAudit.exitReason).toBe("done");
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[1]).toMatchObject({
+      url: "/v1/chat/completions",
+      authorization: `Bearer ${apiKey}`,
+      body: { model: "gpt-4o", stream: true },
+    });
+
+    const [sessionPath] = await waitForSessionFiles(fixture.dataRoot, 1);
+    const modelChanges = readSession(sessionPath!).filter(
+      (line) => line.type === "model_change",
+    );
+    expect(modelChanges).toHaveLength(2);
+    expect(modelChanges.at(-1)?.to).toEqual({
+      provider: "openai-compat",
+      model: "gpt-4o",
+    });
+
+    await enter(restarted, "/help");
+    await restarted.waitForBuffer((output) => output.includes("/rollback"));
     await exit(restarted);
   });
 

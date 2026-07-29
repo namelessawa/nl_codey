@@ -183,3 +183,19 @@ could not naturally construct a dynamic bundle. An environment-triggered throw
 would be a production backdoor, while copying the Desktop plugin host would
 create a second runtime. Explicit dependency injection proves the shared
 security boundary without changing default CLI behavior or weakening types.
+
+## D-016 - Prove provider use with a loopback protocol boundary
+
+Date: 2026-07-29
+
+Decision: drive Scenario 9 through the public provider modal and a test-owned
+HTTP server bound to `127.0.0.1`. Its invalid path returns a deterministic
+non-retryable HTTP 400; after restart and modal correction, its valid path
+returns a deterministic OpenAI-compatible SSE response. Capture and assert the
+new Run's request path, Bearer header, model and streaming flag.
+
+Reason: persistence alone does not prove that a later Agent Run resolves the
+saved provider. A loopback protocol stub exercises the production provider and
+stream parser without making an external or live-model call, while an explicit
+restart prevents retained terminal output from satisfying the corrected-run
+assertions.
