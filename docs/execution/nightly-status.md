@@ -53,6 +53,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 43 | `codex/p1-project-indexer-coverage` | Deterministic bounded scanning and project-indexer behavior matrix | Ready for draft review; `INDEX-001` closed | Full offline gate green; 670 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 44 | `codex/p1-cli-host-protocol` | Fail-closed CLI approval protocol for embedding hosts | Ready for draft review; `VSCE-001` protocol foundation complete, extension remains | Full offline gate green; 670 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 45 | `codex/p1-vscode-host-adapter` | VS Code run/stop adapter over the shared CLI runtime and policy | Ready for draft review; `VSCE-001` implementation complete, release evidence remains | Full offline gate green; 679 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 46 | `codex/p1-embedding-compatibility` | Provider-scoped production embedding protocol and response validation | Ready for draft review; `EMBED-001` closed | Full offline gate green; 688 unit, 17 recorded-eval, 88 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1322,6 +1323,29 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   `apps/vscode`, its workspace build/test registration and the host-surface
   evidence while leaving the standalone CLI protocol from Batch 44 intact.
 
+### 2026-07-29 - Constrain and prove production embeddings
+
+- Desktop now creates a remote embedding provider only from explicit OpenAI
+  chat settings. Anthropic, Gemini, DeepSeek, OpenRouter and Custom credentials
+  are no longer sent to a guessed `<chat-base>/embeddings` endpoint; those
+  modes keep the existing deterministic local embedder until a separate
+  embedding configuration surface exists.
+- A real loopback HTTP test drives the production Desktop factory and proves
+  the `/v1/embeddings` path, Bearer handoff, `text-embedding-3-small`, ordered
+  input and explicit 1536 dimensions without contacting an external service.
+- The provider now rejects control-bearing keys, credential/query/fragment
+  Base URLs, invalid model names/dimensions, malformed counts or indices,
+  duplicate indices, wrong vector dimensions and non-finite values before
+  corrupt data reaches semantic or memory storage.
+- Seventeen provider assertions, six Desktop factory/compatibility assertions,
+  root typecheck/build and the 221.3-second full offline gate pass: 688 unit,
+  17 recorded-eval, 88 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit,
+  21 render, 4 lifecycle, 13 E2E and 14 recovery assertions. The storage test
+  matrix restored the Electron ABI.
+- This batch makes no live model or embedding call and does not read
+  `custom.txt`. Rollback restores permissive response parsing and the prior
+  all-chat-providers-to-`/embeddings` credential routing.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1335,6 +1359,5 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
 3. The broader production goal still requires VSIX/manual VS Code release
-   evidence, production embedding compatibility evidence and the
-   feature/experimental disposition work listed in
+   evidence and the feature/experimental disposition work listed in
    `docs/execution/master-backlog.md`.

@@ -269,3 +269,22 @@ availability dependency. Visible degraded operation preserves user work and
 truthful provenance. Layered path checks are required because lexical checks
 alone miss symlinks and the intentionally readable folder encoder is not
 bijective.
+
+## D-021 - Scope remote embeddings to explicit OpenAI settings
+
+Date: 2026-07-29
+
+Decision: create the real OpenAI embedding provider only when the active chat
+provider is explicitly `openai` and has a key. Use
+`text-embedding-3-small`/1536 dimensions, include the dimensions in the request
+and validate URL, key, model, response count, indices, vector dimensions and
+finite values before storage. Anthropic, Gemini, DeepSeek, OpenRouter and
+Custom chat settings use the deterministic local embedder until a separate
+embedding provider/credential surface exists.
+
+Reason: a chat provider being OpenAI-compatible does not mean it exposes the
+same `/embeddings` contract. Reusing every configured chat key and Base URL
+caused unsupported requests and risked sending credentials to a guessed
+endpoint. Provider-scoped routing gives one tested production path without
+pretending that unrelated providers support embeddings or adding another
+plaintext secret.

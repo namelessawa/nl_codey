@@ -74,6 +74,87 @@ describe("OpenAIEmbeddingProvider", () => {
     const call = fetchMock.mock.calls[0] ?? [];
     expect(call[0]).toBe("https://api.openai.com/v1/embeddings");
     expect((call[1] as RequestInit).method).toBe("POST");
+    expect((call[1] as RequestInit).headers).toMatchObject({
+      authorization: "Bearer sk-secret",
+    });
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({
+      model: "text-embedding-3-small",
+      input: ["a", "b"],
+      dimensions: 2,
+    });
+  });
+
+  it.each([
+    [
+      "invalid dimensions",
+      { apiKey: "sk-secret", dimensions: 0 },
+      /dimensions must be an integer/i,
+    ],
+    [
+      "credential-bearing base URL",
+      { apiKey: "sk-secret", baseUrl: "https://user:pass@example.com/v1" },
+      /without credentials/i,
+    ],
+    [
+      "query-bearing base URL",
+      { apiKey: "sk-secret", baseUrl: "https://example.com/v1?token=secret" },
+      /without credentials/i,
+    ],
+    [
+      "non-HTTP base URL",
+      { apiKey: "sk-secret", baseUrl: "file:///tmp/embeddings" },
+      /http\(s\)/i,
+    ],
+    [
+      "empty model",
+      { apiKey: "sk-secret", model: " " },
+      /model name is invalid/i,
+    ],
+    [
+      "control characters in the API key",
+      { apiKey: "sk-secret\nX-Injected: yes" },
+      /valid apiKey/i,
+    ],
+  ])("rejects %s before any request", (_label, config, message) => {
+    expect(() => new OpenAIEmbeddingProvider(config)).toThrow(message);
+  });
+
+  it.each([
+    [
+      "wrong vector dimensions",
+      { data: [{ index: 0, embedding: [0.1] }] },
+      ["a"],
+      /dimension invalid/i,
+    ],
+    [
+      "duplicate response indices",
+      {
+        data: [
+          { index: 0, embedding: [0.1, 0.2] },
+          { index: 0, embedding: [0.3, 0.4] },
+        ],
+      },
+      ["a", "b"],
+      /invalid or duplicate indices/i,
+    ],
+    [
+      "non-finite vector data",
+      { data: [{ index: 0, embedding: [0.1, null] }] },
+      ["a"],
+      /non-finite/i,
+    ],
+  ])("rejects %s", async (_label, response, input, message) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(response), { status: 200 }),
+      ),
+    );
+    const provider = new OpenAIEmbeddingProvider({
+      apiKey: "sk-secret",
+      dimensions: 2,
+    });
+    await expect(provider.embed(input)).rejects.toThrow(message);
   });
 
   it("applies shared redaction to non-2xx provider errors", async () => {
