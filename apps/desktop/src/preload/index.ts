@@ -21,7 +21,7 @@ import {
   type TestLLMConnectionArgs,
   type UpdateMemoryArgs,
   type WorkspaceIdArgs,
-} from "@nlc/shared";
+} from "@nlc/shared/browser";
 
 const api: AgentApi = {
   openWorkspace: () => ipcRenderer.invoke(IPC.openWorkspace),

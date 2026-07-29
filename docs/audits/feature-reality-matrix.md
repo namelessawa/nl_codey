@@ -34,14 +34,14 @@ that the functional modules are unusable.
 
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
-| `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
+| `apps/desktop` | Electron main/sandboxed preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery, packaged main/preload/renderer launch and Windows installer gates pass | Full public workflow E2E remains incomplete | Functional |
 | `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, generated input inventory and acceptance matrices, PageUp/PageDown safe-no-op input contract, explicit Experimental mouse boundary, terminal-size matrix, read-only refusal, corrected-provider new Run, redacted failures, visible Session write failure, contained resume/show, corrupt/partial recovery, multilevel/cross-parent/invalid-target lineage, bounded output/native scrollback, real ConPTY workflows and crash soak pass | Remaining UI-state cells and release-candidate manual verification remain incomplete | Functional |
 
 ## Core
 
 | Module | Runtime and entry | Test evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
-| `packages/core/shared` | Shared models, IPC, settings and policy types used across apps/packages | Six suites | Browser-safe and Node-only path utilities are not split | Functional |
+| `packages/core/shared` | Shared models, IPC, settings and policy contracts; conditional exports split browser-safe types/runtime helpers from Node paths | Nine suites including the browser export boundary, plus packaged renderer/preload startup | Broader public-contract compatibility/versioning evidence remains incomplete | Functional |
 | `packages/core/sandbox` | Workspace containment, command whitelist/router, WSL/Docker staging and verified cross-platform process-tree termination | Six suites including Docker-gated and descendant-cleanup paths | Host whitelist has no OS resource/syscall isolation; native Job Object/AppContainer host remains unimplemented | Functional |
 | `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Ten Node lifecycle/migration tests, historical backup/failure fixtures, rollback recovery and Electron native-load checks pass through restorative ABI matrices | Automated backup-retention policy and longer-duration corruption drills remain incomplete | Functional |
 | `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path plus native multilevel/cross-parent branch/resume/restart, invalid-target continuity, malformed-header/partial-tail diagnostics, write-failure chain safety, lossy-folder collision isolation, contained resume/show and Run-linkage E2E pass | Desktop interoperability and longer-duration/high-volume history drills remain incomplete | Functional |
@@ -87,6 +87,9 @@ that the functional modules are unusable.
 
 - Desktop and CLI source both construct the shared Storage, AgentService and LLM
   factory; the root build now emits both Desktop and CLI artifacts.
+- Renderer builds resolve a browser-only shared barrel; sandboxed preload uses
+  the same explicit subpath as CJS. The packaged Windows smoke proves React
+  mount, `agentApi` exposure and absence of renderer Node globals.
 - Dynamic tool bundles now require complete mutation classification, reject
   reserved/undeclared calls, keep multi-agent role schemas and allowlists
   aligned, and persist bounded/redacted security failures.

@@ -92,6 +92,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Smoke packaged Desktop runtime
+        run: pnpm smoke:desktop:runtime
+
       - name: Smoke silent install and uninstall
         run: pnpm smoke:windows:installer
 

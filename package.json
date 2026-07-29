@@ -34,6 +34,7 @@
     "test:integration": "pnpm test:storage:abi && vitest run --config vitest.integration.config.ts",
     "test:all": "pnpm test && pnpm test:integration",
     "smoke:cli:artifact": "node scripts/smoke-cli-package.mjs",
+    "smoke:desktop:runtime": "node scripts/smoke-desktop-runtime.mjs",
     "smoke:windows:installer": "node scripts/smoke-windows-installer.mjs",
     "test:watch": "vitest --config vitest.unit.config.ts",
     "rebuild:native": "pnpm --filter @nlc/desktop exec electron-rebuild -f -w better-sqlite3"
