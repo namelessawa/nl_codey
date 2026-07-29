@@ -1,6 +1,6 @@
 # Product feature surface matrix
 
-Baseline: the stacked production-complete execution through Batch 48. A package
+Baseline: the stacked production-complete execution through Batch 49. A package
 or UI label is not evidence that a product feature exists. “Alternative” means
 the narrower supported behavior is named explicitly and the broader marketing
 term must not be used.
@@ -12,7 +12,7 @@ term must not be used.
 | Git Workflow Agent | Shared local git tools plus Desktop status, PR-description and recorded-agent-branch discard helpers | Agent runtime can inspect local status/diff; richer workflow UI is Desktop-only | Mutations are inventoried/approval-gated; no remote credential or PR-creation flow is shipped | **Partial/local-only:** do not claim autonomous remote Git hosting |
 | MCP | No adapter, server lifecycle or settings surface is shipped | None | The dynamic-tool trust boundary and mutation inventory reserve a future MCP source, but undeclared/mutating calls fail closed | **Unsupported/default-off:** documented alternative is the audited dynamic-tool port used by the Docker-only plugin runtime |
 | Skills | Global/project Markdown skills are catalogued and loaded on demand through `invoke_skill`; TUI lists and can generate/install after an explicit target choice | Agent Core makes discovered skills available to Desktop, CLI/headless and VS Code Runs; authoring UI is TUI-only | Project/global precedence is deterministic; install is a generated mutation-inventory row and file writes occur only after target selection | **Functional with host alternative:** runtime support is shared; authoring/management is TUI-only |
-| Diagnostics Export | `nlc diagnostics <run-id>` builds a versioned bounded Run bundle and writes `0600` create-new JSON, or emits JSON explicitly to stdout | CLI/headless in Batch 48; Desktop export is pending | Omits task/diff/tool-result/snapshot/Git-payload content; bounds arrays and redacts retained error/command/path/ref strings | **In progress:** shared format complete, Desktop entry pending |
+| Diagnostics Export | `nlc diagnostics <run-id>` and Workbench Debug export the same versioned bounded Run bundle | CLI/headless writes `0600` create-new JSON or explicit stdout; Desktop uses a main-owned native save dialog | Renderer supplies only `runId`; task/diff/tool-result/snapshot/Git-payload content is omitted and retained strings are bounded/redacted | **Functional:** shared format with CLI/headless and Desktop entry points |
 
 ## Diagnostic bundle contract
 
@@ -23,6 +23,8 @@ term must not be used.
   commands and Git payloads are never serialized.
 - The CLI refuses an existing destination instead of overwriting it. A parent
   directory must already exist.
+- Desktop never accepts a renderer-supplied path. The user chooses the target
+  in Electron's native save dialog, including its overwrite confirmation.
 
 This matrix is the acceptance ledger for `FEATURE-001`; each broader name stays
 unsupported or partial until its named host/security/recovery gaps receive

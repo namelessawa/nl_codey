@@ -53,6 +53,21 @@ describe("[renderer] appearance smoke", () => {
       "data-transitions": "off",
     });
   });
+
+  it("forwards only a Run id for diagnostics export", async () => {
+    const exportRunDiagnostics = vi
+      .fn()
+      .mockResolvedValue({ ok: true, data: { filePath: null } });
+    vi.stubGlobal("window", {
+      agentApi: { exportRunDiagnostics },
+    });
+    vi.resetModules();
+    const { api } = await import("../renderer/src/api.js");
+
+    await api.exportRunDiagnostics("run-1");
+
+    expect(exportRunDiagnostics).toHaveBeenCalledWith({ runId: "run-1" });
+  });
 });
 
 describe("[preload] bridge smoke", () => {
@@ -63,13 +78,20 @@ describe("[preload] bridge smoke", () => {
     expect(electron.exposeInMainWorld).toHaveBeenCalledTimes(1);
     const [, api] = electron.exposeInMainWorld.mock.calls[0] as [
       string,
-      { openWorkspace: () => Promise<unknown> },
+      {
+        openWorkspace: () => Promise<unknown>;
+        exportRunDiagnostics: (args: { runId: string }) => Promise<unknown>;
+      },
     ];
     electron.invoke.mockResolvedValue({ ok: true, data: null });
 
     await api.openWorkspace();
+    await api.exportRunDiagnostics({ runId: "run-1" });
 
     expect(electron.exposeInMainWorld.mock.calls[0]?.[0]).toBe("agentApi");
     expect(electron.invoke).toHaveBeenCalledWith(IPC.openWorkspace);
+    expect(electron.invoke).toHaveBeenCalledWith(IPC.exportRunDiagnostics, {
+      runId: "run-1",
+    });
   });
 });

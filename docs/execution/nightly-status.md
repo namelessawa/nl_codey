@@ -2,7 +2,7 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK REMAINS**
+Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/MANUAL RELEASE EVIDENCE REMAINS**
 
 ## Batch board
 
@@ -56,6 +56,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 46 | `codex/p1-embedding-compatibility` | Provider-scoped production embedding protocol and response validation | Ready for draft review; `EMBED-001` closed | Full offline gate green; 688 unit, 17 recorded-eval, 88 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 47 | `codex/p1-distributed-nonproduction-boundary` | Explicit fail-closed boundary for the unauthenticated distributed scaffold | Ready for draft review; `DIST-001` closed | Full offline gate green; 688 unit, 17 recorded-eval, 93 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 48 | `codex/p1-diagnostics-export-core` | Content-minimized shared diagnostics schema and CLI/headless export | Ready for draft review; `FEATURE-001` diagnostics core complete | Full offline gate green; 690 unit, 17 recorded-eval, 93 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 49 | `codex/p1-diagnostics-export-desktop` | Main-owned native Desktop diagnostics export | Ready for draft review; `FEATURE-001` closed | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1394,6 +1395,26 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   Rollback removes the shared schema/CLI command and its explicit product
   dispositions; it does not remove existing Run data.
 
+### 2026-07-29 - Add safe Desktop Run diagnostics
+
+- Workbench Debug now exports the active Run through the same shared,
+  content-minimized diagnostics schema used by the CLI.
+- The full typed IPC path carries only `runId`. Main validates the Run and
+  owns Electron's native save dialog, so renderer code cannot nominate an
+  arbitrary host path. Cancellation is a normal result and overwrites require
+  the native confirmation.
+- Main-process tests cover cancellation without collection, a redacted file
+  export and unknown-Run rejection. Renderer/preload smoke covers the
+  content-free bridge contract.
+- Root typecheck/build and the 275-second full offline gate pass: 690 unit,
+  17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 16 TUI unit,
+  21 render, 4 lifecycle, 13 E2E and 14 recovery assertions. The storage test
+  matrix restored the Electron ABI. A fresh unpacked Windows package also
+  passed the main/preload/renderer launch smoke.
+- This batch makes no LLM or network call and does not read `custom.txt`.
+  Rollback removes only the Desktop entry and IPC route; the shared schema and
+  CLI/headless export remain.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1407,5 +1428,4 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
 3. The broader production goal still requires VSIX/manual VS Code release
-   evidence and the remaining feature disposition work listed in
-   `docs/execution/master-backlog.md`.
+   evidence and release-candidate manual verification.

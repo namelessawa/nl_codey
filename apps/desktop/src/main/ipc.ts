@@ -25,6 +25,7 @@ import { registerProposalsIpc } from "./ipc/proposals-ipc.js";
 import { registerClusterIpc } from "./ipc/cluster-ipc.js";
 import { registerPluginIpc } from "./ipc/plugin-ipc.js";
 import { registerAdvancedSettingsIpc } from "./ipc/advanced-settings-ipc.js";
+import { registerDiagnosticsIpc } from "./ipc/diagnostics-ipc.js";
 import {
   validateContinueAgentTask,
   validateReadFile,
@@ -172,6 +173,7 @@ export function registerIpc(services: Services): void {
   registerClusterIpc(services);
   registerPluginIpc(services);
   registerAdvancedSettingsIpc(services);
+  registerDiagnosticsIpc(services);
 }
 
 /** Broadcast an agent event to every open renderer window. */

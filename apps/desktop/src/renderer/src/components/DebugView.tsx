@@ -4,6 +4,7 @@ import { api } from "../api.js";
 
 interface DebugViewProps {
   workspaceId: string;
+  runId: string | null;
 }
 
 /**
@@ -12,7 +13,7 @@ interface DebugViewProps {
  * panel exposes. These bypass the agent loop entirely (no LLM, no approval,
  * no snapshot), so they are clearly labelled as a debug channel.
  */
-export function DebugView({ workspaceId }: DebugViewProps): JSX.Element {
+export function DebugView({ workspaceId, runId }: DebugViewProps): JSX.Element {
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
       <header>
@@ -23,10 +24,58 @@ export function DebugView({ workspaceId }: DebugViewProps): JSX.Element {
         </p>
       </header>
 
+      <RunDiagnosticsExport runId={runId} />
       <CommandRunner workspaceId={workspaceId} />
       <FileBrowser workspaceId={workspaceId} />
       <FileViewer workspaceId={workspaceId} />
     </div>
+  );
+}
+
+function RunDiagnosticsExport({ runId }: { runId: string | null }): JSX.Element {
+  const [exporting, setExporting] = useState<boolean>(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const exportDiagnostics = async (): Promise<void> => {
+    if (!runId) return;
+    setExporting(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const result = await api.exportRunDiagnostics(runId);
+      setMessage(
+        result.filePath
+          ? `Diagnostics exported to ${result.filePath}`
+          : "Diagnostics export cancelled.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <section style={sectionStyle}>
+      <h4 style={{ margin: 0 }}>Run diagnostics</h4>
+      <p className="phase4-help">
+        Exports bounded lifecycle and recovery metadata. Task text, diffs, tool
+        payloads, snapshot contents and Git payloads are omitted.
+      </p>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          onClick={() => void exportDiagnostics()}
+          disabled={!runId || exporting}
+        >
+          {exporting ? "Exporting..." : "Export diagnostics"}
+        </button>
+        {!runId && <span className="iter-meta">Select or run a task first.</span>}
+      </div>
+      {message && <div className="phase4-help">{message}</div>}
+      {error && <div className="phase4-error">{error}</div>}
+    </section>
   );
 }
 

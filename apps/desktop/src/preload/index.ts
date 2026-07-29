@@ -42,6 +42,8 @@ const api: AgentApi = {
   getAgentRun: (args: RunIdArgs) => ipcRenderer.invoke(IPC.getAgentRun, args),
   listAgentRuns: (workspaceId: string) => ipcRenderer.invoke(IPC.listAgentRuns, workspaceId),
   clearAgentRuns: (args: WorkspaceIdArgs) => ipcRenderer.invoke(IPC.clearAgentRuns, args),
+  exportRunDiagnostics: (args: RunIdArgs) =>
+    ipcRenderer.invoke(IPC.exportRunDiagnostics, args),
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   updateSettings: (settings: AppSettings) => ipcRenderer.invoke(IPC.updateSettings, settings),
   resetSettings: () => ipcRenderer.invoke(IPC.resetSettings),

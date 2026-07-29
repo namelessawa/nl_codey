@@ -324,3 +324,20 @@ and credential exfiltration channel. Content-minimized diagnostics answer
 lifecycle, usage, failure and recovery questions while keeping repository
 content out by construction. A shared pure builder also lets Desktop and
 headless hosts produce the same schema without duplicating redaction logic.
+
+## D-024 - Keep Desktop diagnostic paths in the main process
+
+Date: 2026-07-29
+
+Decision: the renderer may request a diagnostics export only by Run id. The
+main process validates the Run, opens Electron's native save dialog, builds the
+shared content-minimized bundle from Storage and writes the selected file with
+owner-only creation permissions where the platform supports them. Cancellation
+returns a normal null path; existing targets require the native overwrite
+confirmation.
+
+Reason: accepting a renderer-supplied path would turn a compromised renderer
+into an arbitrary host-file writer. Main-owned selection preserves explicit
+user intent and keeps path authority on the privileged side of the IPC
+boundary, while the shared builder keeps Desktop output identical to headless
+output.
