@@ -111,3 +111,16 @@ Reason: Ink 5 parses Home and End internally but omits them from its public Key
 object, and real ConPTY may coalesce several key sequences into one data chunk.
 Tail-only `useInput` editing therefore could not satisfy the documented cursor,
 paste, resize and focus contract deterministically.
+
+## D-011 - Keep modal input subscriptions stable across field renders
+
+Date: 2026-07-29
+
+Decision: Provider and skill-picker `useInput` registrations use one stable
+callback that dispatches through a current ref. State and prop changes update
+the ref without tearing down the terminal listener.
+
+Reason: the provider evidence reproduced a dropped first Ctrl+U immediately
+after the modal advanced to its URL field. An inline handler made Ink
+unsubscribe and resubscribe on each render, leaving a short input gap. A stable
+registration fixes the product behavior rather than teaching tests to retry.

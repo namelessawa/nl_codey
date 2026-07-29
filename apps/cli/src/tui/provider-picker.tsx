@@ -26,8 +26,8 @@
  * based on its own pending-state. This component owns no global state.
  */
 import React from "react";
-import { useMemo, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { useMemo, useRef, useState } from "react";
+import { Box, Text, useInput, type Key } from "ink";
 import {
   CUSTOM_PROVIDER_SLOT_COUNT,
   PRESET_PROVIDERS,
@@ -93,13 +93,20 @@ export function ProviderPicker(props: ProviderPickerProps) {
   // Input buffers for URL / Key / Name screens.
   const [buffer, setBuffer] = useState("");
 
-  useInput((input, key) => {
+  const inputHandlerRef = useRef<(input: string, key: Key) => void>(
+    () => undefined,
+  );
+  inputHandlerRef.current = (input, key) => {
     if (step === "pick") {
       handlePickInput(input, key);
       return;
     }
     handleTextInput(input, key);
-  });
+  };
+  const stableInputHandler = useRef(
+    (input: string, key: Key) => inputHandlerRef.current(input, key),
+  ).current;
+  useInput(stableInputHandler);
 
   function handlePickInput(_input: string, key: { upArrow?: boolean; downArrow?: boolean; return?: boolean; escape?: boolean }): void {
     if (key.escape) {

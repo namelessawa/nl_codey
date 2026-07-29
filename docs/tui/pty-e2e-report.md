@@ -43,5 +43,5 @@ parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
 The mapped lifecycle, prompt, agent/session and crash-tail behaviors above have
-native PTY evidence. The read-only-analysis scenario, remaining inventory rows,
-minimum-size fallback and explicit unsupported-mouse product copy remain open.
+native PTY evidence. The read-only-analysis scenario, minimum-size fallback and
+explicit unsupported-mouse product copy remain open.

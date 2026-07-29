@@ -387,6 +387,43 @@ describe("[tui-render] interactive inputs", () => {
     });
   });
 
+  it("cancels the skill picker with Escape or Q but not while busy", async () => {
+    const onCancel = vi.fn();
+    const picker = (busy: boolean) => (
+      <ThemeProvider>
+        <SkillInstallPicker
+          pending={{ description: "audit production logs" }}
+          busy={busy}
+          onPick={vi.fn()}
+          onCancel={onCancel}
+        />
+      </ThemeProvider>
+    );
+
+    const escape = render(picker(false));
+    await inputReady();
+    escape.stdin.write("\u001B");
+    await vi.waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+    escape.unmount();
+
+    const q = render(picker(false));
+    await inputReady();
+    q.stdin.write("q");
+    await vi.waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(2);
+    });
+    q.unmount();
+
+    const busy = render(picker(true));
+    await inputReady();
+    busy.stdin.write("q");
+    busy.stdin.write("\u001B");
+    await inputReady();
+    expect(onCancel).toHaveBeenCalledTimes(2);
+  });
+
   it("navigates, advances and cancels the provider picker", async () => {
     const onCancel = vi.fn();
     const provider = render(
@@ -413,6 +450,76 @@ describe("[tui-render] interactive inputs", () => {
     provider.stdin.write("\u001B");
     await vi.waitFor(() => {
       expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("edits provider fields with Backspace, Delete, Ctrl+W and Ctrl+U", async () => {
+    const onSubmit = vi.fn();
+    const provider = render(
+      <ThemeProvider>
+        <ProviderPicker
+          stored={{}}
+          activeKey={null}
+          onSubmit={onSubmit}
+          onCancel={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    await inputReady();
+    provider.stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(plain(provider.lastFrame())).toContain("[provider] base URL");
+    });
+
+    provider.stdin.write("\u0015");
+    await inputReady();
+    provider.stdin.write("alpha beta");
+    await inputReady();
+    provider.stdin.write("\u0017");
+    await inputReady();
+    provider.stdin.write("XY");
+    await inputReady();
+    provider.stdin.write("\u001B[3~");
+    await inputReady();
+    provider.stdin.write("\u007F");
+    await vi.waitFor(() => {
+      const frame = plain(provider.lastFrame());
+      expect(frame).toContain("base URL: alpha ");
+      expect(frame).not.toContain("beta");
+      expect(frame).not.toContain("XY");
+    });
+
+    provider.stdin.write("\u0015");
+    await inputReady();
+    provider.stdin.write("https://fixture.invalid/v1");
+    await inputReady();
+    provider.stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(plain(provider.lastFrame())).toContain("[provider] API key");
+    });
+
+    provider.stdin.write("one two");
+    await inputReady();
+    provider.stdin.write("\u0017");
+    await inputReady();
+    provider.stdin.write("\u0015");
+    await inputReady();
+    provider.stdin.write("fixture-key");
+    await inputReady();
+    provider.stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(plain(provider.lastFrame())).toContain("[provider] review and save");
+    });
+    provider.stdin.write("\r");
+
+    await vi.waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseUrl: "https://fixture.invalid/v1",
+          apiKey: "fixture-key",
+        }),
+      );
     });
   });
 });

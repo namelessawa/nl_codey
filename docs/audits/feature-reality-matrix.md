@@ -35,7 +35,7 @@ that the functional modules are unusable.
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, prompt state-machine, render, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Provider-editor/skill-cancel evidence, the full terminal-size matrix and explicit mouse disposition remain incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, complete generated input inventory, render, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Full terminal-size matrix, read-only-analysis workflow and explicit mouse disposition remain incomplete | Functional |
 
 ## Core
 
@@ -102,9 +102,9 @@ that the functional modules are unusable.
   `AbortError`, and proves descendant cleanup without timeout inflation.
 - TUI discovery currently finds 19 catalogued slash commands, 23 keyboard/input
   actions, three modal routes, no mouse implementation and seven committed
-  CLI/TUI Vitest files. Three native lifecycle/prompt journeys, 11 core E2E
-  workflows and a separate five-cycle crash soak pass; the two inventory rows
-  without tests remain incomplete. See `docs/tui/action-inventory.md`.
+  CLI/TUI Vitest files. All 23 input rows have committed identifiers. Three
+  native lifecycle/prompt journeys, 11 core E2E workflows and a separate
+  five-cycle crash soak pass. See `docs/tui/action-inventory.md`.
 
 ## Production-rating gate
 

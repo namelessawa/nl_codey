@@ -298,8 +298,10 @@ const inputRenderEvidence = new Map([
   ["Provider picker\u0000Up/Down", "two-way navigation"],
   ["Provider picker\u0000Enter", "step advance"],
   ["Provider picker\u0000Escape", "cancel callback"],
+  ["Provider editor\u0000Backspace/Delete, Ctrl+W, Ctrl+U", "field editing"],
   ["Skill install picker\u0000Up/Down", "two-way navigation"],
   ["Skill install picker\u0000Enter", "target callback"],
+  ["Skill install picker\u0000Escape/Q", "cancel and busy ownership"],
 ]);
 const requiredInputEvidence = [
   "handles Windows DEL input",
@@ -308,6 +310,8 @@ const requiredInputEvidence = [
   "navigates command suggestions with Down and reverse Tab",
   "handles Ctrl+W, Ctrl+U, Escape and two-stage idle Ctrl+C",
   "preserves input across hidden modal focus and submits multiline paste",
+  "edits provider fields with Backspace, Delete, Ctrl+W and Ctrl+U",
+  "cancels the skill picker with Escape or Q but not while busy",
   "routes approval keys",
   "navigates both directions in the skill picker",
   "navigates, advances and cancels the provider picker",
@@ -362,9 +366,8 @@ const commandTable = table(
   ]),
 );
 
-const keyboardTable = table(
-  ["Surface", "Key", "Implemented result", "Automated test"],
-  keyboardRows.map(([surface, key, , , result]) => {
+const keyboardInventoryRows = keyboardRows.map(
+  ([surface, key, , , result]) => {
     const inputEvidence = inputRenderEvidence.get(`${surface}\u0000${key}`);
     const evidence = [];
     if (inputEvidenceReady && inputEvidence) {
@@ -386,13 +389,15 @@ const keyboardTable = table(
             key,
           )));
     if (ptyEvidence) evidence.push(ptyTestLabel);
-    return [
-      surface,
-      key,
-      result,
-      evidence.length > 0 ? evidence.join("; ") : "None",
-    ];
-  }),
+    return [surface, key, result, evidence.length > 0 ? evidence.join("; ") : "None"];
+  },
+);
+const incompleteKeyboardRows = keyboardInventoryRows.filter(
+  (row) => row[3] === "None",
+).length;
+const keyboardTable = table(
+  ["Surface", "Key", "Implemented result", "Automated test"],
+  keyboardInventoryRows,
 );
 
 const modalTable = table(
@@ -428,6 +433,7 @@ const output = `# TUI action inventory
 - Catalogued slash commands: ${commandRows.length}
 - Parser alias groups: ${parserGroups.length}
 - Keyboard/input actions: ${keyboardRows.length}
+- Keyboard rows without test identifiers: ${incompleteKeyboardRows}
 - Modal routes: ${modalNames.length}
 - Mouse implementation discovered: ${hasMouse ? "yes" : "no"}
 - Committed CLI/TUI Vitest files: ${cliTuiTestFiles.length}
@@ -461,9 +467,9 @@ ${hasMouse ? "Mouse source exists and requires a dedicated interaction audit." :
 This inventory is discovery evidence, not completion evidence. Slash-command
 catalogue/parser and committed Ink interaction coverage are recorded where
 present. ConPTY startup, Unicode/paste editing, resize preservation, history,
-help completion, normal exit and idle Ctrl+C are covered on Windows. Rows that
-still say \`None\` remain incomplete. CI must regenerate this file and fail on
-a diff.
+help completion, normal exit and idle Ctrl+C are covered on Windows.
+${incompleteKeyboardRows === 0 ? "Every discovered keyboard/input row has a committed test identifier." : `${incompleteKeyboardRows} keyboard/input rows still say \`None\` and remain incomplete.`}
+CI must regenerate this file and fail on a diff.
 `;
 
 const outputPath = rel("docs", "tui", "action-inventory.md");

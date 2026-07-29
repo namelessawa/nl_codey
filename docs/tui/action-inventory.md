@@ -10,6 +10,7 @@
 - Catalogued slash commands: 19
 - Parser alias groups: 18
 - Keyboard/input actions: 23
+- Keyboard rows without test identifiers: 0
 - Modal routes: 3
 - Mouse implementation discovered: no
 - Committed CLI/TUI Vitest files: 7
@@ -61,10 +62,10 @@
 | Provider picker | Up/Down | Move through providers | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - two-way navigation |
 | Provider picker | Enter | Advance or save | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - step advance |
 | Provider picker | Escape | Cancel the picker | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - cancel callback |
-| Provider editor | Backspace/Delete, Ctrl+W, Ctrl+U | Edit the active field | None |
+| Provider editor | Backspace/Delete, Ctrl+W, Ctrl+U | Edit the active field | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - field editing |
 | Skill install picker | Up/Down | Move through install targets | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - two-way navigation |
 | Skill install picker | Enter | Confirm the install target | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - target callback |
-| Skill install picker | Escape/Q | Cancel skill generation | None |
+| Skill install picker | Escape/Q | Cancel skill generation | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - cancel and busy ownership |
 
 The prompt editor has committed unit, Ink-render and native ConPTY evidence for
 Unicode cursor editing, Home/End, history, bounded multiline paste, control
@@ -91,6 +92,6 @@ No mouse handler or mouse-mode lifecycle is committed. Mouse support must not be
 This inventory is discovery evidence, not completion evidence. Slash-command
 catalogue/parser and committed Ink interaction coverage are recorded where
 present. ConPTY startup, Unicode/paste editing, resize preservation, history,
-help completion, normal exit and idle Ctrl+C are covered on Windows. Rows that
-still say `None` remain incomplete. CI must regenerate this file and fail on
-a diff.
+help completion, normal exit and idle Ctrl+C are covered on Windows.
+Every discovered keyboard/input row has a committed test identifier.
+CI must regenerate this file and fail on a diff.

@@ -34,6 +34,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 24 | `codex/p1-eval-recorded-foundation` | Frozen Headless deterministic/recorded benchmark and scorecard | In progress; offline thresholds pass, approved live threshold remains open | 13/13 deterministic, 13/13 recorded, unsafe refusal 1/1, regression 0%; 17 eval assertions and ABI restore passed |
 | 25 | `codex/p1-eval-live-benchmark` | Approved custom-provider live benchmark | Ready for draft review; EVAL-001 closed | 12/13 (92.31%) in 155 seconds; controlled cross-file terminal failure retained; ABI restored |
 | 26 | `codex/p1-tui-prompt-editor` | Unicode prompt state machine and native input contract | Ready for draft review; TUI-PROMPT-001 closed | 13 TUI unit, 15 render and 3 real ConPTY lifecycle/prompt assertions pass |
+| 27 | `codex/p1-tui-input-inventory` | Complete generated modal/input evidence | Ready for draft review; TUI-INV-001 closed | 17 Ink render assertions; 23/23 generated input rows have test identifiers |
 
 ## Work log
 
@@ -736,16 +737,38 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   restores the previous tail-only editor and removes the new prompt-specific
   unit/ConPTY evidence; it does not affect persisted sessions or workspaces.
 
+### 2026-07-29 - Complete TUI input inventory
+
+- Added Ink interaction evidence for provider-field Backspace, Delete, Ctrl+W
+  and Ctrl+U, validating the final submitted draft rather than only checking
+  intermediate glyphs. Skill install cancellation now covers Escape, Q and the
+  busy-state ownership guard.
+- The first provider assertion reproduced a real dropped Ctrl+U after entering
+  the URL field. Both provider and skill pickers now register one stable Ink
+  input callback and route it through a current ref, eliminating render-time
+  unsubscribe/resubscribe gaps.
+- `pnpm docs:tui-actions` now reports 19 commands, 23 keyboard/input actions,
+  3 modal routes and zero keyboard rows without test identifiers. Generated
+  inventory completion closes `TUI-INV-001`; terminal-size, session invalid
+  input, read-only-analysis and mouse-disposition work remain separate.
+- Focused verification passed 17/17 Ink render assertions and CLI typecheck.
+  No LLM/provider request was made and `custom.txt` was not read.
+- The complete default offline gate passed 632 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 13 TUI unit, 17 render, 3 lifecycle,
+  11 E2E and 13 recovery assertions in 206 seconds. Electron ABI restoration,
+  root typecheck and production build all passed.
+- Rollback removes the two interaction cases and restores inline modal input
+  handlers; no provider configuration or generated skill is written by tests.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. TUI acceptance still has two non-Prompt input rows without committed
-   identifiers, an incomplete terminal-size/minimum fallback matrix, no
-   explicit read-only-analysis PTY case, and no final unsupported-mouse product
-   copy.
+2. TUI acceptance still has an incomplete terminal-size/minimum fallback
+   matrix, no explicit read-only-analysis PTY case, broader session invalid
+   input gaps, and no final unsupported-mouse product copy.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental
