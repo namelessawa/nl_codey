@@ -103,7 +103,35 @@ function enableSingleStepBudget(fixture: Fixture): void {
   );
 }
 
-function readOnlyRunAudit(fixture: Fixture): {
+function enableReadOnly(fixture: Fixture): void {
+  fs.writeFileSync(
+    path.join(fixture.dataRoot, "settings.json"),
+    JSON.stringify({
+      agent: { readOnly: true },
+      ui: { language: "en-US" },
+    }),
+    "utf8",
+  );
+}
+
+function snapshotWorkspace(root: string): Record<string, string> {
+  const snapshot: Record<string, string> = {};
+  const visit = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(absolute);
+      } else if (entry.isFile()) {
+        snapshot[path.relative(root, absolute).replaceAll("\\", "/")] =
+          fs.readFileSync(absolute, "utf8");
+      }
+    }
+  };
+  visit(root);
+  return snapshot;
+}
+
+function readRunAudit(fixture: Fixture): {
   status: string;
   exitReason: string | null;
   steps: ReturnType<Storage["listSteps"]>;
@@ -249,6 +277,75 @@ async function replaceProviderUrl(
 }
 
 describeWindows("[tui-e2e] core agent workflows", () => {
+  it("reads and searches but refuses a forged write in read-only mode", async () => {
+    const fixture = createFixture();
+    fs.mkdirSync(path.join(fixture.workspaceRoot, "src"));
+    fs.writeFileSync(
+      path.join(fixture.workspaceRoot, "README.md"),
+      "# Fixture\n\nInspect src/feature.ts without changing the workspace.\n",
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(fixture.workspaceRoot, "src", "feature.ts"),
+      'export const marker = "READ_ONLY_ANALYSIS_MARKER";\n',
+      "utf8",
+    );
+    enableReadOnly(fixture);
+    const before = snapshotWorkspace(fixture.workspaceRoot);
+    const session = start(fixture, {
+      NLC_MOCK_SCENARIO: "read-only-analysis",
+    });
+
+    await session.waitForScreen(
+      (screen) => screen.includes("read-only") && screen.includes("(idle)"),
+    );
+    await enter(session, "analyze the marker without changing files");
+    const buffer = await session.waitForBuffer((output) => {
+      const normalized = output.replaceAll('\\"', '"');
+      return (
+        normalized.includes('Tool "apply_patch" is disabled') &&
+        normalized.includes("Read-only analysis complete.") &&
+        normalized.includes("forged apply_patch was refused") &&
+        normalized.includes("done")
+      );
+    }, 20_000);
+    expect(buffer).toContain("read-only (query) mode");
+    expect(buffer).toContain("workspace unchanged");
+
+    const audit = readRunAudit(fixture);
+    expect(audit.status).toBe("done");
+    const toolCalls = audit.steps
+      .filter((step) => step.type === "tool_call")
+      .map((step) => step.content);
+    expect(toolCalls.some((content) => content.startsWith("read_file "))).toBe(
+      true,
+    );
+    expect(
+      toolCalls.some((content) => content.startsWith("search_text ")),
+    ).toBe(true);
+    expect(
+      toolCalls.some((content) => content.startsWith("apply_patch ")),
+    ).toBe(true);
+    expect(
+      audit.steps.some(
+        (step) =>
+          step.type === "error" &&
+          step.content.includes("apply_patch") &&
+          step.content.includes("read-only"),
+      ),
+    ).toBe(true);
+    expect(audit.steps.some((step) => step.type === "diff")).toBe(false);
+    expect(audit.steps.some((step) => step.type === "command")).toBe(false);
+    expect(snapshotWorkspace(fixture.workspaceRoot)).toEqual(before);
+    expect(
+      fs.existsSync(
+        path.join(fixture.workspaceRoot, "READ_ONLY_VIOLATION.md"),
+      ),
+    ).toBe(false);
+
+    await exit(session);
+  });
+
   it("submits, previews, approves, and rolls back a real patch", async () => {
     const fixture = createFixture();
     const notesPath = path.join(fixture.workspaceRoot, "AGENT_NOTES.md");
@@ -322,7 +419,7 @@ describeWindows("[tui-e2e] core agent workflows", () => {
       (screen) => !screen.includes("[verify] pending command"),
     );
     await session.waitForScreen((screen) => screen.includes("done"), 30_000);
-    const audit = readOnlyRunAudit(fixture);
+    const audit = readRunAudit(fixture);
     expect(audit.status).toBe("done");
     expect(
       audit.steps.some(
@@ -357,7 +454,7 @@ describeWindows("[tui-e2e] core agent workflows", () => {
       "n",
       (screen) => screen.includes("cancelled"),
     );
-    const audit = readOnlyRunAudit(fixture);
+    const audit = readRunAudit(fixture);
     expect(audit.status).toBe("cancelled");
     expect(audit.steps.some((step) => step.type === "command")).toBe(false);
 
@@ -382,7 +479,7 @@ describeWindows("[tui-e2e] core agent workflows", () => {
       20_000,
     );
 
-    const audit = readOnlyRunAudit(fixture);
+    const audit = readRunAudit(fixture);
     expect(audit.status).toBe("budget_exceeded");
     expect(audit.exitReason).toBe("max_iterations");
     expect(
@@ -505,7 +602,7 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     expect(buffer).not.toContain(secret);
     expect(buffer).not.toContain("redaction-user");
 
-    const audit = readOnlyRunAudit(fixture);
+    const audit = readRunAudit(fixture);
     expect(audit.status).toBe("failed");
     expect(audit.exitReason).toBe("failed");
     const errorSteps = audit.steps.filter((step) => step.type === "error");
@@ -554,7 +651,7 @@ describeWindows("[tui-e2e] core agent workflows", () => {
     session.scrollToBottom();
     expect(session.viewport()).toContain("scrollback-line-080");
 
-    const audit = readOnlyRunAudit(fixture);
+    const audit = readRunAudit(fixture);
     expect(audit.status).toBe("done");
     const outputStep = audit.steps.find(
       (step) =>

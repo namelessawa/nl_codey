@@ -33,6 +33,9 @@ const MOCK_MODEL = "mock-model";
  * so downstream persistence and display boundaries can prove redaction.
  * `large-output` emits 80 numbered lines and stops without tools so a native
  * terminal can prove scrollback retention and navigation.
+ * `read-only-analysis` reads, searches, then deliberately forges an
+ * unadvertised apply_patch call so the runtime's hard read-only dispatch guard
+ * can be exercised through the real TUI.
  */
 export class MockLLMProvider implements ChatLLMProvider {
   readonly name = "mock";
@@ -80,6 +83,56 @@ export class MockLLMProvider implements ChatLLMProvider {
       const text = largeOutputFixture();
       yield* emitText(text, input.signal);
       yield finish("stop", input.messages, text);
+      return;
+    }
+
+    if (process.env["NLC_MOCK_SCENARIO"] === "read-only-analysis") {
+      if (turn === 0) {
+        const text = "Reading the requested project evidence.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_read_only_read",
+          name: "read_file",
+          args: { path: "README.md" },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      if (turn === 1) {
+        const text = "Searching for the analysis marker.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_read_only_search",
+          name: "search_text",
+          args: { query: "READ_ONLY_ANALYSIS_MARKER" },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      if (turn === 2) {
+        const text = "Attempting a forged write that the runtime must refuse.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_read_only_forged_write",
+          name: "apply_patch",
+          args: {
+            patch: notesPatch(
+              "READ_ONLY_VIOLATION.md",
+              "Read-only violation",
+              task,
+            ),
+          },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      const summary =
+        "Read-only analysis complete. The forged apply_patch was refused; workspace unchanged.";
+      yield* emitText(summary, input.signal);
+      yield finish("stop", input.messages, summary);
       return;
     }
 

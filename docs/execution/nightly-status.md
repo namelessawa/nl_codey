@@ -36,6 +36,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 26 | `codex/p1-tui-prompt-editor` | Unicode prompt state machine and native input contract | Ready for draft review; TUI-PROMPT-001 closed | 13 TUI unit, 15 render and 3 real ConPTY lifecycle/prompt assertions pass |
 | 27 | `codex/p1-tui-input-inventory` | Complete generated modal/input evidence | Ready for draft review; TUI-INV-001 closed | 17 Ink render assertions; 23/23 generated input rows have test identifiers |
 | 28 | `codex/p1-tui-minimum-layout` | Full terminal-size matrix and height-aware fallback | Ready for draft review; TUI-RENDER-001 and TUI-MIN-001 closed | Full offline gate green; 19 Ink render and 3 real ConPTY lifecycle/prompt assertions pass |
+| 29 | `codex/p1-tui-read-only-analysis` | Exact Goal Scenario 2 read-only analysis and forged-write refusal | Ready for draft review; exact Scenario 2 closed | Full offline gate green; 4 Mock scenario, 19 Ink render and 12 native TUI E2E assertions pass |
 
 ## Work log
 
@@ -785,14 +786,49 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   restores width-only layout behavior and removes the compact fallback; it
   does not alter workspaces, sessions or provider settings.
 
+### 2026-07-29 - Prove native read-only analysis
+
+- Re-read Goal Scenario 2 from the source DOCX and implemented its exact five
+  steps: enable read-only, read and search, forge a write tool, show the refusal
+  in TUI, and prove the workspace is unchanged.
+- Added a deterministic Mock path that uses `read_file` and `search_text`, then
+  emits `apply_patch` even though read-only schema generation did not advertise
+  it. The real dispatcher refuses the call before approval or snapshot/write.
+- TUI startup now renders a `read-only` indicator in normal and minimum-size
+  chrome. The native test asserts the full refusal text, final assistant
+  summary, persisted read/search/forged-call/error steps, no diff/command step,
+  no violation file and an identical recursive workspace snapshot.
+- Focused verification passed 4/4 Mock scenario tests, 19/19 Ink render
+  assertions, CLI typecheck and 12/12 native TUI E2E assertions in 93 seconds.
+  The ABI wrapper restored and re-verified Electron 33.4.11 / modules 130.
+- The first full-gate attempt exposed a test-only mismatch: the TUI correctly
+  rendered the refusal inside a JSON error row as `\"apply_patch\"`, while the
+  new predicate searched for unescaped quotes. The assertion now normalizes
+  JSON quote escapes before matching; product output and workspace state were
+  already correct in the captured failure frame.
+- The corrected complete default offline gate passed 633 unit, 17
+  recorded-eval, 80 Desktop-main, renderer/preload/CLI, 13 TUI unit, 19
+  render, 3 lifecycle, 12 E2E and 13 recovery assertions in 196 seconds.
+  Every native matrix restored and re-verified Electron 33.4.11 / modules 130;
+  root typecheck and production build passed.
+- A final long-path render fixture initially put its expected `projects`
+  segment outside the deliberate 24-column read-only suffix. Reordering only
+  the synthetic path kept that semantic suffix visible and proved the new gap
+  between workspace text and the read-only indicator.
+- This batch is entirely offline and does not read `custom.txt`. Rollback
+  removes the hostile Mock fixture/E2E and the visual indicator; read-only
+  dispatcher enforcement itself remains unchanged.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. TUI acceptance still has no explicit read-only-analysis PTY case, broader
-   session invalid-input gaps, and no final unsupported-mouse product copy.
+2. TUI acceptance still needs exact Scenario 9 invalid→valid→new-run provider
+   use, Scenario 13 dynamic-tool construction failure, Scenario 14 long Tool
+   Output limits, broader session invalid-input UX and final unsupported-mouse
+   product copy.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

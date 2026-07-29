@@ -17,6 +17,7 @@ export type TerminalFrameProps = {
   dataRoot: string;
   status: string;
   isRunning: boolean;
+  readOnly: boolean;
   liveAgent: StreamItem | null;
   trace: readonly TraceItem[];
   showIdleHint: boolean;
@@ -33,6 +34,7 @@ export function TerminalFrame({
   dataRoot,
   status,
   isRunning,
+  readOnly,
   liveAgent,
   trace,
   showIdleHint,
@@ -56,7 +58,7 @@ export function TerminalFrame({
             NL_Codey
           </Text>
           <Text color={isRunning ? palette.primaryActive : palette.textDim}>
-            {status}
+            {readOnly ? `read-only | ${status}` : status}
           </Text>
         </Box>
         <Text color={palette.warn} bold>
@@ -82,6 +84,7 @@ export function TerminalFrame({
           dataRoot={dataRoot}
           status={status}
           isRunning={isRunning}
+          readOnly={readOnly}
         />
       </Box>
 

@@ -29,10 +29,11 @@ describe("[tui-render] chrome and live state", () => {
     const view = render(
       <ThemeProvider initial="teal">
         <Header
-          workspaceRoot="E:\\projects\\nl-codey"
-          dataRoot="C:\\Users\\tester\\.nlc"
+          workspaceRoot="E:\\Users\\tester\\very-long-parent\\projects\\nl-codey"
+          dataRoot="C:\\Users\\tester\\AppData\\Roaming\\nl-codey\\data"
           status="idle"
           isRunning={false}
+          readOnly
         />
         <Footer isRunning={false} awaitingApproval={false} />
       </ThemeProvider>,
@@ -47,6 +48,10 @@ describe("[tui-render] chrome and live state", () => {
     expect(frame).toContain("projects");
     expect(frame).toContain("nl-codey");
     expect(frame).toContain("idle");
+    expect(frame).toContain("read-only");
+    expect(
+      frame.split("\n").find((line) => line.includes("NL_Codey")),
+    ).toMatch(/nl-codey\s+read-only/);
     expect(frame).toContain("commands");
     expect(frame).toContain("/exit");
   });
@@ -140,6 +145,7 @@ describe("[tui-render] chrome and live state", () => {
           dataRoot="C:\\Users\\tester\\.nlc"
           status="idle"
           isRunning={false}
+          readOnly={false}
           liveAgent={null}
           trace={[]}
           showIdleHint
@@ -167,6 +173,7 @@ describe("[tui-render] chrome and live state", () => {
           dataRoot="C:\\Users\\tester\\.nlc"
           status="tool_use"
           isRunning
+          readOnly
           liveAgent={null}
           trace={[]}
           showIdleHint={false}
@@ -177,6 +184,7 @@ describe("[tui-render] chrome and live state", () => {
 
     let frame = plain(view.lastFrame());
     expect(frame).toContain("Terminal 59x20 is too small.");
+    expect(frame).toContain("read-only");
     expect(frame).toContain("tool_use");
     expect(frame).toContain("Resize to at least 60x20");
     expect(frame).not.toContain("trace");

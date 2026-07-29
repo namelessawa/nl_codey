@@ -33,7 +33,7 @@
  * prompt row stays anchored even as new trace items arrive.
  */
 import React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import path from "node:path";
 import { Box, render, useApp, useInput, useStdout } from "ink";
 import { nlcRoot } from "@nlc/shared";
@@ -464,6 +464,10 @@ function InnerApp(opts: TuiOptions) {
     terminalSize.columns,
     terminalSize.rows,
   );
+  const readOnly = useMemo(
+    () => loadCliSettings(loop.dataRoot).appSettings.agent.readOnly,
+    [loop.dataRoot],
+  );
   const showIdleHint = loop.stream.length === 0 && !loop.liveAgent && !loop.isRunning;
   const hasBlockingModal = !!loop.pendingApproval || !!pendingSkill || !!providerOpen;
 
@@ -481,6 +485,7 @@ function InnerApp(opts: TuiOptions) {
         dataRoot={loop.dataRoot}
         status={loop.status}
         isRunning={loop.isRunning}
+        readOnly={readOnly}
         liveAgent={loop.liveAgent}
         trace={loop.trace}
         showIdleHint={showIdleHint}

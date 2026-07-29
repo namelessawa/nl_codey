@@ -35,7 +35,7 @@ that the functional modules are unusable.
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, complete generated input inventory and terminal-size matrix, render, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Read-only-analysis workflow, malformed-session UX breadth and explicit mouse disposition remain incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, complete generated input inventory and terminal-size matrix, read-only forged-write refusal, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Exact Provider/error/long-tool-output scenario breadth, malformed-session UX and explicit mouse disposition remain incomplete | Functional |
 
 ## Core
 
@@ -100,10 +100,10 @@ that the functional modules are unusable.
   gate passes with a restorative Node/Electron Storage ABI matrix. Windows
   abort has a named 12-run isolated plus 8-way loaded soak, preserves
   `AbortError`, and proves descendant cleanup without timeout inflation.
-- TUI discovery currently finds 19 catalogued slash commands, 23 keyboard/input
+- TUI discovery currently finds 19 catalogued slash commands, 24 keyboard/input
   actions, three modal routes, no mouse implementation and seven committed
-  CLI/TUI Vitest files. All 23 input rows have committed identifiers. Three
-  native lifecycle/prompt journeys, 11 core E2E workflows and a separate
+  CLI/TUI Vitest files. All 24 input rows have committed identifiers. Three
+  native lifecycle/prompt journeys, 12 core E2E workflows and a separate
   five-cycle crash soak pass. See `docs/tui/action-inventory.md`.
 
 ## Production-rating gate

@@ -138,3 +138,17 @@ Reason: a resize fallback that conditionally remounts the whole application
 would discard drafts or approval ownership precisely when terminal geometry is
 unstable. Separating the pure size contract from the frame preserves state and
 makes all documented boundaries directly render-testable.
+
+## D-013 - Exercise read-only at dispatch, not only schema generation
+
+Date: 2026-07-29
+
+Decision: the deterministic Scenario 2 Mock first uses advertised read/search
+tools, then deliberately emits an unadvertised `apply_patch`. Preserve that
+hostile call in the loop so the real read-only dispatcher returns the same
+user-visible, persisted refusal that protects against a misbehaving provider.
+
+Reason: proving that `apply_patch` is absent from the schema establishes model
+guidance, not enforcement. The source document explicitly requires a forged
+write-tool attempt; only dispatch-layer refusal plus an unchanged workspace
+proves the hard boundary.
