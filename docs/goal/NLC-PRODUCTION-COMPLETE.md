@@ -21,16 +21,16 @@ are labeled honestly.
 
 | Area | Required outcome | Current evidence | Status |
 | --- | --- | --- | --- |
-| Security | No known P0/P1 boundary failure, escape, unapproved mutation, or secret leak | Dynamic tools fail closed; full Node plugin process is not OS-confined | Blocked |
-| Storage | Real migrations and run lifecycle pass under Node and Electron ABIs | Restorative ABI gate passes; v1 upgrade, pre-migration backup and failed-upgrade recovery fixtures pass | In progress |
-| Recovery | Desktop and TUI reconcile interrupted Runs with JSONL Sessions | No startup reconciler or cross-store E2E contract | Blocked |
-| Unified approval | Every built-in, sandbox, plugin, MCP, multi-agent, Git, proactive, fine-tune, TUI command and shortcut mutation is gated/audited | Dynamic tool dispatch is hardened; whole mutation graph is not proved | Blocked |
-| CI | Named unit/integration/desktop/renderer/preload/CLI/TUI/sandbox/plugin/recovery/eval/E2E gates are green | Root test mixes debug/live/native suites; CLI build entry is broken | Blocked |
-| TUI discovery | Commands, aliases, keys, mouse actions, and modals are generated from implementation | `pnpm docs:tui-actions` discovers current command/key/modal surface | In progress |
-| TUI verification | Unit + render + ANSI frame + Windows ConPTY E2E evidence for every public action/state | No committed CLI/TUI Vitest files or PTY harness | Blocked |
-| Agent benchmark | Deterministic 100%, recorded >=95%, approved live >=80%, plus TUI workflows | Eval primitives exist; required fixture matrix and scorecard do not | Blocked |
+| Security | No known P0/P1 boundary failure, escape, unapproved mutation, or secret leak | Unified mutation grants, shared redaction and a default-off Docker-only plugin runner pass adversarial gates; non-Docker plugin execution fails closed | Complete for supported surface |
+| Storage | Real migrations and run lifecycle pass under Node and Electron ABIs | Restorative ABI gate, historical migration backup/failure recovery and hosted clean release all pass | Complete |
+| Recovery | Desktop and TUI reconcile interrupted Runs with JSONL Sessions | Stable linkage, dead-owner reconciliation, restart idempotency and no-write-replay E2E pass | Complete |
+| Unified approval | Every built-in, sandbox, plugin, MCP, multi-agent, Git, proactive, fine-tune, TUI command and shortcut mutation is gated/audited | Generated 31-path inventory and single-use approval/denial contract pass | Complete |
+| CI | Named unit/integration/desktop/renderer/preload/CLI/TUI/sandbox/plugin/recovery/eval/E2E gates are green | Named gates and hosted Windows Release pass; main-target Node 22/24/package/dependency/audit jobs remain unproved | In progress |
+| TUI discovery | Commands, aliases, keys, mouse actions, and modals are generated from implementation | `pnpm docs:tui-actions` discovers 19 commands, 19 keyboard actions and 3 modals; rows without tests remain visible | In progress |
+| TUI verification | Unit + render + ANSI frame + Windows ConPTY E2E evidence for every public action/state | Native lifecycle, core workflow, provider/error/scrollback and crash-soak gates pass; prompt semantics, full size matrix, read-only scenario and explicit mouse copy remain | In progress |
+| Agent benchmark | Deterministic 100%, recorded >=95%, approved live >=80%, plus TUI workflows | Committed scorecard records 13/13 deterministic and recorded fixtures, 0 unsafe regressions and 8/8 TUI workflows; live benchmark is not measured | In progress |
 | Product surfaces | Desktop, TUI, headless eval and VS Code share one runtime and policy | Desktop/TUI share Agent Core; VS Code extension does not exist | Blocked |
-| Release | Windows build/package/install smoke, CodeQL, audit and documented manual verification | Production build passes with browser externalization warnings; release evidence incomplete | Blocked |
+| Release | Windows build/package/install smoke, CodeQL, audit and documented manual verification | Hosted Release 30405876544 passed clean build/package/install/artifact gates; main-target required checks and final manual report remain | In progress |
 
 ## Execution invariants
 

@@ -31,6 +31,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 21 | `codex/p1-tui-redacted-error` | Native provider-error redaction through TUI/SQLite/JSONL | Ready for draft review; redaction scenario closed | 631 unit, 2 lifecycle, 10 E2E and 13 recovery assertions passed |
 | 22 | `codex/p1-tui-large-scrollback` | Native large-output retention and scrollback navigation | Ready for draft review; document behavior matrix closed | 632 unit, 2 lifecycle, 11 E2E and 13 recovery assertions passed |
 | 23 | `codex/p1-tui-crash-soak` | Five-cycle bounded ConPTY crash cleanup | Ready for draft review; TUI crash-tail blocker closed | 5/5 soak, 11 E2E and 13 recovery assertions passed; ABI restored |
+| 24 | `codex/p1-eval-recorded-foundation` | Frozen Headless deterministic/recorded benchmark and scorecard | In progress; offline thresholds pass, approved live threshold remains open | 13/13 deterministic, 13/13 recorded, unsafe refusal 1/1, regression 0%; 17 eval assertions and ABI restore passed |
 
 ## Work log
 
@@ -648,9 +649,51 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - Rollback removes the named config/script/test and its evidence row; the
   production TUI and process-tree terminator are unchanged.
 
+### 2026-07-29 - Headless deterministic and recorded-response benchmark
+
+- Replaced the Phase-2-only eval claim with a frozen Goal-v2 matrix covering
+  all 13 required Headless fixture categories. Recorded turns stream through
+  the production provider contract and shared tool loop; `apply_patch` still
+  needs a matching single-use approval before the real tool executor writes.
+- Code fixtures cover TypeScript/Python fixes, cross-file features, public API
+  refactors, dependency upgrades and generated tests. Verification repair
+  feeds a failed verifier result into a second recorded patch. Refusal,
+  rejection, budget and cancellation cases assert terminal state plus an
+  unchanged workspace.
+- Crash recovery closes and reopens a real SQLite store, reconciles a dead
+  owner once and proves the recorded pending diff is never replayed. The Git
+  fixture creates a disposable local branch and commit from deterministic or
+  recorded commit metadata and builds a PR description without pushing or
+  contacting a remote.
+- Added the formal restorative `pnpm test:eval` gate and excluded its native
+  fixture from the ordinary unit discovery path. The gate passed 17/17,
+  including scorecard freshness, then restored and re-verified Electron
+  33.4.11 / modules 130.
+- Published `docs/testing/agent-benchmark-scorecard.md`: deterministic and
+  recorded-response rates are 13/13 (100%), unsafe refusal is 1/1, regression
+  is 0%, and the existing eight TUI workflow classes are mapped to named
+  render/ConPTY gates. The approved live-model rate is explicitly `Not
+  measured`; the earlier single read-only smoke is not counted as benchmark
+  success.
+- The batch was entirely offline: no provider/network call occurred and
+  `custom.txt` was not read. Rollback removes the benchmark provider/scorer,
+  fixture gate, scorecard and root test entry; disposable SQLite/Git roots are
+  deleted by the tests.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
+2. `EVAL-LIVE-001` needs an explicitly approved frozen live benchmark using
+   only `custom.txt`; the required >=80% rate is not established by the
+   earlier one-task connectivity smoke.
+3. TUI acceptance still has public prompt/editor actions without committed
+   identifiers, an incomplete terminal-size/minimum fallback matrix, no
+   explicit read-only-analysis PTY case, and no final unsupported-mouse product
+   copy.
+4. The broader production goal still requires the shared FSM/error taxonomy,
+   context provenance/index correctness, browser-safe renderer split,
+   project-indexer coverage, VS Code adapter and the feature/experimental
+   disposition work listed in `docs/execution/master-backlog.md`.

@@ -78,6 +78,16 @@ export {
 } from "./eval/eval.js";
 export { EVAL_TASKS } from "./eval/tasks.js";
 export {
+  BENCHMARK_THRESHOLDS,
+  HEADLESS_BENCHMARK_CATEGORIES,
+  RecordedResponseProvider,
+  scoreHeadlessBenchmark,
+  type HeadlessBenchmarkCategory,
+  type HeadlessBenchmarkResult,
+  type HeadlessBenchmarkScore,
+  type RecordedTurn,
+} from "./eval/benchmark.js";
+export {
   analyzeRegressions,
   regressionNote,
   failureKey,

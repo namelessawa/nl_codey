@@ -34,8 +34,8 @@ that the functional modules are unusable.
 
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
-| `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload and renderer gates pass; root production bundle passes | Renderer imports Node path helpers through shared; recovery not E2E | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, command, render and real Windows ConPTY gates pass | Core mutation/session E2E and release packaging remain incomplete | Functional |
+| `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, command, render, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Several public prompt/input actions and the full terminal-size matrix remain incomplete | Functional |
 
 ## Core
 
@@ -43,16 +43,16 @@ that the functional modules are unusable.
 | --- | --- | --- | --- | --- |
 | `packages/core/shared` | Shared models, IPC, settings and policy types used across apps/packages | Six suites | Browser-safe and Node-only path utilities are not split | Functional |
 | `packages/core/sandbox` | Workspace containment, command whitelist/router, WSL/Docker staging and verified cross-platform process-tree termination | Six suites including Docker-gated and descendant-cleanup paths | Host whitelist has no OS resource/syscall isolation; native Job Object/AppContainer host remains unimplemented | Functional |
-| `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Ten Node lifecycle/migration tests plus Electron native-load checks pass through a restorative ABI matrix | Multi/partial-change rollback and automated backup-retention policy remain incomplete | Functional |
-| `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path suites | Stable Run linkage and crash reconciliation are not defined; Desktop interoperability unproved | Functional |
+| `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Ten Node lifecycle/migration tests, historical backup/failure fixtures, rollback recovery and Electron native-load checks pass through restorative ABI matrices | Automated backup-retention policy and longer-duration corruption drills remain incomplete | Functional |
+| `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path plus native branch/resume/restart and Run-linkage E2E pass | Desktop interoperability and malformed-history UX breadth remain incomplete | Functional |
 
 ## Runtime
 
 | Module | Runtime and entry | Test evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `packages/runtime/llm` | OpenAI-compatible and Anthropic streaming providers, timeout/retry/redaction | Six suites plus explicit opt-in smoke definitions | Live provider compatibility/release evidence is incomplete | Functional |
-| `packages/runtime/tools` | Bounded file/search/patch/command/git/symbol/port tools | Eight suites | Whole mutation graph is not yet machine-audited through one approval contract | Functional |
-| `packages/runtime/agent-core` | Shared autonomous loop, budget, verify/repair, rollback, compression and multi-agent entry | Seventeen suites; dynamic tool boundary has single/multi-agent regression coverage | Explicit production state machine/error taxonomy and crash recovery are incomplete; eval fixture matrix missing | Functional |
+| `packages/runtime/tools` | Bounded file/search/patch/command/git/symbol/port tools | Eight suites plus the generated 31-path mutation inventory | Supported mutation paths share single-use approval/capability enforcement; OS-level host whitelist isolation remains limited | Functional |
+| `packages/runtime/agent-core` | Shared autonomous loop, budget, verify/repair, rollback, compression and multi-agent entry | Unit/recovery suites plus 13 deterministic and recorded-response benchmark fixtures pass | Explicit production state machine/error taxonomy and approved live benchmark remain incomplete | Functional |
 
 ## Intelligence
 
@@ -93,15 +93,17 @@ that the functional modules are unusable.
 - Plugin dispatch has no host-user Node fallback. Docker-only execution receives
   a credential-filtered staging copy under an OS-enforced resource/network
   boundary and can return only an unapplied proposed patch.
-- SQLite is the Run-state store and JSONL is the CLI conversation store, but
-  there is no proved stable linkage/reconciler after a crash.
+- SQLite is the Run-state store and JSONL is the CLI conversation store.
+  Stable Run/session linkage, dead-owner reconciliation, restart idempotency
+  and no-write replay are proved by Storage and native ConPTY recovery gates.
 - The root build and default offline test gate pass. The explicit integration
   gate passes with a restorative Node/Electron Storage ABI matrix. Windows
   abort has a named 12-run isolated plus 8-way loaded soak, preserves
   `AbortError`, and proves descendant cleanup without timeout inflation.
-- TUI discovery currently finds 18 catalogued slash commands, 19 keyboard/input
-  actions, three modal routes, no mouse implementation and four committed
-  CLI/TUI Vitest files, including a real Windows ConPTY lifecycle. See
+- TUI discovery currently finds 19 catalogued slash commands, 19 keyboard/input
+  actions, three modal routes, no mouse implementation and five committed
+  CLI/TUI Vitest files. Native lifecycle, 11 core E2E workflows and a separate
+  five-cycle crash soak pass; inventory rows without tests remain incomplete. See
   `docs/tui/action-inventory.md`.
 
 ## Production-rating gate

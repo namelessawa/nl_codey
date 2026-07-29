@@ -494,6 +494,9 @@ importers:
         specifier: workspace:*
         version: link:../tools
     devDependencies:
+      '@nlc/git-integration':
+        specifier: workspace:*
+        version: link:../../integration/git-integration
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

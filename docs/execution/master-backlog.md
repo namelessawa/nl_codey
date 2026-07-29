@@ -33,17 +33,17 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | CI-SPLIT-001 | Add formal unit/desktop-main/renderer/preload/CLI/TUI/integration configs and named root scripts | Each command selects at least one intended test and fails on zero matches | Done in Batches 2-4 |
 | CI-LIVE-001 | Remove debug/live suites from default test discovery unless explicitly enabled | Default tests make zero network/model calls; explicit smoke loads ignored `custom.txt` | Done in Batch 16; dedicated custom-provider smoke passed and the 629-assertion default unit slice remained offline |
 | SBOX-ABORT-001 | Fix/characterize Windows process-tree abort without timeout inflation | Repeated isolated and loaded runs stop promptly, leave no child and preserve AbortError | Done in Batch 7 |
-| CI-RELEASE-001 | Add Node-version/Windows/build/package/CodeQL/dependency/CLI smoke gates | Required checks all green; no blanket production-test exclusion | Implemented in Batch 17; local Node 22/24-compatible Windows build/package/install, audit and all named test gates pass; first hosted Release install exposed and drove the native dependency/toolchain upgrade; clean rerun and main-target required checks pending |
+| CI-RELEASE-001 | Add Node-version/Windows/build/package/CodeQL/dependency/CLI smoke gates | Required checks all green; no blanket production-test exclusion | In progress; hosted Release run 30405876544 passed the clean Windows build/package/install path and branch CodeQL is green; `CI-MAIN-001` still requires the main-target Node 22/24, package, dependency-review and audit jobs |
 
 ## P1 - TUI product surface
 
 | ID | Work | Acceptance evidence | State |
 | --- | --- | --- | --- |
-| TUI-INV-001 | Generate commands, aliases, keys and modal routes from implementation | `pnpm docs:tui-actions`; CI fails on generated diff or missing handler metadata | In progress |
-| TUI-UNIT-001 | Parser, prompt editing, approval, provider and session command unit tests | `pnpm test:tui:unit` green with invalid/missing/long/CJK cases | Open |
-| TUI-RENDER-001 | Ink component/state/size/theme/ANSI frame tests | `pnpm test:tui:render` covers 120x40, 100x30, 80x24, 60x20 and minimum-size fallback | Open |
-| TUI-PTY-001 | Windows ConPTY harness with stable key send, resize, frame capture and cleanup | `pnpm test:tui:pty`; real keys and resize, cursor/mouse/alternate-screen restored | Open |
-| TUI-E2E-001 | Implement the 14 Goal v2 PTY scenarios | `pnpm test:tui:e2e`; sanitized evidence report with no orphan processes | Open |
+| TUI-INV-001 | Generate commands, aliases, keys and modal routes from implementation | `pnpm docs:tui-actions`; CI fails on generated diff or missing handler metadata | In progress; discovery is generated, but inventory rows with `None` remain incomplete |
+| TUI-UNIT-001 | Parser, prompt editing, approval, provider and session command unit tests | `pnpm test:tui:unit` green with invalid/missing/long/CJK cases | In progress; catalogue/parser and key modal paths pass, while prompt long/CJK/control/history cases remain |
+| TUI-RENDER-001 | Ink component/state/size/theme/ANSI frame tests | `pnpm test:tui:render` covers 120x40, 100x30, 80x24, 60x20 and minimum-size fallback | In progress; component/ANSI coverage passes, but the full size/minimum matrix is not yet complete |
+| TUI-PTY-001 | Windows ConPTY harness with stable key send, resize, frame capture and cleanup | `pnpm test:tui:pty`; real keys and resize, cursor/mouse/alternate-screen restored | In progress; lifecycle/resize/cleanup and five-cycle crash soak pass, while mouse is explicitly unsupported |
+| TUI-E2E-001 | Implement the 14 Goal v2 PTY scenarios | `pnpm test:tui:e2e`; sanitized evidence report with no orphan processes | In progress; 11 native agent/session cases plus 2 lifecycle cases pass, but the read-only-analysis scenario and remaining public actions still need explicit evidence |
 | TUI-PROMPT-001 | Complete cursor/Home/End/history/paste/control-character semantics | Unit + PTY evidence; input survives resize and modal focus | Open |
 | TUI-SESSION-001 | Interactive session list/tree/resume/branch and recovery | Lineage and restart E2E; corrupt/partial JSONL visible but non-fatal | Open |
 | TUI-MOUSE-001 | Either implement and test mouse lifecycle or label unsupported | Mouse matrix and PTY cleanup evidence, or explicit unsupported product copy | Open |
@@ -54,7 +54,7 @@ Plugin process isolation is Docker-only, default-off, and documented in
 | ID | Work | Acceptance evidence | State |
 | --- | --- | --- | --- |
 | FSM-001 | Shared explicit Run transition table and error taxonomy | Invalid transitions rejected; Desktop/TUI render shared state/error codes | Open |
-| EVAL-001 | Required deterministic, recorded, opt-in live and TUI workflow fixtures | Published scorecard meets Goal thresholds with zero unsafe regression | Open |
+| EVAL-001 | Required deterministic, recorded, opt-in live and TUI workflow fixtures | Published scorecard meets Goal thresholds with zero unsafe regression | In progress in Batch 24; `pnpm test:eval` passes all 13 deterministic and recorded-response fixtures (100%), unsafe refusal is 100%, regression is 0%, and the 8-workflow TUI matrix is mapped; approved live benchmark remains unmeasured |
 | CTX-001 | Provenance, impact graph, stale-index and selection-reason surface | Trace/detail output and correctness fixtures | Open |
 | RENDERER-001 | Split browser-safe paths from Node helpers | Renderer/preload tests and packaged runtime smoke | Open |
 | INDEX-001 | Add project-indexer ignore/symlink/binary/language tests | Dedicated suite green | Open |

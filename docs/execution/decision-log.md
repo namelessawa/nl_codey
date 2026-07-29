@@ -71,3 +71,17 @@ row without a committed test as incomplete.
 
 Reason: static discovery prevents undocumented public actions, but Goal v2
 also requires component, ANSI frame and real PTY evidence.
+
+## D-008 - Recorded-response benchmark is offline evidence, not live evidence
+
+Date: 2026-07-29
+
+Decision: replay frozen assistant turns through the production streaming and
+tool contracts for the recorded-response score. Keep the approved live-model
+rate separate and unmeasured until an explicitly authorized run loads only
+`custom.txt`.
+
+Reason: deterministic replay proves runtime behavior and regression stability,
+but it cannot establish provider/model task success. Counting the earlier
+single read-only connectivity smoke as a 100% live benchmark would overstate
+the evidence and collapse two distinct Goal v2 thresholds.
