@@ -199,3 +199,18 @@ saved provider. A loopback protocol stub exercises the production provider and
 stream parser without making an external or live-model call, while an explicit
 restart prevents retained terminal output from satisfying the corrected-run
 assertions.
+
+## D-017 - Classify mouse input separately from terminal scrollback
+
+Date: 2026-07-29
+
+Decision: classify TUI mouse support as Experimental. Advertise only
+terminal-owned wheel scrollback; explicitly state that clicks and application
+input capture are unsupported. Keep mouse tracking disabled and make the
+native lifecycle gate fail if the TUI emits a known mouse-mode enable sequence.
+
+Reason: Ink's static output can live in a terminal's native scrollback without
+the application implementing mouse events. Calling that full mouse support
+would imply click, modal selection, coordinate, focus and cleanup contracts the
+product does not have. The explicit boundary is safer and meets Goal v2's
+required disposition without adding an unreliable input layer.

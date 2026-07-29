@@ -40,6 +40,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 30 | `codex/p1-tui-large-tool-output` | Exact Goal Scenario 14 output limits and native scrollback | Ready for draft review; exact Scenario 14 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 31 | `codex/p1-tui-dynamic-tool-redaction` | Exact Goal Scenario 13 dynamic-tool construction failure | Ready for draft review; exact Scenario 13 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 | 32 | `codex/p1-tui-provider-run-use` | Exact Goal Scenario 9 invalid configuration, correction and new-Run use | Ready for draft review; TUI-E2E-001 closed | Full offline gate green; 634 unit, 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
+| 33 | `codex/p1-tui-mouse-contract` | Explicit Experimental mouse boundary and required TUI acceptance ledgers | Ready for draft review; TUI-MOUSE-001 closed | Full offline gate green; 15 TUI unit, 19 render, 3 lifecycle, 12 E2E and 13 recovery assertions pass |
 
 ## Work log
 
@@ -907,14 +908,44 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   external network is used, and `custom.txt` is not read. Rollback restores the
   earlier persistence-only test and reopens exact Scenario 9.
 
+### 2026-07-29 - Make the TUI mouse boundary explicit
+
+- Re-read Goal v2 sections 8-12 from the source DOCX. The source permits an
+  explicit Experimental classification when stable application mouse support
+  is unavailable, and requires state, keyboard, mouse and manual-verification
+  evidence files in addition to the generated action inventory and PTY report.
+- `/help` now says that mouse behavior is Experimental: terminal-native wheel
+  scrollback only, with clicks and input capture unsupported. The command
+  registry unit gate and a real ConPTY help journey require the exact product
+  notice.
+- The PTY harness detects known X10/VT200/button-event/any-event/UTF-8/SGR/urxvt
+  mouse tracking enable sequences across data-chunk boundaries. Normal startup,
+  help and exit must complete without ever enabling one.
+- Added honest UI-state, keyboard, mouse and release-candidate manual ledgers.
+  They record verified paths and retain open PageUp/PageDown, malformed-session,
+  Unicode-font/cmd and human release-check gaps rather than converting missing
+  capabilities into passes.
+- Focused gates passed: CLI typecheck, 15/15 TUI unit, 19/19 Ink render, 3/3
+  native ConPTY lifecycle and 12/12 native TUI E2E. The generated inventory
+  remained 19 commands, 24 keyboard actions and 3 modals.
+- The complete default offline gate passed 634 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 15 TUI unit, 19 render, 3 lifecycle,
+  12 E2E and 13 recovery assertions in 198 seconds. Every native matrix
+  restored and re-verified Electron 33.4.11 / modules 130; root typecheck and
+  production build passed.
+- This batch requires no LLM call and does not read `custom.txt`. Rollback
+  removes the help disclosure, mouse-mode observer and four acceptance ledgers,
+  reopening `TUI-MOUSE-001`.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. All exact Goal v2 TUI scenarios pass. Broader session invalid-input UX and
-   final unsupported-mouse product copy remain.
+2. All exact Goal v2 TUI scenarios pass and the mouse boundary is explicit.
+   Broader session invalid-input UX, PageUp/PageDown, remaining UI-state cells
+   and release-candidate manual verification remain.
 3. The broader production goal still requires the shared FSM/error taxonomy,
    context provenance/index correctness, browser-safe renderer split,
    project-indexer coverage, VS Code adapter and the feature/experimental

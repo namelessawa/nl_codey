@@ -89,7 +89,13 @@ describeWindows("[tui-pty] Windows PTY lifecycle", () => {
     session.write("\t");
     await session.waitForScreen((screen) => screen.includes('q="/help"'));
     session.write("\r");
-    await session.waitForBuffer((buffer) => buffer.includes("/skills-generate"));
+    await session.waitForBuffer(
+      (buffer) =>
+        buffer.includes("/skills-generate") &&
+        buffer.includes(
+          "Mouse: Experimental - terminal scrollback wheel only;",
+        ),
+    );
 
     session.write("/exit");
     // The help catalogue itself contains "/exit", so wait for the prompt row
@@ -102,6 +108,7 @@ describeWindows("[tui-pty] Windows PTY lifecycle", () => {
     const exit = await session.waitForExit();
 
     expect(exit.exitCode).toBe(0);
+    expect(session.mouseTrackingWasEnabled()).toBe(false);
   });
 
   it("turns idle Ctrl+C into deterministic process cleanup", async () => {

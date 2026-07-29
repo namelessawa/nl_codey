@@ -13,7 +13,7 @@
 - Keyboard rows without test identifiers: 0
 - Modal routes: 3
 - Mouse implementation discovered: no
-- Committed CLI/TUI Vitest files: 7
+- Committed CLI/TUI Vitest files: 8
 
 ## Slash commands
 

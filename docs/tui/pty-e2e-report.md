@@ -36,6 +36,7 @@ tests and the separate five-cycle crash soak remain mandatory.
 | 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted | Pass |
 | 11. Resize | `pnpm test:tui:render` covers 120x40, 100x30, 80x24 and 60x20; real ConPTY hides trace below 80 columns, shows compact status/size chrome below 60x20 and restores the full frame after growth | Pass |
 | Prompt editing | `pnpm test:tui:pty` sends bracketed multiline CJK paste, Escape, Home/End/Left/forward Delete, resizes a live draft through 50x16 and back to 60x20, recalls history and repeats `/help` | Pass |
+| Mouse boundary | `/help` labels terminal-native wheel scrollback Experimental and clicks/input capture unsupported. The real lifecycle harness scans split terminal output and proves no known mouse tracking enable sequence was emitted before clean exit | Pass (explicit unsupported contract) |
 | 12. Crash recovery | The process is killed at patch approval; restart links SQLite Run to JSONL Session, marks it interrupted once, and leaves the patch absent | Pass |
 | Crash-tail soak | `pnpm test:tui:crash-soak` repeats approval termination/recovery five times; every root PID exits within the bound, recovery is visible, normal exit succeeds, and the fixture directory is immediately removable | Pass |
 
@@ -45,5 +46,5 @@ parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
 All exact Goal v2 TUI scenarios now have native PTY or named render evidence.
-The broader malformed-session UX and explicit unsupported-mouse product copy
-remain separate product-completion work.
+The broader malformed-session UX, PageUp/PageDown, remaining UI-state cells and
+release-candidate manual verification remain separate product-completion work.

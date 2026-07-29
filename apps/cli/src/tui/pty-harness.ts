@@ -33,6 +33,8 @@ export class TuiPtyHarness {
   private readonly exitPromise: Promise<PtyExit>;
   private exited = false;
   private exitResult: PtyExit | null = null;
+  private terminalControlTail = "";
+  private enabledMouseTracking = false;
 
   constructor(options: TuiPtyOptions) {
     const cols = options.cols ?? 100;
@@ -75,6 +77,15 @@ export class TuiPtyHarness {
     );
     this.pid = this.pty.pid;
     this.pty.onData((data) => {
+      const controlData = this.terminalControlTail + data;
+      if (
+        /\u001b\[\?(?:9|1000|1001|1002|1003|1005|1006|1015)h/.test(
+          controlData,
+        )
+      ) {
+        this.enabledMouseTracking = true;
+      }
+      this.terminalControlTail = controlData.slice(-16);
       this.terminal.write(data);
     });
     this.exitPromise = new Promise((resolve) => {
@@ -105,6 +116,10 @@ export class TuiPtyHarness {
 
   scrollbackLineCount(): number {
     return this.terminal.buffer.active.baseY;
+  }
+
+  mouseTrackingWasEnabled(): boolean {
+    return this.enabledMouseTracking;
   }
 
   viewport(): string {

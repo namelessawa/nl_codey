@@ -38,6 +38,9 @@ export type CommandSpec = {
   hint: string;
 };
 
+export const MOUSE_SUPPORT_NOTICE =
+  "Mouse: Experimental - terminal scrollback wheel only; clicks and input capture are unsupported.";
+
 export const COMMANDS: readonly CommandSpec[] = [
   { name: "/help", hint: "Show this command catalogue." },
   { name: "/init", hint: "Scaffold .nlc/ in the current workspace (--force to overwrite)." },
@@ -172,7 +175,8 @@ export function parseCommand(line: string): CommandEffect | null {
 /** Multi-line help text rendered when `:help` fires. */
 export function renderHelp(): string {
   const widest = COMMANDS.reduce((n, c) => Math.max(n, c.name.length), 0);
-  return COMMANDS.map(
+  const catalogue = COMMANDS.map(
     (c) => `  ${c.name.padEnd(widest + 2)}${c.hint}`,
-  ).join("\n");
+  );
+  return [...catalogue, "", MOUSE_SUPPORT_NOTICE].join("\n");
 }

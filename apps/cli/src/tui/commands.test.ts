@@ -4,6 +4,7 @@ import { formatErrorOutput } from "../lib/format.js";
 import {
   COMMANDS,
   matchCommands,
+  MOUSE_SUPPORT_NOTICE,
   parseCommand,
   renderHelp,
 } from "./commands.js";
@@ -30,6 +31,7 @@ describe("[tui] command registry", () => {
       expect(effect?.kind, spec.name).not.toBe("unknown");
       expect(help).toContain(spec.name);
     }
+    expect(help).toContain(MOUSE_SUPPORT_NOTICE);
   });
 
   it("maps public aliases to the same effects", () => {
