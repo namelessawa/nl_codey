@@ -51,6 +51,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 41 | `codex/p1-semantic-index-refresh-budget` | Production incremental semantic refresh and explicit retrieval token budgets | Ready for draft review; `CTX-001` closed | Full offline gate green; 650 unit, 17 recorded-eval, 82 Desktop-main, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 42 | `codex/p1-renderer-browser-split` | Browser-safe shared exports, sandboxed preload and packaged renderer startup | Ready for draft review; `RENDERER-001` closed | Full offline gate green; 652 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 43 | `codex/p1-project-indexer-coverage` | Deterministic bounded scanning and project-indexer behavior matrix | Ready for draft review; `INDEX-001` closed | Full offline gate green; 670 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 44 | `codex/p1-cli-host-protocol` | Fail-closed CLI approval protocol for embedding hosts | Ready for draft review; `VSCE-001` protocol foundation complete, extension remains | Full offline gate green; 670 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1259,6 +1260,30 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 - This batch makes no LLM call and does not read `custom.txt`. Rollback removes
   the dedicated behavior matrix and restores caller-controlled/unordered scan
   breadth plus case-sensitive ignore matching.
+
+### 2026-07-29 - Add a fail-closed CLI host protocol
+
+- `nlc run --json --host-protocol` now keeps stdout as an `AgentEvent` NDJSON
+  stream and accepts one explicit approval decision on stdin for each
+  `patch_ready` event. The public schema is documented in the CLI README.
+- The boundary requires an exact pending Run ID and accepts only `approve` or
+  `reject`. Malformed JSON, unknown message kinds, stale/cross-Run IDs,
+  messages over 4 KiB and EOF all deny the mutation.
+- Host mode cannot be combined with `--yes` and cannot run without `--json`,
+  preventing an embedding surface from silently enabling the CLI's
+  human-operated auto-approval shortcut or contaminating the event stream with
+  an interactive prompt.
+- Eight focused protocol assertions, the compiled-artifact flag/help smoke and
+  the CLI typecheck pass. The complete offline gate passed 670 unit, 17
+  recorded-eval, 82 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21
+  render, 4 lifecycle, 13 E2E and 14 recovery assertions in 253 seconds, then
+  restored Electron 33.4.11 / modules 130. The next stacked batch will
+  implement the VS Code extension as a shell-disabled child process adapter
+  over this protocol, avoiding native Storage ABI duplication inside the VS
+  Code extension host.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback removes
+  the host-only flag/parser and returns CLI approvals to the existing
+  interactive or explicit `--yes` paths.
 
 ## Current blockers
 

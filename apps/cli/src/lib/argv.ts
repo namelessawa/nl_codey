@@ -28,6 +28,7 @@ const FLAG_TAKES_NO_VALUE = new Set([
   "verbose",
   "no-color",
   "json",
+  "host-protocol",
 ]);
 
 export function parseArgv(argv: readonly string[]): ParsedArgs {

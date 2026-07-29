@@ -23,6 +23,8 @@ Options:
   --yes, -y                 Auto-approve patches (use with care).
   --no-color                Disable ANSI colours.
   --json                    Emit JSON to stdout instead of human prose.
+  --host-protocol           Host-adapter NDJSON mode; requires --json and
+                            accepts explicit approval messages on stdin.
 
 Data:
   Everything persistent — settings.json, apikey.bin, the SQLite run

@@ -8,6 +8,7 @@ import path from "node:path";
 import { nlcRoot, type AgentEvent } from "@nlc/shared";
 import { buildCliServices, type CliServices } from "../lib/services.js";
 import { yesNo } from "../lib/prompts.js";
+import { readHostApproval } from "../lib/host-protocol.js";
 import { c, writeLine, writeErrLine } from "../lib/format.js";
 import type { ParsedArgs } from "../lib/argv.js";
 
@@ -22,6 +23,14 @@ export async function runRun(args: ParsedArgs): Promise<number> {
   const workspaceRoot = path.resolve(args.flags.get("workspace") ?? process.cwd());
   const autoApprove = args.flags.has("yes") || args.flags.has("y");
   const jsonMode = args.flags.has("json");
+  const hostProtocolMode = args.flags.has("host-protocol");
+
+  if (hostProtocolMode && (!jsonMode || autoApprove)) {
+    writeErrLine(
+      "nlc run: --host-protocol requires --json and cannot be combined with --yes",
+    );
+    return 2;
+  }
 
   // Late-binding state: AgentService runs in the background after runTask
   // returns, so the patch_ready event arrives *after* we know the runId.
@@ -38,9 +47,11 @@ export async function runRun(args: ParsedArgs): Promise<number> {
       const targetServices = services;
       if (!targetRunId || !targetServices) return;
       approvalChain = approvalChain.then(async () => {
-        const decision = autoApprove
-          ? true
-          : await yesNo(c.yellow("Apply this patch?"), false);
+        const decision = hostProtocolMode
+          ? await readHostApproval(process.stdin, targetRunId)
+          : autoApprove
+            ? true
+            : await yesNo(c.yellow("Apply this patch?"), false);
         try {
           if (decision) await targetServices.agent.applyPatch(targetRunId);
           else targetServices.agent.rejectPatch(targetRunId);
