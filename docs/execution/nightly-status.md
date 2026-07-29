@@ -2,7 +2,7 @@
 
 Goal: `NLC-PRODUCTION-COMPLETE`
 
-Overall state: **ACTIVE - COMPUTABLE GATES GREEN; SECURITY/REPOSITORY/MANUAL RELEASE BLOCKERS REMAIN**
+Overall state: **ACTIVE - AUTOMATED GATES GREEN; DEPENDENCY AND MANUAL RELEASE BLOCKERS REMAIN**
 
 ## Batch board
 
@@ -61,6 +61,7 @@ Overall state: **ACTIVE - COMPUTABLE GATES GREEN; SECURITY/REPOSITORY/MANUAL REL
 | 51 | `codex/p1-vscode-vsix-artifact` | Versioned VSIX packaging, archive smoke and CI upload | Ready for draft review; `VSCE-001` packaging evidence complete | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 52 | `codex/production-complete-final-report` | Final evidence reconciliation and release decision | Ready for draft review; release remains blocked | Candidate-tip hosted Node 22/24, Windows package/installed CLI, VSIX and CodeQL pass; high PR #70 alert, disabled Dependency graph and both manual RC reports remain |
 | 53 | `codex/p1-tui-skill-native-journey` | Native safe-settings and target-gated Skill install evidence | Ready for draft review; automated TUI UI-state ledger closed | Full offline gate green; 690 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI unit, 21 render, 4 lifecycle, 14 E2E and 14 recovery assertions pass |
+| 54 | `codex/production-release-gates-resolved` | Approved CodeQL stack repair, Dependency graph activation and hosted dependency-gate closure | Ready for draft review; approved blockers closed, newly exposed dependency debt retained | PR #70 and current CodeQL pass; Dependency graph SBOM has 686 packages; run 30465400035 passes dependency review/production audit, Node 22/24 and Windows package/installed CLI |
 
 ## Work log
 
@@ -1513,17 +1514,52 @@ Overall state: **ACTIVE - COMPUTABLE GATES GREEN; SECURITY/REPOSITORY/MANUAL REL
   `custom.txt`. Rollback removes the added native evidence and restores the
   TUI UI-state Partial classifications; user files remain untouched.
 
+### 2026-07-29 - Close approved CodeQL and dependency-gate blockers
+
+- Replaced PR #70's uncontrolled restart-classification regex with linear
+  string matching, added adversarial long-input coverage and propagated the
+  fix through the published #71-#85 stack. PR #70 CodeQL check 90613970104
+  passes.
+- Enabled the repository Dependency graph through the approved Security &
+  analysis setting. Its SBOM now enumerates 686 packages. The first hosted
+  rerun proved dependency review and the production audit themselves passed,
+  then failed only because a Node setup cache had been configured for a job
+  that intentionally performs no install. Removing that empty cache fixed the
+  infrastructure tail without weakening package caching elsewhere.
+- The rerun exposed two additional high CodeQL findings in terminal text
+  handling. Terminal escape removal is now a bounded single-pass scanner, its
+  long OSC fixture repeats 100,000 times, and the TUI test uses structural
+  state assertions instead of substring URL sanitization. Current CodeQL check
+  90621936063 passes.
+- Hosted run 30465400035 passes Node 22, Node 24, dependency review and
+  `pnpm audit --prod --audit-level high`; the audit retains one low and no high
+  production finding. Its Windows package and installed CLI job also passes.
+- Enabling Dependabot also made existing default-branch dependency debt
+  visible: 91 open npm alerts (23 critical, 25 high, 30 medium, 13 low). A full
+  local audit reports 53 vulnerable instances (3 critical, 22 high, 23
+  moderate, 5 low), primarily in development/build tooling. This newly
+  discovered release risk is retained rather than silently folded into the
+  narrower green production audit.
+- The local candidate passes typecheck, build and every named offline stage:
+  692 unit, 17 recorded-eval, 96 Desktop-main, renderer/preload, 18 CLI, 30 TUI
+  unit, 21 render, 4 lifecycle, 14 E2E and 14 recovery assertions; the storage
+  matrix restores Electron 33.4.11 / modules 130. The first composite attempt
+  retained a blank-screen ConPTY startup failure in its first three journeys;
+  the next 11 passed, an isolated rerun passed 14/14 and the resumed recovery
+  stage passed 14/14.
+- No live-model call occurs and `custom.txt` is not read. Rollback of code
+  changes restores only the two linear classifiers and the empty-cache
+  workflow setting; disabling Dependency graph would hide security evidence
+  and is not part of rollback.
+
 ## Current blockers
 
-1. PR #70 retains one high-severity CodeQL finding at
-   `packages/core/shared/src/run-lifecycle.ts:260`. Fixing it in its published
-   mid-stack branch and propagating the result requires explicit approval.
-2. Main-target Node 22/24, Windows package/installed CLI/VSIX and candidate-tip
-   CodeQL are green. Dependency review fails because repository Dependency graph
-   is disabled, and the combined job stops before `pnpm audit`; enabling that
-   repository-level setting requires explicit user approval.
-3. All exact Goal v2 TUI scenarios and implemented UI-state cells pass with
+1. Dependency graph is enabled and its required hosted review/production audit
+   pass, but the default branch now exposes 23 critical and 25 high npm alerts
+   in the broader development/build dependency graph. Reachability triage and
+   a dedicated upgrade batch remain.
+2. All exact Goal v2 TUI scenarios and implemented UI-state cells pass with
    named evidence or explicit N/A/unsupported boundaries. Release-candidate
    manual verification remains.
-4. The broader production goal still requires interactive VS Code Extension
+3. The broader production goal still requires interactive VS Code Extension
    Host evidence and release-candidate manual verification.
