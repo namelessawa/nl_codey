@@ -114,4 +114,66 @@ describeWindows("[tui-pty] Windows PTY lifecycle", () => {
     expect(exit.exitCode).toBe(0);
     expect(Date.now() - started).toBeLessThan(5_000);
   });
+
+  it("edits Unicode paste, preserves a draft across resize and recalls history", async () => {
+    const session = start();
+    await session.waitForScreen(
+      (screen) => screen.includes("(idle)") && screen.includes("❯"),
+    );
+
+    session.write("\u001B[200~第一行\r\n第二行\u001B[201~");
+    await session.waitForScreen((screen) => screen.includes("第一行↵第二行"));
+    session.write("\u001B");
+    await session.waitForScreen(
+      (screen) =>
+        screen.split("\n").some((line) => line.includes("❯")) &&
+        !screen.includes("第一行"),
+    );
+
+    session.write("helpX");
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ helpX")),
+    );
+    session.resize(60, 24);
+    await session.waitForScreen(
+      (screen) =>
+        !screen.includes("trace") &&
+        screen.split("\n").some((line) => line.includes("❯ helpX")),
+    );
+
+    // Insert the slash at Home, then remove the trailing X with
+    // End → Left → forward Delete. The result is the public /help command.
+    session.write("\u001B[H");
+    session.write("/");
+    session.write("\u001B[F");
+    session.write("\u001B[D");
+    session.write("\u001B[3~");
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ /help")),
+    );
+    session.write("\r");
+    await session.waitForBuffer((buffer) => buffer.includes("/skills-generate"));
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ ▍")),
+    );
+
+    session.write("\u001B[A");
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ /help")),
+    );
+    const helpCount = session.bufferText().split("/skills-generate").length - 1;
+    session.write("\r");
+    await session.waitForBuffer(
+      (buffer) => buffer.split("/skills-generate").length - 1 > helpCount,
+    );
+    await session.waitForScreen((screen) =>
+      screen.split("\n").some((line) => line.includes("❯ ▍")),
+    );
+
+    // Empty-prompt Ctrl+C retains the established clean-exit contract. The
+    // pasted CJK payload above already proves native Unicode input.
+    session.write("\u0003");
+    const exit = await session.waitForExit();
+    expect(exit.exitCode).toBe(0);
+  });
 });

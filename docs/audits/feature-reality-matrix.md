@@ -35,7 +35,7 @@ that the functional modules are unusable.
 | Module | Runtime and entry | Test/build evidence | Material gap | Rating |
 | --- | --- | --- | --- | --- |
 | `apps/desktop` | Electron main/preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery and packaged Windows gates pass | Renderer imports Node path helpers through shared; full public workflow E2E remains incomplete | Functional |
-| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, command, render, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Several public prompt/input actions and the full terminal-size matrix remain incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, prompt state-machine, render, real Windows ConPTY workflows, crash soak and installed-artifact smoke pass | Provider-editor/skill-cancel evidence, the full terminal-size matrix and explicit mouse disposition remain incomplete | Functional |
 
 ## Core
 
@@ -100,11 +100,11 @@ that the functional modules are unusable.
   gate passes with a restorative Node/Electron Storage ABI matrix. Windows
   abort has a named 12-run isolated plus 8-way loaded soak, preserves
   `AbortError`, and proves descendant cleanup without timeout inflation.
-- TUI discovery currently finds 19 catalogued slash commands, 19 keyboard/input
-  actions, three modal routes, no mouse implementation and five committed
-  CLI/TUI Vitest files. Native lifecycle, 11 core E2E workflows and a separate
-  five-cycle crash soak pass; inventory rows without tests remain incomplete. See
-  `docs/tui/action-inventory.md`.
+- TUI discovery currently finds 19 catalogued slash commands, 23 keyboard/input
+  actions, three modal routes, no mouse implementation and seven committed
+  CLI/TUI Vitest files. Three native lifecycle/prompt journeys, 11 core E2E
+  workflows and a separate five-cycle crash soak pass; the two inventory rows
+  without tests remain incomplete. See `docs/tui/action-inventory.md`.
 
 ## Production-rating gate
 

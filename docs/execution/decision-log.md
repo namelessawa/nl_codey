@@ -97,3 +97,17 @@ rerun selectively to replace it with a pass.
 Reason: Goal v2 requires an attributable success rate, not a curated best-of
 result. The observed rate exceeds the >=80% threshold, while retaining the
 failure gives future model/runtime changes a meaningful regression baseline.
+
+## D-010 - Decode prompt input below Ink's lossy Key surface
+
+Date: 2026-07-29
+
+Decision: keep prompt editing in a pure Unicode code-point state machine and
+consume Ink's bounded raw input emitter for explicit Windows/ANSI sequences.
+Keep the Prompt mounted but inactive behind modal routes so draft/history state
+survives without accepting leaked keys.
+
+Reason: Ink 5 parses Home and End internally but omits them from its public Key
+object, and real ConPTY may coalesce several key sequences into one data chunk.
+Tail-only `useInput` editing therefore could not satisfy the documented cursor,
+paste, resize and focus contract deterministically.

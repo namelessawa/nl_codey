@@ -108,10 +108,7 @@ function InnerApp(opts: TuiOptions) {
 
   useInput((input, key) => {
     if (loop.pendingApproval || pendingSkill || providerOpen) return;
-    if (key.ctrl && input === "c") {
-      if (loop.isRunning) loop.cancel();
-      else exit();
-    }
+    if (key.ctrl && input === "c" && loop.isRunning) loop.cancel();
   });
 
   const handleCommand = (effect: CommandEffect): void => {
@@ -469,6 +466,7 @@ function InnerApp(opts: TuiOptions) {
   const isNarrow = width < NARROW_BREAKPOINT;
   const showLiveAgent = !!loop.liveAgent;
   const showIdleHint = loop.stream.length === 0 && !loop.liveAgent && !loop.isRunning;
+  const hasBlockingModal = !!loop.pendingApproval || !!pendingSkill || !!providerOpen;
 
   return (
     <Box flexDirection="column" width="100%">
@@ -572,13 +570,14 @@ function InnerApp(opts: TuiOptions) {
             }
           }}
         />
-      ) : (
-        <Prompt
-          disabled={loop.isRunning}
-          onSubmit={loop.submit}
-          onCommand={handleCommand}
-        />
-      )}
+      ) : null}
+      <Prompt
+        disabled={loop.isRunning || hasBlockingModal}
+        hidden={hasBlockingModal}
+        onSubmit={loop.submit}
+        onCommand={handleCommand}
+        onCancel={exit}
+      />
       <Footer isRunning={loop.isRunning} awaitingApproval={!!loop.pendingApproval} />
     </Box>
   );

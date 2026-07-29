@@ -9,10 +9,10 @@
 
 - Catalogued slash commands: 19
 - Parser alias groups: 18
-- Keyboard/input actions: 19
+- Keyboard/input actions: 23
 - Modal routes: 3
 - Mouse implementation discovered: no
-- Committed CLI/TUI Vitest files: 5
+- Committed CLI/TUI Vitest files: 7
 
 ## Slash commands
 
@@ -42,16 +42,20 @@
 
 | Surface | Key | Implemented result | Automated test |
 | --- | --- | --- | --- |
-| Global | Ctrl+C | Cancel an active run; otherwise exit | apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
+| Global | Ctrl+C | Cancel an active run; an empty idle prompt exits | apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
 | Terminal | Resize below 80 columns | Reflow the frame and hide the trace panel | apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
-| Prompt | Enter | Submit a task or slash command; ignore blank input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - command/plain submission |
-| Prompt | Backspace/Delete/Ctrl+H/BS/DEL | Erase the final code unit | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - Windows DEL editing |
-| Prompt | Ctrl+W | Erase the previous word | None |
-| Prompt | Ctrl+U | Clear the input | None |
-| Prompt | Up/Down | Move through command suggestions | None |
-| Prompt | Tab | Complete the selected slash command | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - command completion |
-| Prompt | Escape | Clear prompt and command suggestions | None |
-| Prompt | Ctrl+C | Clear prompt input | None |
+| Prompt | Enter | Submit once as a task or slash command; ignore blank/whitespace input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - command/plain and duplicate-submit guards |
+| Prompt | Backspace/Delete/Ctrl+H/BS/DEL | Erase one Unicode code point before or at the cursor | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - Windows DEL and CJK editing |
+| Prompt | Left/Right | Move the Unicode code-point cursor one position | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - CJK cursor editing; apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
+| Prompt | Home/End | Move the cursor to the start or end | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - CJK start/end editing; apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
+| Prompt | Ctrl+W | Erase the previous word at the cursor | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - word erase |
+| Prompt | Ctrl+U | Clear the input | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - line clear |
+| Prompt | Up/Down | Move through command suggestions or prompt history | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - suggestion navigation and history recall; apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
+| Prompt | Tab/Shift+Tab | Complete or reverse-select slash-command suggestions | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - forward/reverse command selection |
+| Prompt | Escape | Clear prompt and command suggestions | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - prompt/palette clear |
+| Prompt | Ctrl+C | Clear a non-empty prompt; exit when already empty | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - clear-then-cancel behavior |
+| Prompt | Ctrl+Enter | Insert a newline when the terminal exposes a distinct modified sequence | apps/cli/src/tui/prompt-editor.test.ts ([tui]) |
+| Prompt | Text / bracketed paste | Insert CJK/multiline text, filter controls and cap input at 16,384 code points | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - multiline paste and modal/run focus; apps/cli/src/tui/prompt-editor.test.ts ([tui]); apps/cli/src/tui/conpty.pty.test.ts ([tui-pty]) |
 | Approval | Y | Approve the pending patch | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - approval callback |
 | Approval | N/Q | Reject the pending patch | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - rejection callback |
 | Provider picker | Up/Down | Move through providers | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - two-way navigation |
@@ -62,9 +66,10 @@
 | Skill install picker | Enter | Confirm the install target | apps/cli/src/tui/inputs.render.test.tsx ([tui-render]) - target callback |
 | Skill install picker | Escape/Q | Cancel skill generation | None |
 
-Not implemented in the current prompt editor: cursor movement, Home/End,
-history recall, multiline paste semantics, PageUp/PageDown message navigation,
-or preservation tests across resize.
+The prompt editor has committed unit, Ink-render and native ConPTY evidence for
+Unicode cursor editing, Home/End, history, bounded multiline paste, control
+filtering, resize preservation and modal/run input ownership. PageUp/PageDown
+message navigation is outside the prompt editor and remains incomplete.
 
 ## Modal routes
 
@@ -85,7 +90,7 @@ No mouse handler or mouse-mode lifecycle is committed. Mouse support must not be
 
 This inventory is discovery evidence, not completion evidence. Slash-command
 catalogue/parser and committed Ink interaction coverage are recorded where
-present. ConPTY startup, resize, help completion, normal exit and idle Ctrl+C
-are also covered on Windows. Remaining keyboard rows and end-to-end agent
-workflows still require stable test identifiers. CI must regenerate this file
-and fail on a diff.
+present. ConPTY startup, Unicode/paste editing, resize preservation, history,
+help completion, normal exit and idle Ctrl+C are covered on Windows. Rows that
+still say `None` remain incomplete. CI must regenerate this file and fail on
+a diff.

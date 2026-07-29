@@ -7,16 +7,13 @@
  * `/cmd` lines are parsed by {@link parseCommand} and routed through
  * `onCommand`; everything else becomes a task and goes to `onSubmit`.
  *
- * Input handling is intentionally defensive: Windows terminals are
- * inconsistent about backspace (PowerShell + Windows Terminal can send
- * `\x7f`, plain cmd.exe `\x08`, and conhost sometimes wraps both with
- * ESC). We accept all three plus Ink's parsed `key.backspace`/
- * `key.delete`, and we evaluate the erase branch BEFORE the
- * suggestions block — so the popup never swallows a backspace.
+ * Input handling is intentionally defensive. Ink 5 does not expose Home/End
+ * in its public Key object, so this component consumes Ink's raw input emitter
+ * and delegates all editing to the pure prompt-editor state machine.
  */
 import React from "react";
-import { useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { useEffect, useRef, useState } from "react";
+import { Box, Text, useStdin } from "ink";
 import { useAnimatedBorder, useTheme } from "./theme-context.js";
 import {
   matchCommands,
@@ -24,107 +21,188 @@ import {
   type CommandEffect,
   type CommandSpec,
 } from "./commands.js";
+import {
+  MAX_PROMPT_CODE_POINTS,
+  consumePromptTerminalChunk,
+  createPromptEditorState,
+  formatPromptText,
+  getPromptViewport,
+  reducePromptEditor,
+  submitPrompt,
+  type PromptEditorAction,
+  type PromptEditorState,
+  type PromptInputIntent,
+  type PromptTerminalDecoderState,
+} from "./prompt-editor.js";
 
 export type PromptProps = {
   disabled: boolean;
+  hidden?: boolean;
   onSubmit: (task: string) => void;
   onCommand: (effect: CommandEffect) => void;
+  onCancel: () => void;
 };
 
-/** ASCII DEL (\x7f) — Win Terminal / macOS Terminal backspace. */
-const DEL = "\u007f";
-/** ASCII BS (\x08) — classic cmd.exe / Ctrl-H. */
-const BS = "\u0008";
-
-function isErase(input: string, key: { backspace: boolean; delete: boolean; ctrl: boolean }): boolean {
-  if (key.backspace || key.delete) return true;
-  if (input === DEL || input === BS) return true;
-  // Some terminals leak the raw byte INTO `input` even though Ink also
-  // sets key.delete. Belt and braces:
-  if (key.ctrl && input === "h") return true;
-  return false;
-}
-
-export function Prompt({ disabled, onSubmit, onCommand }: PromptProps) {
+export function Prompt({
+  disabled,
+  hidden = false,
+  onSubmit,
+  onCommand,
+  onCancel,
+}: PromptProps) {
   const { palette } = useTheme();
+  const { internal_eventEmitter: inputEmitter, setRawMode } = useStdin();
   const inputBorder = useAnimatedBorder(3);
-  const [value, setValue] = useState("");
+  const [editor, setEditor] = useState<PromptEditorState>(() =>
+    createPromptEditorState(),
+  );
+  const editorRef = useRef(editor);
   const [selected, setSelected] = useState(0);
+  const selectedRef = useRef(selected);
+  const callbacksRef = useRef({ onSubmit, onCommand, onCancel });
+  callbacksRef.current = { onSubmit, onCommand, onCancel };
 
-  const suggestions = matchCommands(value);
+  const suggestions = matchCommands(editor.value);
   const safeSelected =
     suggestions.length === 0 ? 0 : Math.min(selected, suggestions.length - 1);
 
-  useInput((input, key) => {
-    if (disabled) return;
+  const replaceEditor = (next: PromptEditorState): void => {
+    editorRef.current = next;
+    setEditor(next);
+  };
 
-    // Erase first — popup must not eat a backspace.
-    if (isErase(input, key)) {
-      setValue((v) => v.slice(0, -1));
-      setSelected(0);
-      return;
-    }
+  const editEditor = (action: PromptEditorAction): void => {
+    replaceEditor(reducePromptEditor(editorRef.current, action));
+  };
 
-    // Word-erase (Ctrl+W) — handy for clearing a half-typed command.
-    if (key.ctrl && input === "w") {
-      setValue((v) => v.replace(/\S+\s*$/, ""));
-      setSelected(0);
-      return;
-    }
+  const select = (next: number): void => {
+    selectedRef.current = next;
+    setSelected(next);
+  };
 
-    // Clear-line (Ctrl+U).
-    if (key.ctrl && input === "u") {
-      setValue("");
-      setSelected(0);
-      return;
-    }
+  useEffect(() => {
+    if (disabled || hidden) return;
 
-    if (suggestions.length > 0) {
-      if (key.upArrow) {
-        setSelected((i) => (i - 1 + suggestions.length) % suggestions.length);
-        return;
-      }
-      if (key.downArrow) {
-        setSelected((i) => (i + 1) % suggestions.length);
-        return;
-      }
-      if (key.tab) {
-        const choice = suggestions[safeSelected];
-        if (choice) {
-          const completed = choice.name.split(/\s+/)[0]!;
-          const takesArg = choice.name.includes("<");
-          setValue(takesArg ? `${completed} ` : completed);
-          setSelected(0);
+    let decoderState: PromptTerminalDecoderState = {
+      pasteBuffer: null,
+      pendingInput: "",
+    };
+
+    const handleIntent = (intent: PromptInputIntent): void => {
+      const current = editorRef.current;
+      const currentSuggestions = matchCommands(current.value);
+      const currentSelected =
+        currentSuggestions.length === 0
+          ? 0
+          : Math.min(selectedRef.current, currentSuggestions.length - 1);
+
+      switch (intent.type) {
+        case "edit":
+          editEditor(intent.action);
+          select(0);
+          return;
+        case "up":
+          if (
+            currentSuggestions.length > 0 &&
+            current.historyIndex === null
+          ) {
+            select(
+              (currentSelected - 1 + currentSuggestions.length) %
+                currentSuggestions.length,
+            );
+          } else {
+            editEditor({ type: "history-previous" });
+            select(0);
+          }
+          return;
+        case "down":
+          if (
+            currentSuggestions.length > 0 &&
+            current.historyIndex === null
+          ) {
+            select((currentSelected + 1) % currentSuggestions.length);
+          } else {
+            editEditor({ type: "history-next" });
+            select(0);
+          }
+          return;
+        case "tab": {
+          if (currentSuggestions.length === 0) return;
+          if (intent.reverse) {
+            select(
+              (currentSelected - 1 + currentSuggestions.length) %
+                currentSuggestions.length,
+            );
+            return;
+          }
+          const choice = currentSuggestions[currentSelected];
+          if (choice) {
+            const completed = choice.name.split(/\s+/)[0]!;
+            const takesArg = choice.name.includes("<");
+            editEditor({
+              type: "replace",
+              text: takesArg ? `${completed} ` : completed,
+            });
+            select(0);
+          }
+          return;
         }
-        return;
+        case "escape":
+          editEditor({ type: "clear" });
+          select(0);
+          return;
+        case "interrupt":
+          if (current.value.length > 0) {
+            editEditor({ type: "clear" });
+            select(0);
+          } else {
+            callbacksRef.current.onCancel();
+          }
+          return;
+        case "submit": {
+          // Update the ref before invoking callbacks. A second Enter delivered
+          // in the same React batch therefore sees an empty line.
+          const submitted = submitPrompt(current);
+          replaceEditor(submitted.state);
+          select(0);
+          if (!submitted.line.trim()) return;
+          const command = parseCommand(submitted.line);
+          if (command) callbacksRef.current.onCommand(command);
+          else callbacksRef.current.onSubmit(submitted.line);
+          return;
+        }
+        case "ignore":
+          return;
       }
-      if (key.escape) {
-        setValue("");
-        setSelected(0);
-        return;
-      }
-    }
-    if (key.return) {
-      const line = value;
-      setValue("");
-      setSelected(0);
-      if (!line.trim()) return;
-      const cmd = parseCommand(line);
-      if (cmd) onCommand(cmd);
-      else onSubmit(line);
-      return;
-    }
-    if (key.ctrl && input === "c") {
-      setValue("");
-      setSelected(0);
-      return;
-    }
-    // Printable input — reject stray control bytes and meta-escapes.
-    if (input && !key.meta && !key.ctrl && input !== DEL && input !== BS) {
-      setValue((v) => v + input);
-      setSelected(0);
-    }
-  });
+    };
+
+    const handleData = (data: string | Buffer): void => {
+      const decoded = consumePromptTerminalChunk(
+        decoderState,
+        Buffer.isBuffer(data) ? data.toString("utf8") : String(data),
+      );
+      decoderState = decoded.state;
+      for (const intent of decoded.intents) handleIntent(intent);
+    };
+
+    setRawMode(true);
+    inputEmitter.on("input", handleData);
+    return () => {
+      inputEmitter.removeListener("input", handleData);
+      setRawMode(false);
+    };
+  }, [disabled, hidden, inputEmitter, setRawMode]);
+
+  const viewport = getPromptViewport(editor);
+  const beforeCursor = `${viewport.clippedStart ? "…" : ""}${formatPromptText(
+    viewport.beforeCursor,
+  )}`;
+  const afterCursor = `${formatPromptText(viewport.afterCursor)}${
+    viewport.clippedEnd ? "…" : ""
+  }`;
+  const atLimit = Array.from(editor.value).length >= MAX_PROMPT_CODE_POINTS;
+
+  if (hidden) return null;
 
   const prefix = disabled ? "…" : "❯";
   const prefixColor = disabled ? palette.textDim : palette.accent;
@@ -135,7 +213,7 @@ export function Prompt({ disabled, onSubmit, onCommand }: PromptProps) {
         <CommandPopup
           items={suggestions}
           selected={safeSelected}
-          query={value}
+          query={editor.value}
         />
       ) : null}
       <Box
@@ -148,8 +226,14 @@ export function Prompt({ disabled, onSubmit, onCommand }: PromptProps) {
         <Text color={prefixColor} bold>
           {prefix}
         </Text>
-        <Text color={palette.text}>{` ${value}`}</Text>
+        <Text color={palette.text}>{` ${beforeCursor}`}</Text>
         {!disabled ? <Text color={palette.primaryActive}>▍</Text> : null}
+        <Text color={palette.text}>{afterCursor}</Text>
+        {atLimit ? (
+          <Text color={palette.warn}>
+            {` [${MAX_PROMPT_CODE_POINTS} limit]`}
+          </Text>
+        ) : null}
       </Box>
     </Box>
   );

@@ -17,7 +17,7 @@ no output bytes with system ConPTY, the bundled ConPTY DLL, or winpty. The
 hosted workflows therefore set the explicit `NLC_SKIP_NATIVE_PTY=1` capability
 flag. They still run the deterministic TUI unit/render suites and every other
 default, integration, package, and installer gate. Interactive and self-hosted
-Windows validation must leave the flag unset so the default thirteen native PTY
+Windows validation must leave the flag unset so the default fourteen native PTY
 scenarios and the separate five-cycle crash soak remain mandatory.
 
 | Document scenario | Evidence in the current gate | Result |
@@ -33,6 +33,7 @@ scenarios and the separate five-cycle crash soak remain mandatory.
 | 7. Stop / cancel | Ctrl+C aborts delayed Mock streaming, reaches `cancelled`, makes no patch, and returns to `/help` | Pass |
 | 10. Session resume / branch / tree | Unique-prefix `/resume`, `/tree`, real message-id branch, header ancestry, child `parentId`, and second restart are asserted | Pass |
 | 11. Resize | Covered by `pnpm test:tui:pty`: resize below 80 columns hides the trace pane and exits cleanly | Pass |
+| Prompt editing | `pnpm test:tui:pty` sends bracketed multiline CJK paste, Escape, Home/End/Left/forward Delete, resize with a live draft, history recall and repeated `/help` through real ConPTY | Pass |
 | 12. Crash recovery | The process is killed at patch approval; restart links SQLite Run to JSONL Session, marks it interrupted once, and leaves the patch absent | Pass |
 | Crash-tail soak | `pnpm test:tui:crash-soak` repeats approval termination/recovery five times; every root PID exits within the bound, recovery is visible, normal exit succeeds, and the fixture directory is immediately removable | Pass |
 
@@ -41,5 +42,6 @@ only after driving public TUI input, to assert the session header and message
 parent chain. Approval and rollback evidence similarly observes the workspace
 before and after public key/command input.
 
-Every TUI behavior and the separately tracked crash-tail stability requirement
-now have native PTY evidence.
+The mapped lifecycle, prompt, agent/session and crash-tail behaviors above have
+native PTY evidence. The read-only-analysis scenario, remaining inventory rows,
+minimum-size fallback and explicit unsupported-mouse product copy remain open.

@@ -27,7 +27,12 @@ describe("[tui-render] interactive inputs", () => {
     const onCommand = vi.fn();
     const view = render(
       <ThemeProvider>
-        <Prompt disabled={false} onSubmit={vi.fn()} onCommand={onCommand} />
+        <Prompt
+          disabled={false}
+          onSubmit={vi.fn()}
+          onCommand={onCommand}
+          onCancel={vi.fn()}
+        />
       </ThemeProvider>,
     );
 
@@ -51,11 +56,59 @@ describe("[tui-render] interactive inputs", () => {
     });
   });
 
+  it("navigates command suggestions with Down and reverse Tab", async () => {
+    const onCommand = vi.fn();
+    const commandPrompt = () => (
+      <ThemeProvider>
+        <Prompt
+          disabled={false}
+          onSubmit={vi.fn()}
+          onCommand={onCommand}
+          onCancel={vi.fn()}
+        />
+      </ThemeProvider>
+    );
+    const down = render(commandPrompt());
+
+    await inputReady();
+    down.stdin.write("/");
+    await inputReady();
+    down.stdin.write("\u001B[B");
+    await inputReady();
+    down.stdin.write("\t");
+    await vi.waitFor(() => {
+      expect(plain(down.lastFrame())).toContain('q="/init"');
+    });
+    down.stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(onCommand).toHaveBeenCalledWith({ kind: "init", force: false });
+    });
+    down.unmount();
+
+    const reverse = render(commandPrompt());
+    await inputReady();
+    reverse.stdin.write("/");
+    await inputReady();
+    reverse.stdin.write("\u001B[Z");
+    await inputReady();
+    reverse.stdin.write("\t");
+    await inputReady();
+    reverse.stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(onCommand).toHaveBeenCalledWith({ kind: "exit" });
+    });
+  });
+
   it("handles Windows DEL input before submitting a plain task", async () => {
     const onSubmit = vi.fn();
     const view = render(
       <ThemeProvider>
-        <Prompt disabled={false} onSubmit={onSubmit} onCommand={vi.fn()} />
+        <Prompt
+          disabled={false}
+          onSubmit={onSubmit}
+          onCommand={vi.fn()}
+          onCancel={vi.fn()}
+        />
       </ThemeProvider>,
     );
 
@@ -71,6 +124,178 @@ describe("[tui-render] interactive inputs", () => {
 
     await vi.waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith("tas");
+    });
+  });
+
+  it("edits CJK text with Home, End, Left, Backspace and forward Delete", async () => {
+    const onSubmit = vi.fn();
+    const view = render(
+      <ThemeProvider>
+        <Prompt
+          disabled={false}
+          onSubmit={onSubmit}
+          onCommand={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    await inputReady();
+    view.stdin.write("中🙂文");
+    await inputReady();
+    view.stdin.write("\u001B[H");
+    await inputReady();
+    view.stdin.write("\u001B[3~");
+    await inputReady();
+    view.stdin.write("\u001B[F");
+    await inputReady();
+    view.stdin.write("!");
+    await inputReady();
+    view.stdin.write("\u001B[D");
+    await inputReady();
+    view.stdin.write("\u007F");
+    await inputReady();
+    view.stdin.write("\r");
+
+    await vi.waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith("🙂!");
+    });
+  });
+
+  it("recalls prompt history and prevents duplicate blank submission", async () => {
+    const onSubmit = vi.fn();
+    const view = render(
+      <ThemeProvider>
+        <Prompt
+          disabled={false}
+          onSubmit={onSubmit}
+          onCommand={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    await inputReady();
+    view.stdin.write("remember me");
+    await inputReady();
+    view.stdin.write("\r");
+    view.stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    await inputReady();
+    view.stdin.write("\u001B[A");
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).toContain("remember me");
+    });
+    await inputReady();
+    view.stdin.write("\r");
+
+    await vi.waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledTimes(2);
+      expect(onSubmit).toHaveBeenLastCalledWith("remember me");
+    });
+  });
+
+  it("handles Ctrl+W, Ctrl+U, Escape and two-stage idle Ctrl+C", async () => {
+    const onCancel = vi.fn();
+    const view = render(
+      <ThemeProvider>
+        <Prompt
+          disabled={false}
+          onSubmit={vi.fn()}
+          onCommand={vi.fn()}
+          onCancel={onCancel}
+        />
+      </ThemeProvider>,
+    );
+
+    await inputReady();
+    view.stdin.write("alpha beta");
+    await inputReady();
+    view.stdin.write("\u0017");
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).toContain("alpha ");
+      expect(plain(view.lastFrame())).not.toContain("beta");
+    });
+    view.stdin.write("\u0015");
+    await inputReady();
+    view.stdin.write("escape me");
+    await inputReady();
+    view.stdin.write("\u001B");
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).not.toContain("escape me");
+    });
+
+    view.stdin.write("draft");
+    await inputReady();
+    view.stdin.write("\u0003");
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).not.toContain("draft");
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+    await inputReady();
+    view.stdin.write("\u0003");
+    await vi.waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("preserves input across hidden modal focus and submits multiline paste", async () => {
+    const onSubmit = vi.fn();
+    const onCancel = vi.fn();
+    const prompt = (hidden: boolean, disabled = hidden) => (
+      <ThemeProvider>
+        <Prompt
+          disabled={disabled}
+          hidden={hidden}
+          onSubmit={onSubmit}
+          onCommand={vi.fn()}
+          onCancel={onCancel}
+        />
+      </ThemeProvider>
+    );
+    const view = render(prompt(false));
+
+    await inputReady();
+    view.stdin.write("draft");
+    await inputReady();
+    view.rerender(prompt(true));
+    await inputReady();
+    view.stdin.write(" leaked");
+    await inputReady();
+    view.rerender(prompt(false));
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).toContain("draft");
+      expect(plain(view.lastFrame())).not.toContain("leaked");
+    });
+
+    view.rerender(prompt(false, true));
+    await inputReady();
+    view.stdin.write(" running leak");
+    await inputReady();
+    view.rerender(prompt(false));
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).toContain("draft");
+      expect(plain(view.lastFrame())).not.toContain("running leak");
+    });
+
+    await inputReady();
+    view.stdin.write("\u0015");
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).not.toContain("draft");
+    });
+    await inputReady();
+    view.stdin.write("\u001B[200~第一行\r\n第二行\u001B[201~");
+    await vi.waitFor(() => {
+      expect(plain(view.lastFrame())).toContain("第一行↵第二行");
+    });
+    await inputReady();
+    view.stdin.write("\r");
+
+    await vi.waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith("第一行\n第二行");
     });
   });
 

@@ -33,6 +33,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 23 | `codex/p1-tui-crash-soak` | Five-cycle bounded ConPTY crash cleanup | Ready for draft review; TUI crash-tail blocker closed | 5/5 soak, 11 E2E and 13 recovery assertions passed; ABI restored |
 | 24 | `codex/p1-eval-recorded-foundation` | Frozen Headless deterministic/recorded benchmark and scorecard | In progress; offline thresholds pass, approved live threshold remains open | 13/13 deterministic, 13/13 recorded, unsafe refusal 1/1, regression 0%; 17 eval assertions and ABI restore passed |
 | 25 | `codex/p1-eval-live-benchmark` | Approved custom-provider live benchmark | Ready for draft review; EVAL-001 closed | 12/13 (92.31%) in 155 seconds; controlled cross-file terminal failure retained; ABI restored |
+| 26 | `codex/p1-tui-prompt-editor` | Unicode prompt state machine and native input contract | Ready for draft review; TUI-PROMPT-001 closed | 13 TUI unit, 15 render and 3 real ConPTY lifecycle/prompt assertions pass |
 
 ## Work log
 
@@ -705,13 +706,43 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   run. Rollback removes only the opt-in test/config/script entry and reopens
   `EVAL-001`; it cannot revoke the external model usage already incurred.
 
+### 2026-07-29 - Unicode TUI prompt editor
+
+- Replaced tail-only prompt mutation with a pure Unicode code-point state
+  machine covering Left/Right, Home/End, Backspace, forward Delete, Ctrl+W,
+  Ctrl+U, history/draft recall, duplicate-submit prevention and a 16,384-point
+  input bound. Multiline/tab content renders as visible single-line markers.
+- Added bounded raw Windows/ANSI decoding because Ink 5 does not expose
+  Home/End in its Key object. Split bracketed paste and coalesced ConPTY key
+  sequences are decoded without echoing unknown control sequences.
+- Prompt input now remains mounted behind modal routes while its raw listener
+  is inactive. Ink tests prove modal and running-state input does not leak and
+  the original draft returns afterward. Idle Ctrl+C clears a non-empty draft,
+  exits when empty, and the global handler still cancels an active run.
+- The first native journey exposed coalesced Home/End/Left/Delete data; the
+  decoder was changed to tokenise a chunk in order. Subsequent attempts exposed
+  a callback-driven subscription gap, so callbacks moved behind stable refs.
+  The final public workflow passed without a model or workspace mutation.
+- Focused evidence passed: 13 TUI unit assertions, 15 Ink render assertions and
+  3 real ConPTY lifecycle/prompt assertions. `pnpm docs:tui-actions` now emits
+  23 keyboard/input actions with complete evidence for every Prompt row; only
+  provider-editor controls and skill-picker Escape/Q remain `None`.
+- The complete default offline gate passed 632 unit, 17 recorded-eval,
+  80 Desktop-main, renderer/preload/CLI, 13 TUI unit, 15 render, 3 lifecycle,
+  11 E2E and 13 recovery assertions in 193 seconds. Every native matrix
+  restored and re-verified Electron 33.4.11 / modules 130; root typecheck and
+  production build also passed.
+- This batch was entirely offline and did not read `custom.txt`. Rollback
+  restores the previous tail-only editor and removes the new prompt-specific
+  unit/ConPTY evidence; it does not affect persisted sessions or workspaces.
+
 ## Current blockers
 
 1. `CI-MAIN-001` still needs the required Node 22/24, package,
    dependency-review and audit jobs on a main-target GitHub PR. The clean
    hosted Release workflow and branch CodeQL checks are green, but the
    main-target event contract must not be inferred from them.
-2. TUI acceptance still has public prompt/editor actions without committed
+2. TUI acceptance still has two non-Prompt input rows without committed
    identifiers, an incomplete terminal-size/minimum fallback matrix, no
    explicit read-only-analysis PTY case, and no final unsupported-mouse product
    copy.

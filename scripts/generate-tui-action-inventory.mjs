@@ -9,6 +9,14 @@ const read = (...parts) => fs.readFileSync(rel(...parts), "utf8");
 const commandSource = read("apps", "cli", "src", "tui", "commands.ts");
 const appSource = read("apps", "cli", "src", "tui", "ink-tui.tsx");
 const promptSource = read("apps", "cli", "src", "tui", "prompt.tsx");
+const promptEditorSource = read(
+  "apps",
+  "cli",
+  "src",
+  "tui",
+  "prompt-editor.ts",
+);
+const promptImplementationSource = `${promptSource}\n${promptEditorSource}`;
 const approvalSource = read("apps", "cli", "src", "tui", "approval.tsx");
 const providerSource = read("apps", "cli", "src", "tui", "provider-picker.tsx");
 const skillSource = read("apps", "cli", "src", "tui", "skill-install-picker.tsx");
@@ -25,6 +33,16 @@ const inputRenderTestPath = rel(
 );
 const inputRenderTestSource = fs.existsSync(inputRenderTestPath)
   ? fs.readFileSync(inputRenderTestPath, "utf8")
+  : "";
+const promptEditorTestPath = rel(
+  "apps",
+  "cli",
+  "src",
+  "tui",
+  "prompt-editor.test.ts",
+);
+const promptEditorTestSource = fs.existsSync(promptEditorTestPath)
+  ? fs.readFileSync(promptEditorTestPath, "utf8")
   : "";
 const ptyTestPath = rel(
   "apps",
@@ -235,16 +253,20 @@ function requirePattern(source, pattern, label) {
 }
 
 const keyboardRows = [
-  ["Global", "Ctrl+C", appSource, /key\.ctrl\s*&&\s*input\s*===\s*"c"/, "Cancel an active run; otherwise exit"],
+  ["Global", "Ctrl+C", appSource, /key\.ctrl\s*&&\s*input\s*===\s*"c"[\s\S]*loop\.isRunning/, "Cancel an active run; an empty idle prompt exits"],
   ["Terminal", "Resize below 80 columns", appSource, /stdout\.on\("resize"[\s\S]*width\s*<\s*NARROW_BREAKPOINT/, "Reflow the frame and hide the trace panel"],
-  ["Prompt", "Enter", promptSource, /if\s*\(key\.return\)/, "Submit a task or slash command; ignore blank input"],
-  ["Prompt", "Backspace/Delete/Ctrl+H/BS/DEL", promptSource, /function isErase\(/, "Erase the final code unit"],
-  ["Prompt", "Ctrl+W", promptSource, /key\.ctrl\s*&&\s*input\s*===\s*"w"/, "Erase the previous word"],
-  ["Prompt", "Ctrl+U", promptSource, /key\.ctrl\s*&&\s*input\s*===\s*"u"/, "Clear the input"],
-  ["Prompt", "Up/Down", promptSource, /key\.upArrow[\s\S]*key\.downArrow/, "Move through command suggestions"],
-  ["Prompt", "Tab", promptSource, /if\s*\(key\.tab\)/, "Complete the selected slash command"],
-  ["Prompt", "Escape", promptSource, /if\s*\(key\.escape\)/, "Clear prompt and command suggestions"],
-  ["Prompt", "Ctrl+C", promptSource, /key\.ctrl\s*&&\s*input\s*===\s*"c"/, "Clear prompt input"],
+  ["Prompt", "Enter", promptSource, /case\s+"submit"[\s\S]*submitPrompt/, "Submit once as a task or slash command; ignore blank/whitespace input"],
+  ["Prompt", "Backspace/Delete/Ctrl+H/BS/DEL", promptEditorSource, /DELETE_SEQUENCES[\s\S]*case\s+"backspace"[\s\S]*case\s+"delete"/, "Erase one Unicode code point before or at the cursor"],
+  ["Prompt", "Left/Right", promptImplementationSource, /LEFT_SEQUENCES[\s\S]*RIGHT_SEQUENCES[\s\S]*case\s+"left"[\s\S]*case\s+"right"/, "Move the Unicode code-point cursor one position"],
+  ["Prompt", "Home/End", promptImplementationSource, /HOME_SEQUENCES[\s\S]*END_SEQUENCES[\s\S]*case\s+"home"[\s\S]*case\s+"end"/, "Move the cursor to the start or end"],
+  ["Prompt", "Ctrl+W", promptImplementationSource, /value\s*===\s*"\\u0017"[\s\S]*type:\s*"delete-word"/, "Erase the previous word at the cursor"],
+  ["Prompt", "Ctrl+U", promptImplementationSource, /value\s*===\s*"\\u0015"[\s\S]*type:\s*"clear"/, "Clear the input"],
+  ["Prompt", "Up/Down", promptImplementationSource, /case\s+"up"[\s\S]*history-previous[\s\S]*case\s+"down"[\s\S]*history-next/, "Move through command suggestions or prompt history"],
+  ["Prompt", "Tab/Shift+Tab", promptEditorSource, /value\s*===\s*"\\t"[\s\S]*value\s*===\s*"\\u001b\[Z"[\s\S]*type:\s*"tab"/, "Complete or reverse-select slash-command suggestions"],
+  ["Prompt", "Escape", promptSource, /case\s+"escape"[\s\S]*type:\s*"clear"/, "Clear prompt and command suggestions"],
+  ["Prompt", "Ctrl+C", promptEditorSource, /value\s*===\s*"\\u0003"[\s\S]*type:\s*"interrupt"/, "Clear a non-empty prompt; exit when already empty"],
+  ["Prompt", "Ctrl+Enter", promptEditorSource, /CTRL_ENTER_SEQUENCES[\s\S]*type:\s*"insert",\s*text:\s*"\\n"/, "Insert a newline when the terminal exposes a distinct modified sequence"],
+  ["Prompt", "Text / bracketed paste", promptEditorSource, /BRACKETED_PASTE_START[\s\S]*sanitizePromptText[\s\S]*MAX_PASTE_BUFFER_CODE_UNITS/, "Insert CJK/multiline text, filter controls and cap input at 16,384 code points"],
   ["Approval", "Y", approvalSource, /k\s*===\s*"y"/, "Approve the pending patch"],
   ["Approval", "N/Q", approvalSource, /k\s*===\s*"n"\s*\|\|\s*k\s*===\s*"q"/, "Reject the pending patch"],
   ["Provider picker", "Up/Down", providerSource, /key\.upArrow[\s\S]*key\.downArrow/, "Move through providers"],
@@ -260,9 +282,17 @@ for (const [, key, source, pattern, result] of keyboardRows) {
 }
 
 const inputRenderEvidence = new Map([
-  ["Prompt\u0000Enter", "command/plain submission"],
-  ["Prompt\u0000Backspace/Delete/Ctrl+H/BS/DEL", "Windows DEL editing"],
-  ["Prompt\u0000Tab", "command completion"],
+  ["Prompt\u0000Enter", "command/plain and duplicate-submit guards"],
+  ["Prompt\u0000Backspace/Delete/Ctrl+H/BS/DEL", "Windows DEL and CJK editing"],
+  ["Prompt\u0000Left/Right", "CJK cursor editing"],
+  ["Prompt\u0000Home/End", "CJK start/end editing"],
+  ["Prompt\u0000Ctrl+W", "word erase"],
+  ["Prompt\u0000Ctrl+U", "line clear"],
+  ["Prompt\u0000Up/Down", "suggestion navigation and history recall"],
+  ["Prompt\u0000Tab/Shift+Tab", "forward/reverse command selection"],
+  ["Prompt\u0000Escape", "prompt/palette clear"],
+  ["Prompt\u0000Ctrl+C", "clear-then-cancel behavior"],
+  ["Prompt\u0000Text / bracketed paste", "multiline paste and modal/run focus"],
   ["Approval\u0000Y", "approval callback"],
   ["Approval\u0000N/Q", "rejection callback"],
   ["Provider picker\u0000Up/Down", "two-way navigation"],
@@ -273,6 +303,11 @@ const inputRenderEvidence = new Map([
 ]);
 const requiredInputEvidence = [
   "handles Windows DEL input",
+  "edits CJK text with Home, End, Left, Backspace and forward Delete",
+  "recalls prompt history and prevents duplicate blank submission",
+  "navigates command suggestions with Down and reverse Tab",
+  "handles Ctrl+W, Ctrl+U, Escape and two-stage idle Ctrl+C",
+  "preserves input across hidden modal focus and submits multiline paste",
   "routes approval keys",
   "navigates both directions in the skill picker",
   "navigates, advances and cancels the provider picker",
@@ -282,10 +317,20 @@ const inputEvidenceReady =
   requiredInputEvidence.every((needle) => inputRenderTestSource.includes(needle));
 const inputRenderTestLabel =
   "apps/cli/src/tui/inputs.render.test.tsx ([tui-render])";
+const promptUnitEvidenceReady =
+  promptEditorTestSource.includes('describe("[tui] prompt editor state machine"') &&
+  promptEditorTestSource.includes("decodes Windows and ANSI editing keys") &&
+  promptEditorTestSource.includes("normalizes multiline paste") &&
+  promptEditorTestSource.includes("tokenizes coalesced ConPTY editing keys");
+const promptUnitTestLabel =
+  "apps/cli/src/tui/prompt-editor.test.ts ([tui])";
 const ptyEvidenceReady =
-  ptyTestSource.includes('describeWindows("[tui-pty] Windows ConPTY lifecycle"') &&
+  ptyTestSource.includes('describeWindows("[tui-pty] Windows PTY lifecycle"') &&
   ptyTestSource.includes("renders, resizes, completes /help and exits cleanly") &&
-  ptyTestSource.includes("turns idle Ctrl+C into deterministic process cleanup");
+  ptyTestSource.includes("turns idle Ctrl+C into deterministic process cleanup") &&
+  ptyTestSource.includes(
+    "edits Unicode paste, preserves a draft across resize and recalls history",
+  );
 const ptyTestLabel = "apps/cli/src/tui/conpty.pty.test.ts ([tui-pty])";
 
 const modalNames = [
@@ -321,19 +366,31 @@ const keyboardTable = table(
   ["Surface", "Key", "Implemented result", "Automated test"],
   keyboardRows.map(([surface, key, , , result]) => {
     const inputEvidence = inputRenderEvidence.get(`${surface}\u0000${key}`);
+    const evidence = [];
+    if (inputEvidenceReady && inputEvidence) {
+      evidence.push(`${inputRenderTestLabel} - ${inputEvidence}`);
+    }
+    if (
+      promptUnitEvidenceReady &&
+      surface === "Prompt" &&
+      ["Ctrl+Enter", "Text / bracketed paste"].includes(key)
+    ) {
+      evidence.push(promptUnitTestLabel);
+    }
     const ptyEvidence =
       ptyEvidenceReady &&
       ((surface === "Global" && key === "Ctrl+C") ||
-        (surface === "Terminal" && key === "Resize below 80 columns"));
+        (surface === "Terminal" && key === "Resize below 80 columns") ||
+        (surface === "Prompt" &&
+          ["Left/Right", "Home/End", "Up/Down", "Text / bracketed paste"].includes(
+            key,
+          )));
+    if (ptyEvidence) evidence.push(ptyTestLabel);
     return [
       surface,
       key,
       result,
-      inputEvidenceReady && inputEvidence
-        ? `${inputRenderTestLabel} - ${inputEvidence}`
-        : ptyEvidence
-          ? ptyTestLabel
-          : "None",
+      evidence.length > 0 ? evidence.join("; ") : "None",
     ];
   }),
 );
@@ -383,9 +440,10 @@ ${commandTable}
 
 ${keyboardTable}
 
-Not implemented in the current prompt editor: cursor movement, Home/End,
-history recall, multiline paste semantics, PageUp/PageDown message navigation,
-or preservation tests across resize.
+The prompt editor has committed unit, Ink-render and native ConPTY evidence for
+Unicode cursor editing, Home/End, history, bounded multiline paste, control
+filtering, resize preservation and modal/run input ownership. PageUp/PageDown
+message navigation is outside the prompt editor and remains incomplete.
 
 ## Modal routes
 
@@ -402,10 +460,10 @@ ${hasMouse ? "Mouse source exists and requires a dedicated interaction audit." :
 
 This inventory is discovery evidence, not completion evidence. Slash-command
 catalogue/parser and committed Ink interaction coverage are recorded where
-present. ConPTY startup, resize, help completion, normal exit and idle Ctrl+C
-are also covered on Windows. Remaining keyboard rows and end-to-end agent
-workflows still require stable test identifiers. CI must regenerate this file
-and fail on a diff.
+present. ConPTY startup, Unicode/paste editing, resize preservation, history,
+help completion, normal exit and idle Ctrl+C are covered on Windows. Rows that
+still say \`None\` remain incomplete. CI must regenerate this file and fail on
+a diff.
 `;
 
 const outputPath = rel("docs", "tui", "action-inventory.md");
