@@ -1,0 +1,61 @@
+{
+  "name": "@nlc/vscode",
+  "displayName": "NL Codey",
+  "publisher": "nl-codey",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run the NL Codey agent from a VS Code workspace through the shared CLI host protocol.",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:nlCodey.runTask",
+    "onCommand:nlCodey.stopTask"
+  ],
+  "main": "./dist/extension.cjs",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "nlCodey.runTask",
+        "title": "NL Codey: Run Task"
+      },
+      {
+        "command": "nlCodey.stopTask",
+        "title": "NL Codey: Stop Task"
+      }
+    ],
+    "configuration": {
+      "title": "NL Codey",
+      "properties": {
+        "nlCodey.cliPath": {
+          "type": "string",
+          "default": "nlc",
+          "description": "NL Codey native executable or absolute .js/.mjs entry path. Command-shell .cmd/.bat shims are rejected."
+        },
+        "nlCodey.nodePath": {
+          "type": "string",
+          "default": "node",
+          "description": "Node.js executable used only when cliPath points to a .js/.mjs entry."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@nlc/shared": "workspace:*",
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

@@ -52,6 +52,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
 | 42 | `codex/p1-renderer-browser-split` | Browser-safe shared exports, sandboxed preload and packaged renderer startup | Ready for draft review; `RENDERER-001` closed | Full offline gate green; 652 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 43 | `codex/p1-project-indexer-coverage` | Deterministic bounded scanning and project-indexer behavior matrix | Ready for draft review; `INDEX-001` closed | Full offline gate green; 670 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 | 44 | `codex/p1-cli-host-protocol` | Fail-closed CLI approval protocol for embedding hosts | Ready for draft review; `VSCE-001` protocol foundation complete, extension remains | Full offline gate green; 670 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
+| 45 | `codex/p1-vscode-host-adapter` | VS Code run/stop adapter over the shared CLI runtime and policy | Ready for draft review; `VSCE-001` implementation complete, release evidence remains | Full offline gate green; 679 unit, 17 recorded-eval, 82 Desktop-main, renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14 recovery assertions pass |
 
 ## Work log
 
@@ -1285,6 +1286,42 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
   the host-only flag/parser and returns CLI approvals to the existing
   interactive or explicit `--yes` paths.
 
+### 2026-07-29 - Add the VS Code host adapter
+
+- A real VS Code extension manifest and CJS entry now register **NL Codey: Run
+  Task** and **NL Codey: Stop Task**. The adapter launches the compiled `nlc`
+  runtime with separate arguments, `shell: false`, a bounded task and one
+  resolved workspace root, so it does not duplicate native Storage inside the
+  extension host or interpret task text as a command.
+- Windows command-shell `.cmd`/`.bat` shims are rejected explicitly because
+  Node cannot execute them with `shell: false`. The adapter accepts a native
+  `nlc.exe`, or safely invokes a configured `.js`/`.mjs` entry through a
+  separately configured Node executable without adding a command shell.
+- CLI stdout is reassembled as bounded NDJSON. Only a well-formed
+  `patch_ready` with a non-empty Run ID opens the modal preview; the returned
+  message reuses that exact ID and sends `approve` only after the user chooses
+  **Apply**. Reject/dismiss, prompt failure or a closed channel sends or
+  preserves denial.
+- Oversized stdout terminates the child, malformed events never reach the
+  approval UI, and child diagnostics pass through the shared bounded
+  credential/home redaction boundary. Multi-root workspaces fail visibly
+  instead of selecting a mutation target heuristically.
+- Nine dedicated assertions cover command registration/deactivation, shell-disabled
+  argument framing, chunked NDJSON, exact approval/rejection, forged input,
+  redaction, size limits, concurrency and stop behavior. Extension and root
+  typecheck, root build and compiled-export smoke pass. The complete offline
+  final composite passed 679 unit, 17 recorded-eval, 82 Desktop-main,
+  renderer/preload, 12 CLI, 16 TUI unit, 21 render, 4 lifecycle, 13 E2E and 14
+  recovery assertions in 293 seconds, then restored Electron 33.4.11 / modules
+  130.
+- `VSCE-001` is closed at its adapter acceptance boundary. The reality matrix
+  remains honest at Partial because VSIX packaging/install, manual VS Code-host
+  verification, multi-root selection and richer Session/Rollback UI remain
+  release/product follow-ups.
+- This batch makes no LLM call and does not read `custom.txt`. Rollback removes
+  `apps/vscode`, its workspace build/test registration and the host-surface
+  evidence while leaving the standalone CLI protocol from Batch 44 intact.
+
 ## Current blockers
 
 1. `CI-MAIN-001` now has green main-target Node 22/24, Windows
@@ -1297,7 +1334,7 @@ Overall state: **ACTIVE - LOCAL RELEASE GATES GREEN; HOSTED CI/TUI/PRODUCT WORK 
    evidence. Session write-failure/path containment and multilevel/cross-parent/
    invalid-target lineage now pass; remaining UI-state cells and
    release-candidate manual verification remain.
-3. The broader production goal still requires a VS Code adapter, production
-   embedding compatibility evidence and the feature/experimental disposition
-   work listed in
+3. The broader production goal still requires VSIX/manual VS Code release
+   evidence, production embedding compatibility evidence and the
+   feature/experimental disposition work listed in
    `docs/execution/master-backlog.md`.

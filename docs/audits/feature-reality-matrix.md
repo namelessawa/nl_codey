@@ -21,7 +21,7 @@ evidence.
 ```text
 Production: 0
 Functional: 21
-Partial: 1
+Partial: 2
 Scaffold: 1
 Dead: 0
 Unknown: 0
@@ -36,6 +36,7 @@ that the functional modules are unusable.
 | --- | --- | --- | --- | --- |
 | `apps/desktop` | Electron main/sandboxed preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery, packaged main/preload/renderer launch and Windows installer gates pass | Full public workflow E2E remains incomplete | Functional |
 | `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, generated input inventory and acceptance matrices, PageUp/PageDown safe-no-op input contract, explicit Experimental mouse boundary, terminal-size matrix, read-only refusal, corrected-provider new Run, redacted failures, visible Session write failure, contained resume/show, corrupt/partial recovery, multilevel/cross-parent/invalid-target lineage, bounded output/native scrollback, real ConPTY workflows and crash soak pass | Remaining UI-state cells and release-candidate manual verification remain incomplete | Functional |
+| `apps/vscode` | Command Palette run/stop adapter spawns the existing CLI host protocol with `shell: false`; exact-Run modal approval feeds the shared AgentService/policy/storage/recovery chain | Nine command-registration/lifecycle, spawn-boundary, NDJSON framing, approval, malformed/oversized event, redaction and stop assertions plus typecheck/build/artifact smoke pass | VSIX packaging/install and manual VS Code-host evidence are absent; multi-root, Session browsing and rollback UI are explicit gaps | Partial |
 
 ## Core
 

@@ -5,7 +5,7 @@
   "description": "NL_Codey — local Windows GUI coding agent",
   "scripts": {
     "dev": "pnpm --filter @nlc/desktop dev",
-    "build": "pnpm -r --filter \"./packages/*/*\" build && pnpm --filter @nlc/desktop build && pnpm --filter nlc build",
+    "build": "pnpm -r --filter \"./packages/*/*\" build && pnpm --filter @nlc/desktop build && pnpm --filter nlc build && pnpm --filter @nlc/vscode build",
     "build:packages": "pnpm -r --filter \"./packages/*/*\" build",
     "docs:tui-actions": "node scripts/generate-tui-action-inventory.mjs",
     "docs:mutations": "node scripts/generate-mutation-inventory.mjs",
