@@ -9,17 +9,23 @@
  * don't repeat it here.
  */
 
+import fs from "node:fs";
+import path from "node:path";
 import {
   createDuckDuckGoBackend,
   webFetch,
   webSearch,
   type SearchBackend,
 } from "@nlc/web-tools";
-import { searchChunks } from "@nlc/semantic-index";
+import {
+  annotateSemanticHitStaleness,
+  searchChunks,
+} from "@nlc/semantic-index";
 import type { ExtendedAgentPorts } from "@nlc/agent-core";
 import type {
   MemoryRetrievalOptions,
   ReadMemoryHit,
+  SemanticSearchOptions,
   SemanticSearchToolHit,
   WebFetchToolInput,
   WebSearchToolInput,
@@ -49,14 +55,18 @@ export function buildExtendedPorts(
     semanticSearch: {
       async search(
         query: string,
-        opts?: { topK?: number; kinds?: ("code" | "doc" | "comment")[] },
+        opts?: SemanticSearchOptions,
       ): Promise<SemanticSearchToolHit[]> {
-        const hits = await searchChunks(
+        const storedHits = await searchChunks(
           services.storage,
           embedder,
           workspaceId,
           query,
           opts ?? {},
+        );
+        const hits = annotateSemanticHitStaleness(
+          storedHits,
+          currentMtimesForSemanticHits(ws.rootPath, storedHits),
         );
         return hits.map((h) => {
           const out: SemanticSearchToolHit = {
@@ -65,6 +75,8 @@ export function buildExtendedPorts(
             endLine: h.endLine,
             snippet: h.snippet,
             score: h.score,
+            kind: h.kind,
+            provenance: h.provenance,
           };
           if (h.symbolName !== undefined) out.symbolName = h.symbolName;
           return out;
@@ -129,4 +141,36 @@ export function buildExtendedPorts(
       },
     },
   };
+}
+
+export function currentMtimesForSemanticHits(
+  root: string,
+  hits: readonly { filePath: string }[],
+): Map<string, number> {
+  const rootResolved = path.resolve(root);
+  const out = new Map<string, number>();
+  let rootReal: string;
+  try {
+    rootReal = fs.realpathSync(rootResolved);
+  } catch {
+    return out;
+  }
+  for (const filePath of new Set(hits.map((hit) => hit.filePath))) {
+    try {
+      const absolute = path.resolve(rootResolved, filePath);
+      if (!isInside(rootResolved, absolute)) continue;
+      const real = fs.realpathSync(absolute);
+      if (!isInside(rootReal, real)) continue;
+      const stat = fs.statSync(real);
+      if (stat.isFile()) out.set(filePath, stat.mtimeMs);
+    } catch {
+      // Missing/unreadable paths remain absent and are annotated as missing.
+    }
+  }
+  return out;
+}
+
+function isInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }

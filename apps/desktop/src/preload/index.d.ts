@@ -1,4 +1,4 @@
-import type { AgentApi } from "@nlc/shared";
+import type { AgentApi } from "@nlc/shared/browser";
 
 declare global {
   interface Window {

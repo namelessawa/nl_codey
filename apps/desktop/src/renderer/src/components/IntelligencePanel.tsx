@@ -72,7 +72,7 @@ export function IntelligencePanel({ workspaceId, runId }: IntelligencePanelProps
             <div className="empty">Run a task to inspect git state.</div>
           ))}
         {tab === "search" && <SemanticSearchView workspaceId={workspaceId} />}
-        {tab === "debug" && <DebugView workspaceId={workspaceId} />}
+        {tab === "debug" && <DebugView workspaceId={workspaceId} runId={runId} />}
       </div>
     </div>
   );

@@ -431,6 +431,68 @@ describe("AgentService dynamic tool integration", () => {
     expect(sourceDispatch).not.toHaveBeenCalled();
     expect(detail.steps.some((step) => step.content.includes("degraded mode"))).toBe(true);
   });
+
+  it("denies a mutating dynamic tool when the user rejects its per-call approval", async () => {
+    const sourceDispatch = vi.fn();
+    const harness = createServiceHarness({
+      llm: scriptedLLM([toolTurn(WRITE_SCHEMA.name), stopTurn("must not execute")]),
+      readOnly: false,
+      mutationDecision: "reject",
+      dynamicFactory: () => ({
+        schemas: [WRITE_SCHEMA],
+        dispatch: sourceDispatch,
+        mutatingNames: [WRITE_SCHEMA.name],
+      }),
+    });
+
+    const detail = await runAndWait(harness);
+
+    expect(detail.run.status).toBe("cancelled");
+    expect(sourceDispatch).not.toHaveBeenCalled();
+    expect(detail.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "message",
+          content: expect.stringContaining(
+            `[approval] User rejected ${WRITE_SCHEMA.name} (dynamic.mutate).`,
+          ),
+        }),
+      ]),
+    );
+  });
+
+  it("executes a mutating dynamic tool once after a matching per-call approval", async () => {
+    const sourceDispatch = vi.fn(async (call) => ({
+      name: call.name,
+      resultText: JSON.stringify({ wrote: true }),
+      isError: false,
+    }));
+    const harness = createServiceHarness({
+      llm: scriptedLLM([toolTurn(WRITE_SCHEMA.name), stopTurn("finished")]),
+      readOnly: false,
+      mutationDecision: "approve",
+      dynamicFactory: () => ({
+        schemas: [WRITE_SCHEMA],
+        dispatch: sourceDispatch,
+        mutatingNames: [WRITE_SCHEMA.name],
+      }),
+    });
+
+    const detail = await runAndWait(harness);
+
+    expect(detail.run.status).toBe("done");
+    expect(sourceDispatch).toHaveBeenCalledOnce();
+    expect(detail.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "message",
+          content: expect.stringContaining(
+            `[approval] User approved ${WRITE_SCHEMA.name} (dynamic.mutate).`,
+          ),
+        }),
+      ]),
+    );
+  });
 });
 
 describe("multi-agent dynamic tool role boundary", () => {
@@ -595,6 +657,7 @@ function createServiceHarness(options: {
   readOnly: boolean;
   multiAgentEnabled?: boolean;
   autoApprovePlan?: boolean;
+  mutationDecision?: "approve" | "reject";
   dynamicFactory: () => DynamicToolBundle | null;
   assertToolAllowed?: (toolName: string) => void;
 }): ServiceHarness {
@@ -614,6 +677,15 @@ function createServiceHarness(options: {
   const emit = vi.fn<(event: AgentEvent) => void>((event) => {
     if (options.autoApprovePlan && event.kind === "task_updated") {
       queueMicrotask(() => service.resolvePlanApproval(event.runId, true));
+    }
+    if (options.mutationDecision && event.kind === "patch_ready") {
+      queueMicrotask(() => {
+        if (options.mutationDecision === "approve") {
+          void service.applyPatch(event.runId);
+        } else {
+          service.rejectPatch(event.runId);
+        }
+      });
     }
   });
   const deps: ConstructorParameters<typeof AgentService>[0] = {

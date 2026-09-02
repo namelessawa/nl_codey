@@ -18,6 +18,9 @@ export type SandboxHandle = {
     stdout: string;
     stderr: string;
     exitCode: number;
+    proposedPatch?: string;
+    binaryConflicts?: string[];
+    applied?: false;
   }>;
 };
 
@@ -30,6 +33,9 @@ export type ToolInvocation = {
 export type InvocationResult = {
   output: string;
   exitCode: number;
+  proposedPatch?: string;
+  binaryConflicts?: string[];
+  applied?: false;
 };
 
 export class PluginHost {
@@ -65,6 +71,9 @@ export class PluginHost {
     return {
       output: result.stdout || result.stderr,
       exitCode: result.exitCode,
+      ...(result.proposedPatch ? { proposedPatch: result.proposedPatch } : {}),
+      ...(result.binaryConflicts ? { binaryConflicts: result.binaryConflicts } : {}),
+      ...(result.applied === false ? { applied: false as const } : {}),
     };
   }
 }

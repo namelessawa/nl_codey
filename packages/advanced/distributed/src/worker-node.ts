@@ -1,7 +1,8 @@
 /**
  * Worker node port. Implemented on the worker machine to receive task-node
- * submissions from the coordinator. This package only defines the contract;
- * the desktop main process implements transport (mTLS over HTTPS).
+ * submissions from the coordinator. This package only defines the internal
+ * contract. Production hosts deliberately expose no worker transport until
+ * authenticated identity, replay protection and recovery are implemented.
  */
 import type { TaskNode, TaskNodeStatus } from "@nlc/shared";
 

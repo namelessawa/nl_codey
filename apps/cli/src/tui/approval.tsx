@@ -15,6 +15,7 @@ export type ApprovalProps = {
 export const Approval = memo(function Approval({ patch, onApprove, onReject }: ApprovalProps) {
   const { palette, box: glyph } = useTheme();
   const border = useAnimatedBorder(4);
+  const isCommand = patch.startsWith("$ ");
   useInput((input) => {
     const k = input.toLowerCase();
     if (k === "y") onApprove();
@@ -32,7 +33,7 @@ export const Approval = memo(function Approval({ patch, onApprove, onReject }: A
       paddingX={1}
     >
       <Text color={palette.accent} bold>
-        [verify] pending patch
+        [verify] pending {isCommand ? "command" : "patch"}
       </Text>
       <Text color={palette.textDim}>{glyph.singleH.repeat(40)}</Text>
       <Text color={palette.text}>{preview}</Text>
@@ -43,7 +44,7 @@ export const Approval = memo(function Approval({ patch, onApprove, onReject }: A
         <Text color={palette.success} bold>
           y
         </Text>{" "}
-        to apply,{" "}
+        to {isCommand ? "run" : "apply"},{" "}
         <Text color={palette.danger} bold>
           n
         </Text>{" "}

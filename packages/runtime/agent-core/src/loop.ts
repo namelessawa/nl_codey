@@ -1,4 +1,5 @@
 import type {
+  AgentRunFailureCode,
   ChatLLMProvider,
   LLMChunk,
   LLMFinishReason,
@@ -75,7 +76,7 @@ export type ToolLoopOutcome = {
   finalMessages: LLMMessage[];
 } & (
   | { state: "done"; finalText: string }
-  | { state: "failed"; reason: string }
+  | { state: "failed"; reason: string; failureCode?: AgentRunFailureCode }
   | { state: "cancelled" }
   | { state: "budget_exceeded"; reason: string }
 );

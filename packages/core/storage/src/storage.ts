@@ -25,6 +25,13 @@ import type {
   Workspace,
 } from "@nlc/shared";
 import {
+  AgentRunLifecycleError,
+  assertAgentRunTransition,
+  isAgentRunState,
+  isTerminalAgentRunState,
+  redactSensitiveText,
+} from "@nlc/shared";
+import {
   COLUMN_MIGRATIONS,
   INDEX_SQL,
   SCHEMA_SQL,
@@ -65,6 +72,10 @@ type RunRow = {
   iteration_count: number;
   model_name: string | null;
   exit_reason: string | null;
+  session_id: string | null;
+  session_file_path: string | null;
+  runtime_instance_id: string | null;
+  owner_pid: number | null;
 };
 type StepRow = { id: string; run_id: string; type: string; content: string; created_at: number };
 type SnapshotRow = {
@@ -72,7 +83,9 @@ type SnapshotRow = {
   run_id: string;
   file_path: string;
   before_content: string;
+  before_existed: number;
   after_content: string | null;
+  after_existed: number | null;
   created_at: number;
   iteration: number;
   snapshot_type: string;
@@ -86,6 +99,41 @@ export type RunUsageDelta = {
   toolCalls?: number;
   iterations?: number;
 };
+
+export type CreateRunOptions = {
+  sessionId?: string;
+  sessionFilePath?: string;
+  runtimeInstanceId?: string;
+  ownerPid?: number;
+};
+
+export type StartupRecovery = {
+  runId: string;
+  workspaceId: string;
+  previousStatus: AgentRunState;
+  sessionId: string | null;
+  sessionFilePath: string | null;
+};
+
+export type ReconcileInterruptedRunOptions = {
+  currentPid?: number;
+  now?: number;
+  legacyGraceMs?: number;
+  isProcessAlive?: (pid: number) => boolean;
+};
+
+export class StorageMigrationError extends Error {
+  readonly backupPath: string;
+
+  constructor(backupPath: string, cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Storage migration failed; the pre-migration backup is preserved at ${backupPath}. ${detail}`,
+    );
+    this.name = "StorageMigrationError";
+    this.backupPath = backupPath;
+  }
+}
 
 /** Thin synchronous persistence layer over SQLite. Construction runs the schema. */
 export class Storage {
@@ -106,23 +154,41 @@ export class Storage {
       fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     }
     this.db = new Database(dbPath);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("foreign_keys = ON");
-    // Detect whether this is a fresh DB (no `workspaces` table yet) BEFORE
-    // we run SCHEMA_SQL, so we can stamp schema_meta straight to the latest
-    // version on first install instead of pretending it's a v1 legacy DB
-    // that needs the structural rewrite.
-    const isFreshDb = !this.hasTable("workspaces");
-    // Order matters: create tables, then add columns to pre-existing tables,
-    // then run structural-version migrations, then create indexes. The
-    // structural migrations rebuild constrained tables (FK CASCADEs), which
-    // must wait for any additive columns from COLUMN_MIGRATIONS so the rebuild
-    // copies the full row shape; indexes have to come last because some
-    // reference columns added by either migration step.
-    this.db.exec(SCHEMA_SQL);
-    this.migrate();
-    this.applyStructuralMigrations(isFreshDb);
-    this.db.exec(INDEX_SQL);
+    let backupPath: string | null = null;
+    try {
+      // Detect any pre-existing product table before SCHEMA_SQL creates the
+      // latest set. Old Phase-1/2 databases do not always contain workspaces,
+      // so checking that table alone can misclassify a real legacy database as
+      // a fresh install and skip its structural migration.
+      const isFreshDb = !this.hasAnyUserTable();
+      if (
+        dbPath !== ":memory:" &&
+        !isFreshDb &&
+        this.requiresMigration()
+      ) {
+        backupPath = this.createMigrationBackup(dbPath);
+      }
+      this.db.pragma("journal_mode = WAL");
+      this.db.pragma("foreign_keys = ON");
+      // Order matters: create tables, then add columns to pre-existing tables,
+      // then run structural-version migrations, then create indexes. The
+      // structural migrations rebuild constrained tables (FK CASCADEs), which
+      // must wait for any additive columns from COLUMN_MIGRATIONS so the rebuild
+      // copies the full row shape; indexes have to come last because some
+      // reference columns added by either migration step.
+      this.db.exec(SCHEMA_SQL);
+      this.migrate();
+      this.applyStructuralMigrations(isFreshDb);
+      this.db.exec(INDEX_SQL);
+    } catch (err) {
+      try {
+        this.db.close();
+      } catch {
+        // Preserve the original migration error; close is best-effort here.
+      }
+      if (backupPath) throw new StorageMigrationError(backupPath, err);
+      throw err;
+    }
     this.kg = new KgStore(this.db);
     this.style = new StyleStore(this.db);
     this.learning = new LearningStore(this.db);
@@ -151,6 +217,68 @@ export class Storage {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
       .get(name) as { name: string } | undefined;
     return row !== undefined;
+  }
+
+  /** True when the file already contains any non-SQLite table. */
+  private hasAnyUserTable(): boolean {
+    const row = this.db
+      .prepare(
+        "SELECT name FROM sqlite_master " +
+          "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1",
+      )
+      .get() as { name: string } | undefined;
+    return row !== undefined;
+  }
+
+  /** Read-only preflight used before any schema or pragma mutation. */
+  private requiresMigration(): boolean {
+    const version = this.hasTable("schema_meta")
+      ? this.readSchemaVersion()
+      : 1;
+    if (version > SCHEMA_VERSION) {
+      throw new Error(
+        `Database schema version ${version} is newer than supported version ${SCHEMA_VERSION}`,
+      );
+    }
+    if (version < SCHEMA_VERSION) return true;
+    for (const statement of COLUMN_MIGRATIONS) {
+      const match =
+        /^ALTER TABLE\s+([A-Za-z0-9_]+)\s+ADD COLUMN\s+([A-Za-z0-9_]+)/i.exec(
+          statement,
+        );
+      if (!match) continue;
+      const table = match[1]!;
+      const column = match[2]!;
+      if (!this.hasColumn(table, column)) return true;
+    }
+    return false;
+  }
+
+  private hasColumn(table: string, column: string): boolean {
+    if (!this.hasTable(table)) return true;
+    const rows = this.db.pragma(`table_info(${table})`) as Array<{
+      name: string;
+    }>;
+    return rows.some((row) => row.name.toLowerCase() === column.toLowerCase());
+  }
+
+  /**
+   * Create a transactionally consistent, immutable recovery point before the
+   * first migration write. VACUUM INTO includes committed WAL content and does
+   * not mutate the source database.
+   */
+  private createMigrationBackup(dbPath: string): string {
+    const absolute = path.resolve(dbPath);
+    const backupPath =
+      `${absolute}.pre-migration-v${this.readLegacySchemaVersion()}` +
+      `-to-v${SCHEMA_VERSION}-${Date.now()}-${randomUUID().slice(0, 8)}.sqlite`;
+    const quoted = backupPath.replaceAll("'", "''");
+    this.db.exec(`VACUUM INTO '${quoted}'`);
+    return backupPath;
+  }
+
+  private readLegacySchemaVersion(): number {
+    return this.hasTable("schema_meta") ? this.readSchemaVersion() : 1;
   }
 
   /** Read the on-disk schema version, defaulting to 1 for legacy installs. */
@@ -244,7 +372,11 @@ export class Storage {
 
   // --- runs ---
 
-  createRun(workspaceId: string, userTask: string): AgentRun {
+  createRun(
+    workspaceId: string,
+    userTask: string,
+    options: CreateRunOptions = {},
+  ): AgentRun {
     const now = Date.now();
     const run: AgentRun = {
       id: randomUUID(),
@@ -260,12 +392,30 @@ export class Storage {
       iterationCount: 0,
       modelName: null,
       exitReason: null,
+      sessionId: options.sessionId ?? null,
+      sessionFilePath: options.sessionFilePath ?? null,
+      runtimeInstanceId: options.runtimeInstanceId ?? null,
+      ownerPid: options.ownerPid ?? null,
     };
     this.db
       .prepare(
-        "INSERT INTO agent_runs (id, workspace_id, user_task, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        `INSERT INTO agent_runs
+           (id, workspace_id, user_task, status, created_at, updated_at,
+            session_id, session_file_path, runtime_instance_id, owner_pid)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(run.id, run.workspaceId, run.userTask, run.status, run.createdAt, run.updatedAt);
+      .run(
+        run.id,
+        run.workspaceId,
+        run.userTask,
+        run.status,
+        run.createdAt,
+        run.updatedAt,
+        run.sessionId,
+        run.sessionFilePath,
+        run.runtimeInstanceId,
+        run.ownerPid,
+      );
     return run;
   }
 
@@ -305,13 +455,45 @@ export class Storage {
   }
 
   updateRunStatus(runId: string, status: AgentRunState): AgentRun {
-    const updatedAt = Date.now();
-    this.db
-      .prepare("UPDATE agent_runs SET status = ?, updated_at = ? WHERE id = ?")
-      .run(status, updatedAt, runId);
-    const run = this.getRun(runId);
-    if (!run) throw new Error(`Run not found: ${runId}`);
-    return run;
+    const update = this.db.transaction(() => {
+      const current = this.getRun(runId);
+      if (!current) {
+        throw new AgentRunLifecycleError("run_not_found", { runId });
+      }
+      assertAgentRunTransition(current.status, status);
+      this.db
+        .prepare("UPDATE agent_runs SET status = ?, updated_at = ? WHERE id = ?")
+        .run(status, Date.now(), runId);
+      const run = this.getRun(runId);
+      if (!run) {
+        throw new AgentRunLifecycleError("run_not_found", { runId });
+      }
+      return run;
+    });
+    return update();
+  }
+
+  /** Atomically persist the terminal state after filesystem rollback succeeds. */
+  completeRunRollback(runId: string): AgentRun {
+    const complete = this.db.transaction(() => {
+      const current = this.getRun(runId);
+      if (!current) {
+        throw new AgentRunLifecycleError("run_not_found", { runId });
+      }
+      assertAgentRunTransition(current.status, "cancelled");
+      const updatedAt = Date.now();
+      this.db
+        .prepare(
+          "UPDATE agent_runs SET status = 'cancelled', exit_reason = 'rolled_back', updated_at = ? WHERE id = ?",
+        )
+        .run(updatedAt, runId);
+      const run = this.getRun(runId);
+      if (!run) {
+        throw new AgentRunLifecycleError("run_not_found", { runId });
+      }
+      return run;
+    });
+    return complete();
   }
 
   getRun(runId: string): AgentRun | null {
@@ -326,6 +508,86 @@ export class Storage {
       .prepare("SELECT * FROM agent_runs WHERE workspace_id = ? ORDER BY created_at DESC")
       .all(workspaceId) as RunRow[];
     return rows.map(toRun);
+  }
+
+  listRunsForSession(sessionId: string): AgentRun[] {
+    const rows = this.db
+      .prepare("SELECT * FROM agent_runs WHERE session_id = ? ORDER BY created_at ASC")
+      .all(sessionId) as RunRow[];
+    return rows.map(toRun);
+  }
+
+  /**
+   * Mark runs abandoned by dead owner processes exactly once. This only
+   * changes SQLite status/audit rows; tools, patches, commands and snapshots
+   * are never replayed or automatically rolled back.
+   */
+  reconcileInterruptedRuns(
+    options: ReconcileInterruptedRunOptions = {},
+  ): StartupRecovery[] {
+    const currentPid = options.currentPid ?? process.pid;
+    const now = options.now ?? Date.now();
+    const legacyGraceMs = options.legacyGraceMs ?? 30_000;
+    const isAlive = options.isProcessAlive ?? isProcessAlive;
+    const candidates = this.db
+      .prepare(
+        `SELECT * FROM agent_runs
+         WHERE status NOT IN ('done', 'failed', 'cancelled', 'budget_exceeded')
+         ORDER BY created_at ASC`,
+      )
+      .all() as RunRow[];
+    const recover = this.db.transaction((candidate: RunRow): StartupRecovery | null => {
+      const current = this.db
+        .prepare("SELECT * FROM agent_runs WHERE id = ?")
+        .get(candidate.id) as RunRow | undefined;
+      if (
+        !current ||
+        !isAgentRunState(current.status) ||
+        isTerminalAgentRunState(current.status)
+      ) {
+        return null;
+      }
+      assertAgentRunTransition(current.status, "failed");
+      const updated = this.db
+        .prepare(
+          `UPDATE agent_runs
+           SET status = 'failed', exit_reason = 'interrupted_restart', updated_at = ?
+           WHERE id = ? AND status = ?`,
+        )
+        .run(now, current.id, current.status);
+      if (updated.changes !== 1) return null;
+      this.db
+        .prepare(
+          "INSERT INTO agent_steps (id, run_id, type, content, created_at) VALUES (?, ?, 'error', ?, ?)",
+        )
+        .run(
+          randomUUID(),
+          current.id,
+          `Run interrupted by process restart while status was ${current.status}. ` +
+            "No tool or workspace write was replayed; use rollback if snapshots exist.",
+          now,
+        );
+      return {
+        runId: current.id,
+        workspaceId: current.workspace_id,
+        previousStatus: current.status as AgentRunState,
+        sessionId: current.session_id,
+        sessionFilePath: current.session_file_path,
+      };
+    });
+
+    const recovered: StartupRecovery[] = [];
+    for (const candidate of candidates) {
+      const ownerPid = candidate.owner_pid;
+      if (ownerPid !== null) {
+        if (ownerPid === currentPid || isAlive(ownerPid)) continue;
+      } else if (now - candidate.updated_at < legacyGraceMs) {
+        continue;
+      }
+      const result = recover(candidate);
+      if (result) recovered.push(result);
+    }
+    return recovered;
   }
 
   /**
@@ -375,11 +637,19 @@ export class Storage {
   // --- steps ---
 
   addStep(runId: string, type: AgentStepType, content: string): AgentStep {
+    const persistedContent =
+      type === "error" || type === "command"
+        ? redactSensitiveText(content, {
+            maxLength: 4_000,
+            fallback:
+              type === "error" ? "Unknown error" : "Command output unavailable",
+          })
+        : content;
     const step: AgentStep = {
       id: randomUUID(),
       runId,
       type,
-      content,
+      content: persistedContent,
       createdAt: Date.now(),
     };
     this.db
@@ -438,35 +708,55 @@ export class Storage {
     runId: string,
     filePath: string,
     beforeContent: string,
-    iteration = 0,
-    snapshotType: SnapshotType = "before_run",
+    options: {
+      beforeExisted?: boolean;
+      iteration?: number;
+      snapshotType?: SnapshotType;
+    } = {},
   ): FileSnapshot {
+    const beforeExisted = options.beforeExisted ?? true;
+    const iteration = options.iteration ?? 0;
+    const snapshotType = options.snapshotType ?? "before_run";
     const snap: FileSnapshot = {
       id: randomUUID(),
       runId,
       filePath,
       beforeContent,
+      beforeExisted,
       createdAt: Date.now(),
       iteration,
       snapshotType,
     };
     this.db
       .prepare(
-        "INSERT INTO file_snapshots (id, run_id, file_path, before_content, after_content, created_at, iteration, snapshot_type) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)",
+        "INSERT INTO file_snapshots (id, run_id, file_path, before_content, before_existed, after_content, after_existed, created_at, iteration, snapshot_type) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)",
       )
-      .run(snap.id, snap.runId, snap.filePath, snap.beforeContent, snap.createdAt, iteration, snapshotType);
+      .run(
+        snap.id,
+        snap.runId,
+        snap.filePath,
+        snap.beforeContent,
+        beforeExisted ? 1 : 0,
+        snap.createdAt,
+        iteration,
+        snapshotType,
+      );
     return snap;
   }
 
-  setSnapshotAfter(snapshotId: string, afterContent: string): void {
+  setSnapshotAfter(snapshotId: string, afterContent: string, afterExisted = true): void {
     this.db
-      .prepare("UPDATE file_snapshots SET after_content = ? WHERE id = ?")
-      .run(afterContent, snapshotId);
+      .prepare(
+        "UPDATE file_snapshots SET after_content = ?, after_existed = ? WHERE id = ?",
+      )
+      .run(afterContent, afterExisted ? 1 : 0, snapshotId);
   }
 
   listSnapshots(runId: string): FileSnapshot[] {
     const rows = this.db
-      .prepare("SELECT * FROM file_snapshots WHERE run_id = ? ORDER BY created_at ASC")
+      .prepare(
+        "SELECT * FROM file_snapshots WHERE run_id = ? ORDER BY created_at ASC, rowid ASC",
+      )
       .all(runId) as SnapshotRow[];
     return rows.map(toSnapshot);
   }
@@ -475,7 +765,7 @@ export class Storage {
   listSnapshotsByType(runId: string, snapshotType: SnapshotType): FileSnapshot[] {
     const rows = this.db
       .prepare(
-        "SELECT * FROM file_snapshots WHERE run_id = ? AND snapshot_type = ? ORDER BY created_at ASC",
+        "SELECT * FROM file_snapshots WHERE run_id = ? AND snapshot_type = ? ORDER BY created_at ASC, rowid ASC",
       )
       .all(runId, snapshotType) as SnapshotRow[];
     return rows.map(toSnapshot);
@@ -485,7 +775,7 @@ export class Storage {
   listSnapshotsByIteration(runId: string, iteration: number): FileSnapshot[] {
     const rows = this.db
       .prepare(
-        "SELECT * FROM file_snapshots WHERE run_id = ? AND iteration = ? ORDER BY created_at ASC",
+        "SELECT * FROM file_snapshots WHERE run_id = ? AND iteration = ? ORDER BY created_at ASC, rowid ASC",
       )
       .all(runId, iteration) as SnapshotRow[];
     return rows.map(toSnapshot);
@@ -806,7 +1096,21 @@ function toRun(row: RunRow): AgentRun {
     iterationCount: row.iteration_count,
     modelName: row.model_name,
     exitReason: row.exit_reason,
+    sessionId: row.session_id,
+    sessionFilePath: row.session_file_path,
+    runtimeInstanceId: row.runtime_instance_id,
+    ownerPid: row.owner_pid,
   };
+}
+
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
 }
 
 function toSnapshot(r: SnapshotRow): FileSnapshot {
@@ -815,7 +1119,9 @@ function toSnapshot(r: SnapshotRow): FileSnapshot {
     runId: r.run_id,
     filePath: r.file_path,
     beforeContent: r.before_content,
+    beforeExisted: r.before_existed !== 0,
     ...(r.after_content !== null ? { afterContent: r.after_content } : {}),
+    ...(r.after_existed !== null ? { afterExisted: r.after_existed !== 0 } : {}),
     createdAt: r.created_at,
     iteration: r.iteration,
     snapshotType: r.snapshot_type as SnapshotType,

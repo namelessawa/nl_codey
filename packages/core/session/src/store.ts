@@ -14,12 +14,12 @@
  *
  * Writes are append-only: every `appendMessage`/`appendStateEvent` call
  * does ONE `fs.appendFileSync` with a single JSON line. A truncated
- * trailing line caused by a crash mid-write is simply ignored by the
- * reader (`safeParseLine` returns `null` for malformed JSON) — the rest
- * of the file is still recoverable.
+ * trailing line caused by a crash mid-write is diagnosed and skipped by
+ * the reader, while the rest of the file remains recoverable.
  */
 import fs from "node:fs";
 import path from "node:path";
+import { redactSensitiveText } from "@nlc/shared";
 import { encodeProjectFolder } from "./path-encoder.js";
 import { newEventId, newMessageId, newSessionId } from "./ids.js";
 import {
@@ -29,6 +29,8 @@ import {
   isStateEvent,
   type LoadedSession,
   type SessionHeader,
+  type SessionDiagnostic,
+  type SessionFileDiagnostic,
   type SessionMessage,
   type SessionRecord,
   type SessionRole,
@@ -122,13 +124,20 @@ export class SessionWriter {
     this.#assertOpen();
     const id = input.id ?? newMessageId();
     const parentId = input.parentId === undefined ? this.#lastMessageId : input.parentId;
+    const persistedContent =
+      input.role === "system"
+        ? redactSensitiveText(input.content, {
+            maxLength: 4_000,
+            fallback: "Unknown system error",
+          })
+        : input.content;
     const record: SessionMessage = {
       type: "message",
       id,
       parentId,
       timestamp: input.timestamp ?? this.#now(),
       role: input.role,
-      content: input.content,
+      content: persistedContent,
     };
     if (input.toolCalls && input.toolCalls.length > 0) record.toolCalls = input.toolCalls;
     if (typeof input.toolCallId === "string") record.toolCallId = input.toolCallId;
@@ -250,16 +259,44 @@ export class SessionStore {
   }
 
   /**
-   * Re-open an existing session for appending. Reads the file once to find
-   * the head of the message chain, then returns a writer primed at that
-   * head. Returns the loaded view as the second tuple element for callers
-   * that need to replay history immediately.
+   * Resume only a direct JSON child of `cwd`'s project folder. Lexical and
+   * real-path checks prevent traversal and symlink escapes; the header check
+   * keeps lossy encoded-folder collisions isolated.
    */
-  resumeSession(filePath: string): { writer: SessionWriter; loaded: LoadedSession } {
-    const loaded = this.openSession(filePath);
-    const head = loaded.messages.length > 0 ? loaded.messages[loaded.messages.length - 1]!.id : null;
-    const writer = new SessionWriter(filePath, loaded.header, head, this.#now);
-    return { writer, loaded };
+  resumeProjectSession(
+    cwd: string,
+    filePath: string,
+  ): { writer: SessionWriter; loaded: LoadedSession } {
+    const loaded = this.openProjectSession(cwd, filePath);
+    const safeFilePath = loaded.filePath;
+    isolateUnterminatedTail(safeFilePath);
+    const head =
+      loaded.messages.length > 0
+        ? loaded.messages[loaded.messages.length - 1]!.id
+        : null;
+    return {
+      writer: new SessionWriter(safeFilePath, loaded.header, head, this.#now),
+      loaded,
+    };
+  }
+
+  /** Read a current-workspace session after the same containment checks. */
+  openProjectSession(cwd: string, filePath: string): LoadedSession {
+    const safeFilePath = this.#resolveProjectSessionFile(cwd, filePath);
+    let loaded: LoadedSession;
+    try {
+      loaded = this.openSession(safeFilePath);
+    } catch (error) {
+      throw new Error(
+        `session access: session file could not be opened (${errorCode(error)})`,
+      );
+    }
+    if (!sameProjectPath(loaded.header.cwd, cwd)) {
+      throw new Error(
+        "session access: session file belongs to a different workspace",
+      );
+    }
+    return loaded;
   }
 
   /** Load a session file fully into memory. Throws on missing/invalid header. */
@@ -270,10 +307,20 @@ export class SessionStore {
     const records: SessionRecord[] = [];
     const messages: SessionMessage[] = [];
     const events: StateEvent[] = [];
-    for (const line of lines) {
+    const diagnostics: SessionDiagnostic[] = [];
+    const lastContentLine = findLastContentLine(lines);
+    for (const [index, line] of lines.entries()) {
       if (line.length === 0) continue;
-      const parsed = safeParseLine(line);
-      if (parsed === null) continue;
+      const parsedLine = parseJsonLine(line);
+      if (!parsedLine.ok) {
+        diagnostics.push({
+          kind: "malformed_json",
+          line: index + 1,
+          trailing: index === lastContentLine && !raw.endsWith("\n"),
+        });
+        continue;
+      }
+      const parsed = parsedLine.value;
       if (isHeader(parsed)) {
         if (header === null) header = parsed;
         continue;
@@ -291,9 +338,11 @@ export class SessionStore {
       // Unknown discriminator — silently skip (forward-compat).
     }
     if (header === null) {
-      throw new Error(`openSession: ${filePath} is missing a "session" header line`);
+      throw new Error(
+        `openSession: ${path.basename(filePath)} is missing a "session" header line`,
+      );
     }
-    return { header, records, messages, events, filePath };
+    return { header, records, messages, events, diagnostics, filePath };
   }
 
   /**
@@ -311,6 +360,7 @@ export class SessionStore {
       const filePath = path.join(folder, ent.name);
       try {
         const loaded = this.openSession(filePath);
+        if (!sameProjectPath(loaded.header.cwd, cwd)) continue;
         const last = loaded.messages[loaded.messages.length - 1];
         const first = loaded.messages[0];
         const summary: SessionSummary = {
@@ -341,6 +391,87 @@ export class SessionStore {
   loadProjectSessions(cwd: string): LoadedSession[] {
     return this.listProjectSessions(cwd).map((s) => this.openSession(s.filePath));
   }
+
+  /**
+   * Return content-free diagnostics for every JSON session file.
+   * Raw malformed lines and absolute paths are deliberately excluded.
+   */
+  listProjectSessionDiagnostics(cwd: string): SessionFileDiagnostic[] {
+    const folder = this.projectFolder(cwd);
+    if (!fs.existsSync(folder)) return [];
+    const diagnostics: SessionFileDiagnostic[] = [];
+    const entries = fs
+      .readdirSync(folder, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"));
+    for (const entry of entries) {
+      const filePath = path.join(folder, entry.name);
+      try {
+        const loaded = this.openSession(filePath);
+        if (!sameProjectPath(loaded.header.cwd, cwd)) {
+          diagnostics.push({
+            kind: "workspace_mismatch",
+            fileName: entry.name,
+            sessionId: loaded.header.id,
+            line: 1,
+            recoverable: false,
+          });
+          continue;
+        }
+        for (const diagnostic of loaded.diagnostics) {
+          diagnostics.push({
+            kind: diagnostic.kind,
+            fileName: entry.name,
+            sessionId: loaded.header.id,
+            line: diagnostic.line,
+            recoverable: true,
+          });
+        }
+      } catch {
+        diagnostics.push({
+          kind: "unreadable_session",
+          fileName: entry.name,
+          sessionId: null,
+          line: null,
+          recoverable: false,
+        });
+      }
+    }
+    return diagnostics.sort(
+      (left, right) =>
+        left.fileName.localeCompare(right.fileName) ||
+        (left.line ?? 0) - (right.line ?? 0),
+    );
+  }
+
+  #resolveProjectSessionFile(cwd: string, filePath: string): string {
+    const folder = path.resolve(this.projectFolder(cwd));
+    const candidate = path.resolve(filePath);
+    if (
+      !sameFsPath(path.dirname(candidate), folder) ||
+      path.extname(candidate).toLowerCase() !== ".json"
+    ) {
+      throw new Error(
+        "session access: requested file is outside this project's session folder",
+      );
+    }
+
+    let realFolder: string;
+    let realCandidate: string;
+    try {
+      realFolder = fs.realpathSync(folder);
+      realCandidate = fs.realpathSync(candidate);
+    } catch (error) {
+      throw new Error(
+        `session access: session file is unavailable (${errorCode(error)})`,
+      );
+    }
+    if (!sameFsPath(path.dirname(realCandidate), realFolder)) {
+      throw new Error(
+        "session access: requested file escapes this project's session folder",
+      );
+    }
+    return realCandidate;
+  }
 }
 
 // --- internals ------------------------------------------------------------
@@ -349,12 +480,53 @@ function appendLine(filePath: string, record: object): void {
   fs.appendFileSync(filePath, JSON.stringify(record) + "\n", "utf8");
 }
 
-function safeParseLine(line: string): unknown {
+function parseJsonLine(
+  line: string,
+): { ok: true; value: unknown } | { ok: false } {
   try {
-    return JSON.parse(line);
+    return { ok: true, value: JSON.parse(line) as unknown };
   } catch {
-    return null;
+    return { ok: false };
   }
+}
+
+function findLastContentLine(lines: readonly string[]): number {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index]!.length > 0) return index;
+  }
+  return -1;
+}
+
+function isolateUnterminatedTail(filePath: string): void {
+  const raw = fs.readFileSync(filePath, "utf8");
+  if (raw.length > 0 && !raw.endsWith("\n")) {
+    fs.appendFileSync(filePath, "\n", "utf8");
+  }
+}
+
+function sameProjectPath(left: string, right: string): boolean {
+  return sameFsPath(path.resolve(left), path.resolve(right));
+}
+
+function sameFsPath(left: string, right: string): boolean {
+  const normalize = (value: string): string => {
+    const normalized = path.normalize(value);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  return normalize(left) === normalize(right);
+}
+
+function errorCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[A-Z0-9_]+$/u.test(error.code)
+  ) {
+    return error.code;
+  }
+  return "SESSION_IO_ERROR";
 }
 
 function deriveTitleFromMessage(content: string): string {

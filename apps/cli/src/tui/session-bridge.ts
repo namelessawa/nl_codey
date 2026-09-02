@@ -32,6 +32,7 @@ import path from "node:path";
 import {
   SessionStore,
   type LoadedSession,
+  type SessionFileDiagnostic,
   type SessionSummary,
   type SessionToolCall,
   type SessionWriter,
@@ -171,6 +172,11 @@ export class SessionBridge {
     return this.store.listProjectSessions(this.cwd);
   }
 
+  /** Return content-free diagnostics for malformed or unreadable session files. */
+  listDiagnostics(): SessionFileDiagnostic[] {
+    return this.store.listProjectSessionDiagnostics(this.cwd);
+  }
+
   /** Load every session file under this workspace (for tree rendering). */
   loadAllSessions(): LoadedSession[] {
     return this.store.loadProjectSessions(this.cwd);
@@ -184,28 +190,49 @@ export class SessionBridge {
   branchFrom(parentSessionId: string, parentMessageId: string): SessionWriter {
     // Flush the current turn before swapping writers so we don't lose state.
     this.#flushAssistantTurn();
-    this.#writer?.close();
-    this.#writer = this.store.branchSession({
+    const nextWriter = this.store.branchSession({
       sessionId: parentSessionId,
       messageId: parentMessageId,
       cwd: this.cwd,
     });
+    this.#writer?.close();
+    this.#writer = nextWriter;
     return this.#writer;
   }
 
-  /** Resume an existing session file by absolute path. */
-  resume(filePath: string): SessionWriter {
+  /** Resume an existing session file and return its loaded replay view. */
+  resume(filePath: string): { writer: SessionWriter; loaded: LoadedSession } {
     this.#flushAssistantTurn();
+    const { writer, loaded } = this.store.resumeProjectSession(
+      this.cwd,
+      filePath,
+    );
     this.#writer?.close();
-    const { writer } = this.store.resumeSession(filePath);
     this.#writer = writer;
-    return writer;
+    return { writer, loaded };
   }
 
-  /** Lookup absolute path for a session id; null when not found. */
+  /**
+   * Stop writing the current turn after an I/O failure without attempting a
+   * final flush. The next user submission may lazily create a fresh session.
+   */
+  abandonActiveWriter(): void {
+    this.#writer?.close();
+    this.#writer = null;
+    this.#pendingAssistantText = "";
+    this.#pendingAssistantCalls = [];
+  }
+
+  /** Lookup by exact id or a unique prefix; null when not found. */
   filePathFor(sessionId: string): string | null {
-    const match = this.listSessions().find((s) => s.id === sessionId);
-    return match?.filePath ?? null;
+    const sessions = this.listSessions();
+    const exact = sessions.find((session) => session.id === sessionId);
+    if (exact) return exact.filePath;
+    const matches = sessions.filter((session) => session.id.startsWith(sessionId));
+    if (matches.length > 1) {
+      throw new Error(`ambiguous session id prefix: ${sessionId}`);
+    }
+    return matches[0]?.filePath ?? null;
   }
 
   /** Close the active writer (idempotent). */

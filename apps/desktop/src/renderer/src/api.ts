@@ -82,6 +82,8 @@ export const api = {
     unwrap(window.agentApi.listAgentRuns(workspaceId)),
   clearAgentRuns: (workspaceId: string): Promise<{ deleted: number }> =>
     unwrap(window.agentApi.clearAgentRuns({ workspaceId })),
+  exportRunDiagnostics: (runId: string): Promise<{ filePath: string | null }> =>
+    unwrap(window.agentApi.exportRunDiagnostics({ runId })),
   getSettings: (): Promise<SettingsPayload> => unwrap(window.agentApi.getSettings()),
   updateSettings: (settings: AppSettings): Promise<SettingsPayload> =>
     unwrap(window.agentApi.updateSettings(settings)),

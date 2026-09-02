@@ -21,6 +21,7 @@
  */
 import React from "react";
 import { Box, Static, Text } from "ink";
+import { redactSensitiveText } from "@nlc/shared";
 import { roleColorMap, type RoleKey } from "./theme.js";
 import { useTheme } from "./theme-context.js";
 import type { StreamItem } from "./use-loop.js";
@@ -49,7 +50,16 @@ export function MessageStream({ items }: MessageStreamProps) {
           <Text color={roleColor[item.role as RoleKey] ?? palette.text} bold>
             {`[${item.label}]`}
           </Text>
-          <Text color={palette.text}>{` ${item.text}`}</Text>
+          <Text color={palette.text}>
+            {` ${
+              item.role === "error"
+                ? redactSensitiveText(item.text, {
+                    maxLength: 4_000,
+                    fallback: "Unknown error",
+                  })
+                : item.text
+            }`}
+          </Text>
         </Box>
       )}
     </Static>

@@ -1,5 +1,7 @@
 /** Tool system contracts. Tools are pure functions over a ToolContext. */
 
+import type { ContextProvenance, ChunkKind } from "./semantic.js";
+
 export type ToolContext = {
   workspaceRoot: string;
   runId: string;
@@ -98,6 +100,39 @@ export type FindSymbolInput = {
 };
 export type FindSymbolOutput = { symbols: SymbolInfo[]; truncated: boolean };
 
+// analyze_impact
+export type ImpactEdgeKind = "declares" | "imports" | "tests" | "calls";
+export type ImpactConfidence = "exact" | "heuristic";
+export type ImpactEdge = {
+  kind: ImpactEdgeKind;
+  /** Workspace-relative source module, or the target module for declarations. */
+  from: string;
+  /** Workspace-relative module or `module#symbol` node. */
+  to: string;
+  line?: number;
+  symbol?: string;
+  confidence: ImpactConfidence;
+};
+export type AnalyzeImpactInput = {
+  /** Workspace-relative TypeScript/JavaScript module to analyze. */
+  path: string;
+  /** Optional symbol; otherwise exported callable declarations are considered. */
+  symbol?: string;
+  maxResults?: number;
+};
+export type AnalyzeImpactOutput = {
+  target: string;
+  coverage: "typescript-javascript";
+  symbols: SymbolInfo[];
+  edges: ImpactEdge[];
+  /** Modules that import, test, or lexically call into the target. */
+  impactedFiles: string[];
+  scannedFiles: number;
+  selectionReason: string;
+  truncated: boolean;
+  limitations: string[];
+};
+
 // run_command
 export type RunCommandInput = { command: string; timeoutMs?: number };
 export type RunCommandOutput = {
@@ -150,6 +185,7 @@ export type SemanticSearchToolInput = {
   query: string;
   topK?: number;
   kinds?: ("code" | "doc" | "comment")[];
+  maxContextTokens?: number;
 };
 export type SemanticSearchToolHit = {
   filePath: string;
@@ -158,8 +194,22 @@ export type SemanticSearchToolHit = {
   snippet: string;
   score: number;
   symbolName?: string;
+  /** Optional for third-party ports; built-in semantic search always sets it. */
+  kind?: ChunkKind;
+  /** Optional for compatibility; built-in results always carry provenance. */
+  provenance?: ContextProvenance;
 };
-export type SemanticSearchToolOutput = { query: string; hits: SemanticSearchToolHit[] };
+export type SemanticSearchToolOutput = {
+  query: string;
+  hits: SemanticSearchToolHit[];
+  budget: {
+    maxTokens: number;
+    usedTokens: number;
+    limited: boolean;
+    omittedHits: number;
+    estimator: "ascii_4_non_ascii_1";
+  };
+};
 
 // propose_task_breakdown (Planner): submit a TaskNode DAG.
 export type ProposeTaskBreakdownInput = {

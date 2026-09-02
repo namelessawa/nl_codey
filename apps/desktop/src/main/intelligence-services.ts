@@ -2,7 +2,11 @@
 
 import { createEmbeddingProvider, SemanticIndexer } from "@nlc/semantic-index";
 import { MemoryRetriever } from "@nlc/memory";
-import type { EmbeddingProvider, SandboxMode } from "@nlc/shared";
+import type {
+  EmbeddingProvider,
+  LLMConfig,
+  SandboxMode,
+} from "@nlc/shared";
 import type { Services } from "./services.js";
 
 /**
@@ -22,10 +26,7 @@ export class IntelligenceServices {
 
   embedder(): EmbeddingProvider {
     const config = this.services.settings.getLLMConfig();
-    return createEmbeddingProvider({
-      apiKey: config.apiKey ?? "",
-      baseUrl: config.baseUrl ?? "",
-    });
+    return createEmbeddingProvider(embeddingConfigForLLM(config));
   }
 
   retriever(): MemoryRetriever {
@@ -59,4 +60,19 @@ export class IntelligenceServices {
     this.services.settings.updateSettings(next);
     return mode;
   }
+}
+
+/**
+ * Only the OpenAI preset is known to support the shipped embedding request
+ * contract. Other chat-provider credentials must never be guessed into an
+ * `/embeddings` URL; those providers keep the deterministic local fallback.
+ */
+export function embeddingConfigForLLM(
+  config: LLMConfig,
+): { apiKey?: string; baseUrl?: string } {
+  if (config.provider !== "openai" || !config.apiKey) return {};
+  return {
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+  };
 }

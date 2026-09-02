@@ -16,8 +16,8 @@
  *             → WorkspaceSandbox.diff (staging vs workspace)
  *             → writeback approval (auto-approve here)
  *
- * Skipped cleanly when LLM_API_KEY / LLM_BASE_URL are not set (in env or .env),
- * so `pnpm test` keeps green for contributors who don't want to spend tokens.
+ * Skipped unless RUN_AGENT_DEBUG_TESTS=1 and LLM_API_KEY / LLM_BASE_URL are
+ * set. Ambient credentials alone never authorize a network/model call.
  *
  * Run interactively (verbose stdout):
  *   pnpm exec vitest run packages/agent-core/src/docker-loop.debug.test.ts --reporter=verbose
@@ -70,8 +70,9 @@ const BASE_URL = process.env.LLM_BASE_URL ?? "";
 const MODEL = process.env.LLM_MODEL ?? "gpt-4o-mini";
 const DOCKER_IMAGE = process.env.DOCKER_DEBUG_IMAGE ?? "python:3.12-slim";
 const HAS_KEY = API_KEY.length > 0 && BASE_URL.length > 0;
+const RUN_DEBUG = process.env.RUN_AGENT_DEBUG_TESTS === "1";
 
-const describeReal = HAS_KEY ? describe : describe.skip;
+const describeReal = RUN_DEBUG && HAS_KEY ? describe : describe.skip;
 
 /**
  * Minimal SnapshotStore for the debug run. We don't need persistence — only a
@@ -143,8 +144,7 @@ describeReal("docker-mode agent loop debug (custom OpenAI-compat)", () => {
   it("drives run_command through the docker sandbox", async () => {
     console.log("\n========================================");
     console.log(`[debug] workspace : ${workspaceRoot}`);
-    console.log(`[debug] base URL  : ${BASE_URL}`);
-    console.log(`[debug] model     : ${MODEL}`);
+    console.log("[debug] provider  : explicit debug configuration supplied");
     console.log(`[debug] image     : ${DOCKER_IMAGE}`);
     console.log("========================================\n");
 
@@ -179,6 +179,8 @@ describeReal("docker-mode agent loop debug (custom OpenAI-compat)", () => {
       storage: snapshotStore as unknown as Parameters<typeof createToolExecutor>[0]["storage"],
       allowShellExecution: true,
       readOnly: false,
+      // This opt-in debug harness auto-approves its model tool calls below.
+      authorizeMutation: () => ({ allowed: true, reason: "debug harness approval" }),
       sandboxPolicy: policy,
       requestSandboxWriteApproval: async (call, changes) => {
         const command =
@@ -324,10 +326,10 @@ describeReal("docker-mode agent loop debug (custom OpenAI-compat)", () => {
 });
 
 describe("docker-loop debug (preflight)", () => {
-  it("reports skip reason when LLM_API_KEY / LLM_BASE_URL unset", () => {
-    if (!HAS_KEY) {
+  it("requires explicit opt-in and provider configuration", () => {
+    if (!RUN_DEBUG || !HAS_KEY) {
       console.log(
-        "[docker-debug] Skipped: set LLM_API_KEY and LLM_BASE_URL in env or .env to enable.",
+        "[docker-debug] Skipped: set RUN_AGENT_DEBUG_TESTS=1 plus explicit provider configuration to enable.",
       );
     }
     expect(true).toBe(true);

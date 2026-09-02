@@ -41,6 +41,12 @@ export type AgentRun = {
   modelName?: string | null;
   /** How the run ended, e.g. "done", "max_cost", "needs_human". */
   exitReason?: string | null;
+  /** Stable link to the CLI JSONL session that owns this run, when any. */
+  sessionId?: string | null;
+  sessionFilePath?: string | null;
+  /** Runtime owner used by startup recovery to avoid touching a live peer. */
+  runtimeInstanceId?: string | null;
+  ownerPid?: number | null;
 };
 
 export type AgentStepType =
@@ -72,7 +78,14 @@ export type FileSnapshot = {
   runId: string;
   filePath: string;
   beforeContent: string;
+  /**
+   * Whether the path existed before the mutation. Legacy snapshots omit this
+   * field and are treated conservatively as pre-existing files.
+   */
+  beforeExisted?: boolean;
   afterContent?: string;
+  /** Whether the path existed after the mutation; absent means unknown. */
+  afterExisted?: boolean;
   createdAt: number;
   /** Repair-loop iteration this snapshot belongs to (0 = before first patch). */
   iteration?: number;

@@ -8,6 +8,7 @@ import type {
   FinetuneStatus,
   ModelRegistryEntry,
 } from "@nlc/shared";
+import { redactSensitiveText } from "@nlc/shared";
 import {
   toFinetuneJob,
   toModelRegistryEntry,
@@ -54,10 +55,24 @@ export class FinetuneStore {
   ): FinetuneJob | null {
     const existing = this.getFinetuneJob(id);
     if (!existing) return null;
+    const evalResult =
+      patch.evalResult === undefined
+        ? undefined
+        : patch.evalResult === null
+          ? null
+          : {
+              ...patch.evalResult,
+              gateReasons: patch.evalResult.gateReasons.map((reason) =>
+                redactSensitiveText(reason, {
+                  maxLength: 4_000,
+                  fallback: "Unknown fine-tune error",
+                }),
+              ),
+            };
     const next: FinetuneJob = {
       ...existing,
       ...(patch.status !== undefined ? { status: patch.status } : {}),
-      ...(patch.evalResult !== undefined ? { evalResult: patch.evalResult } : {}),
+      ...(evalResult !== undefined ? { evalResult } : {}),
       ...(patch.artifactPath !== undefined ? { artifactPath: patch.artifactPath } : {}),
       updatedAt: Date.now(),
     };

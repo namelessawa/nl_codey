@@ -1,6 +1,7 @@
-import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import type {
   AgentEvent,
+  AgentRunFailureCode,
   AgentRun,
   AgentRunDetail,
   AgentRunState,
@@ -22,8 +23,12 @@ import type {
 } from "@nlc/shared";
 import {
   clampBudgetLimits,
+  classifyAgentRunFailure,
   contextWindowFor,
   DEFAULT_BUDGET_LIMITS,
+  formatAgentRunFailure,
+  isTerminalAgentRunState,
+  redactSensitiveText,
   UNSAFE_WITHOUT_SANDBOX_TOOLS,
 } from "@nlc/shared";
 import type { FileChange } from "@nlc/sandbox";
@@ -37,9 +42,13 @@ import {
   AGENT_TOOL_SCHEMAS,
   agentToolSchemas,
   createToolExecutor,
-  FILE_MUTATING_TOOLS,
   type ExecutedTool,
 } from "./tools-registry.js";
+import {
+  AgentMutationAuthorizer,
+  RESERVED_MUTATING_TOOL_NAMES,
+  type AgentMutationDecision,
+} from "./mutation-policy.js";
 import { getReadonlySystemPrompt, getSystemPrompt } from "./prompts.js";
 import { phase1InitContext } from "./nlc-loop/index.js";
 import { getSummarizePrompt } from "./compressor.js";
@@ -120,7 +129,7 @@ export const HOST_RESERVED_TOOL_NAMES: ReadonlySet<string> = new Set([
   ...AGENT_TOOL_SCHEMAS.map((schema) => schema.name),
   ...EXTENDED_AGENT_TOOL_NAMES,
   ...ORCHESTRATOR_TOOL_SCHEMAS.map((schema) => schema.name),
-  ...FILE_MUTATING_TOOLS,
+  ...RESERVED_MUTATING_TOOL_NAMES,
   ...UNSAFE_WITHOUT_SANDBOX_TOOLS,
 ]);
 
@@ -362,6 +371,12 @@ export type AgentDeps = {
   emit: (event: AgentEvent) => void;
 };
 
+export type RunTaskOptions = {
+  /** Optional stable link to the CLI JSONL session that owns this run. */
+  sessionId?: string;
+  sessionFilePath?: string;
+};
+
 /**
  * A {@link Pending} entry parks the loop while it waits on the user.
  *
@@ -377,7 +392,14 @@ export type AgentDeps = {
 type Pending =
   | { kind: "patch"; patch: string; command: string | null }
   | { kind: "command_writeback"; patch: string; command: string }
-  | { kind: "command_confirm"; patch: string; command: string };
+  | { kind: "command_confirm"; patch: string; command: string }
+  | {
+      kind: "mutation";
+      patch: string;
+      command: null;
+      toolName: string;
+      capability: AgentMutationDecision["capability"];
+    };
 type Approval = { resolve: (approved: boolean) => void };
 
 /** GUI-agnostic agent orchestrator. One instance per main process. */
@@ -393,6 +415,7 @@ export class AgentService {
   private readonly getExtendedPorts: ExtendedPortsFn | undefined;
   private readonly getDynamicTools: DynamicToolBundleFn | undefined;
   private readonly emit: (event: AgentEvent) => void;
+  private readonly runtimeInstanceId = randomUUID();
   private readonly pending = new Map<string, Pending>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly approvals = new Map<string, Approval>();
@@ -530,9 +553,16 @@ export class AgentService {
 
   rejectPatch(runId: string): AgentRunDetail {
     const approval = this.approvals.get(runId);
+    const pending = this.pending.get(runId);
     this.pending.delete(runId);
     if (approval) {
-      this.addStep(runId, "message", "Patch rejected by user");
+      const subject =
+        pending?.kind === "mutation"
+          ? `${pending.toolName} (${pending.capability})`
+          : pending?.kind === "command_confirm"
+            ? "command execution"
+            : "workspace write";
+      this.addStep(runId, "message", `[approval] User rejected ${subject}.`);
       this.approvals.delete(runId);
       approval.resolve(false); // loop ends as cancelled
     } else {
@@ -570,7 +600,8 @@ export class AgentService {
       addStep: (type, content) => this.addStep(runId, type, content),
     });
     this.pending.delete(runId);
-    this.setStatus(runId, "cancelled");
+    const rolledBackRun = this.storage.completeRunRollback(runId);
+    this.emit({ kind: "run_updated", run: rolledBackRun });
     return this.getDetail(runId);
   }
 
@@ -614,10 +645,19 @@ export class AgentService {
    * runs in the background and drives the UI via events, so this returns the
    * initial detail immediately.
    */
-  async runTask(workspaceId: string, task: string): Promise<AgentRunDetail> {
+  async runTask(
+    workspaceId: string,
+    task: string,
+    options: RunTaskOptions = {},
+  ): Promise<AgentRunDetail> {
     const ws = this.storage.getWorkspace(workspaceId);
     if (!ws) throw new Error("No workspace open");
-    const run = this.storage.createRun(workspaceId, task);
+    const run = this.storage.createRun(workspaceId, task, {
+      ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+      ...(options.sessionFilePath ? { sessionFilePath: options.sessionFilePath } : {}),
+      runtimeInstanceId: this.runtimeInstanceId,
+      ownerPid: process.pid,
+    });
     const controller = new AbortController();
     this.controllers.set(run.id, controller);
 
@@ -625,8 +665,7 @@ export class AgentService {
     try {
       llm = this.resolveLLM();
     } catch (err) {
-      this.addStep(run.id, "error", asMessage(err));
-      this.setStatus(run.id, "failed");
+      this.failRun(run.id, err, "provider_configuration");
       this.controllers.delete(run.id);
       return this.getDetail(run.id);
     }
@@ -652,35 +691,40 @@ export class AgentService {
     // ~/.nlc/agents.md, <ws>/.nlc/AGENTS.md, every *.md in ~/.nlc/skills +
     // <ws>/.nlc/skills, and finally the Phase 4 augmentation. customBuiltinPrompt
     // substitutes the read-only flavour without forking the loader.
-    const phase1 = await phase1InitContext(
-      {
-        currentMessage: await this.buildInitialUserMessage(task, ctx),
-        workspaceRoot: ws.rootPath,
-      },
-      {
-        language: this.getLanguage(),
-        ...(this.effectiveReadOnly()
-          ? { customBuiltinPrompt: getReadonlySystemPrompt(this.getLanguage()) }
-          : {}),
-        ...(augmentation ? { augmentation } : {}),
-      },
-    );
-    const initialMessages: LLMMessage[] = phase1.messages;
+    let initialMessages: LLMMessage[];
+    try {
+      const phase1 = await phase1InitContext(
+        {
+          currentMessage: await this.buildInitialUserMessage(task, ctx),
+          workspaceRoot: ws.rootPath,
+        },
+        {
+          language: this.getLanguage(),
+          ...(this.effectiveReadOnly()
+            ? { customBuiltinPrompt: getReadonlySystemPrompt(this.getLanguage()) }
+            : {}),
+          ...(augmentation ? { augmentation } : {}),
+        },
+      );
+      initialMessages = phase1.messages;
+    } catch (err) {
+      this.failRun(run.id, err, "internal_failure");
+      this.controllers.delete(run.id);
+      return this.getDetail(run.id);
+    }
     // Route to the multi-agent driver when the user opted in; otherwise the
     // long-standing single-agent driveLoop. Multi-agent reuses the same
     // approval / sandbox / verify machinery via a thin adapter so safety
     // guarantees are identical.
     if (this.getAgentSettings().multiAgentEnabled) {
       void this.driveMultiAgentLoop(run.id, workspaceId, ws.rootPath, task, llm, controller).catch((err) => {
-        this.addStep(run.id, "error", asMessage(err));
-        this.setStatus(run.id, "failed");
+        this.failRun(run.id, err, "internal_failure");
         this.controllers.delete(run.id);
       });
       return this.getDetail(run.id);
     }
     void this.driveLoop(run.id, workspaceId, ws.rootPath, initialMessages, llm, controller).catch((err) => {
-      this.addStep(run.id, "error", asMessage(err));
-      this.setStatus(run.id, "failed");
+      this.failRun(run.id, err, "internal_failure");
       this.controllers.delete(run.id);
     });
     return this.getDetail(run.id);
@@ -712,25 +756,23 @@ export class AgentService {
 
     const controller = new AbortController();
     this.controllers.set(runId, controller);
+    this.setStatus(runId, "tool_use");
 
     let llm: ChatLLMProvider;
     try {
       llm = this.resolveLLM();
     } catch (err) {
-      this.addStep(runId, "error", asMessage(err));
-      this.setStatus(runId, "failed");
+      this.failRun(runId, err, "provider_configuration");
       this.controllers.delete(runId);
       return this.getDetail(runId);
     }
 
     this.storage.setRunModel(runId, llm.model);
     this.addStep(runId, "message", `Follow-up: ${followUp}`);
-    this.setStatus(runId, "tool_use");
 
     const messages: LLMMessage[] = [...prior, { role: "user", content: followUp }];
     void this.driveLoop(runId, run.workspaceId, ws.rootPath, messages, llm, controller).catch((err) => {
-      this.addStep(runId, "error", asMessage(err));
-      this.setStatus(runId, "failed");
+      this.failRun(runId, err, "internal_failure");
       this.controllers.delete(runId);
     });
     return this.getDetail(runId);
@@ -761,9 +803,23 @@ export class AgentService {
       }
       throw new Error("No pending patch to apply");
     }
+    const pending = this.pending.get(runId);
     this.approvals.delete(runId);
     this.pending.delete(runId);
-    this.setStatus(runId, "applying_patch");
+    if (pending?.kind === "mutation") {
+      this.addStep(
+        runId,
+        "message",
+        `[approval] User approved ${pending.toolName} (${pending.capability}).`,
+      );
+      this.setStatus(runId, "tool_use");
+    } else if (pending?.kind === "command_confirm") {
+      this.addStep(runId, "message", "[approval] User approved command execution.");
+      this.setStatus(runId, "tool_use");
+    } else {
+      this.addStep(runId, "message", "[approval] User approved workspace write.");
+      this.setStatus(runId, "applying_patch");
+    }
     approval.resolve(true);
     return this.getDetail(runId);
   }
@@ -855,6 +911,10 @@ export class AgentService {
       this.assertToolAllowed,
       dynamicBundle?.mutatingNames ?? [],
     );
+    const mutationAuthorizer = new AgentMutationAuthorizer({
+      dynamicMutatingNames: dynamicBundle?.mutatingNames ?? [],
+      requireCommandConfirmation: settings.requireConfirmationBeforeCommand,
+    });
     const execute = createToolExecutor({
       ctx,
       storage: this.storage,
@@ -875,6 +935,8 @@ export class AgentService {
       // Dynamic tool dispatcher (plugins / MCP). Tried before the built-in
       // switch so a plugin tool can't be shadowed by a name collision.
       ...(safeBundle ? { extraDispatcher: safeBundle.dispatch } : {}),
+      mutatingToolNames: dynamicBundle?.mutatingNames ?? [],
+      authorizeMutation: (call) => mutationAuthorizer.authorize(call),
     });
     const budget = new BudgetController(this.budgetLimits());
 
@@ -927,12 +989,11 @@ export class AgentService {
         verifyAfterPatch: (_call, result) =>
           this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
         requiresApproval: (call) =>
-          call.name === "apply_patch" ||
-          (call.name === "run_command" && settings.requireConfirmationBeforeCommand),
+          !readOnly &&
+          toolPassesGate(gateAssert, call.name) &&
+          mutationAuthorizer.requiresApproval(call),
         waitForApproval: (call) =>
-          call.name === "run_command"
-            ? this.awaitCommandConfirmation(runId, call)
-            : this.awaitApproval(runId, call),
+          this.waitForMutationApproval(runId, call, mutationAuthorizer),
         onToolCall: (call) => {
           this.safeRunWrite(() => this.storage.addRunUsage(runId, { toolCalls: 1 }));
           this.addStep(runId, "tool_call", `${call.name} ${summarizeArgs(call)}`.trim());
@@ -940,12 +1001,15 @@ export class AgentService {
         executeTool: async (call) => {
           const res = await execute(call);
           if (res.command) this.addStep(runId, "command", formatCommandOutput(res.command));
+          const resultText = res.isError
+            ? redactToolErrorResult(res.resultText)
+            : res.resultText;
           this.addStep(
             runId,
             res.isError ? "error" : "tool_result",
-            truncateStep(res.resultText),
+            truncateStep(resultText),
           );
-          return res.resultText;
+          return resultText;
         },
       });
       } catch (loopErr) {
@@ -1016,6 +1080,10 @@ export class AgentService {
       this.assertToolAllowed,
       dynamicBundle?.mutatingNames ?? [],
     );
+    const mutationAuthorizer = new AgentMutationAuthorizer({
+      dynamicMutatingNames: dynamicBundle?.mutatingNames ?? [],
+      requireCommandConfirmation: settings.requireConfirmationBeforeCommand,
+    });
 
     const execute = createToolExecutor({
       ctx,
@@ -1028,6 +1096,8 @@ export class AgentService {
         this.awaitWritebackApproval(runId, call, changes),
       ...(phase3Ports ? { phase3Ports } : {}),
       ...(safeBundle ? { extraDispatcher: safeBundle.dispatch } : {}),
+      mutatingToolNames: dynamicBundle?.mutatingNames ?? [],
+      authorizeMutation: (call) => mutationAuthorizer.authorize(call),
     });
 
     const baseSchemas: ToolSchema[] = agentToolSchemas({
@@ -1095,12 +1165,11 @@ export class AgentService {
             return "cancel";
           },
           requiresApproval: (call) =>
-            call.name === "apply_patch" ||
-            (call.name === "run_command" && settings.requireConfirmationBeforeCommand),
+            !readOnly &&
+            toolPassesGate(gateAssert, call.name) &&
+            mutationAuthorizer.requiresApproval(call),
           waitForApproval: (call) =>
-            call.name === "run_command"
-              ? this.awaitCommandConfirmation(runId, call)
-              : this.awaitApproval(runId, call),
+            this.waitForMutationApproval(runId, call, mutationAuthorizer),
           verifyAfterPatch: (_call, result) =>
             this.verifyPatch(runId, ctx, settings.allowShellExecution, result),
           onChunk: (chunk) => {
@@ -1135,11 +1204,18 @@ export class AgentService {
           : outcome.status === "cancelled"
             ? "cancelled"
             : "failed";
+      const exitReason =
+        finalStatus === "failed" ? "internal_failure" : finalStatus;
       const summary = buildMultiAgentSummary(userTask, outcome.status, outcome.nodes);
       this.addStep(
         runId,
         finalStatus === "done" ? "message" : "error",
-        `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
+        finalStatus === "failed"
+          ? formatAgentRunFailure(
+              "internal_failure",
+              `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
+            )
+          : `Multi-agent run finished with status=${outcome.status} (${outcome.nodes.length} nodes).`,
       );
       // Persist a synthetic conversation so a follow-up via continueTask can
       // resume on the single-agent loop with the original task + node-by-node
@@ -1151,11 +1227,16 @@ export class AgentService {
           buildMultiAgentRunMessages(this.getLanguage(), userTask, summary),
         ),
       );
-      this.safeRunWrite(() => this.storage.setRunExitReason(runId, finalStatus));
+      this.safeRunWrite(() => this.storage.setRunExitReason(runId, exitReason));
       this.setStatus(runId, finalStatus);
     } catch (err) {
       const errSummary = `Multi-agent run failed: ${asMessage(err)}`;
-      this.addStep(runId, "error", asMessage(err));
+      const failureCode = classifyAgentRunFailure(err, "internal_failure");
+      this.addStep(
+        runId,
+        "error",
+        formatAgentRunFailure(failureCode, asMessage(err)),
+      );
       // Even on error, preserve at least the user task so a follow-up has
       // somewhere to anchor. The synthetic assistant turn includes the
       // failure reason so the model can react appropriately.
@@ -1165,7 +1246,9 @@ export class AgentService {
           buildMultiAgentRunMessages(this.getLanguage(), userTask, errSummary),
         ),
       );
-      this.safeRunWrite(() => this.storage.setRunExitReason(runId, "failed"));
+      this.safeRunWrite(() =>
+        this.storage.setRunExitReason(runId, failureCode),
+      );
       this.setStatus(runId, "failed");
     } finally {
       this.controllers.delete(runId);
@@ -1336,6 +1419,61 @@ export class AgentService {
     return out.text.trim();
   }
 
+  private async waitForMutationApproval(
+    runId: string,
+    call: LLMToolCall,
+    authorizer: AgentMutationAuthorizer,
+  ): Promise<boolean> {
+    const decision = authorizer.classify(call);
+    if (!decision || decision.control !== "per_call_approval") {
+      return false;
+    }
+    const approved =
+      call.name === "apply_patch"
+        ? await this.awaitApproval(runId, call)
+        : call.name === "run_command"
+          ? await this.awaitCommandConfirmation(runId, call)
+          : await this.awaitGenericMutationApproval(runId, call, decision);
+    if (approved) authorizer.grant(call);
+    return approved;
+  }
+
+  /**
+   * Reuse the existing patch approval card for non-patch persistent mutations.
+   * The preview intentionally excludes raw args because plugin/memory payloads
+   * can contain secrets; the durable tool_call step already records a bounded
+   * argument summary.
+   */
+  private awaitGenericMutationApproval(
+    runId: string,
+    call: LLMToolCall,
+    decision: AgentMutationDecision,
+  ): Promise<boolean> {
+    const preview =
+      `# Mutation approval required\n` +
+      `tool: ${call.name}\n` +
+      `capability: ${decision.capability}\n` +
+      `source: ${decision.source}`;
+    this.addStep(
+      runId,
+      "message",
+      `[approval] Waiting for user approval of ${call.name} (${decision.capability}).`,
+    );
+    this.addStep(runId, "diff", preview);
+    this.emit({ kind: "patch_ready", runId, patch: preview });
+    this.pending.set(runId, {
+      kind: "mutation",
+      patch: preview,
+      command: null,
+      toolName: call.name,
+      capability: decision.capability,
+    });
+    this.setStatus(runId, "waiting_for_user_approval");
+    return new Promise<boolean>((resolve) => {
+      this.approvals.set(runId, { resolve });
+    });
+  }
+
   /** Park the loop until the user approves/rejects the pending patch. */
   private awaitApproval(runId: string, call: LLMToolCall): Promise<boolean> {
     const patch = patchArg(call);
@@ -1411,8 +1549,19 @@ export class AgentService {
         this.setStatus(runId, "done");
         break;
       case "failed":
-        this.addStep(runId, "error", outcome.reason);
-        this.safeRunWrite(() => this.storage.setRunExitReason(runId, "failed"));
+        {
+          const failureCode =
+            outcome.failureCode ??
+            classifyAgentRunFailure(outcome.reason, "model_protocol");
+          this.addStep(
+            runId,
+            "error",
+            formatAgentRunFailure(failureCode, outcome.reason),
+          );
+          this.safeRunWrite(() =>
+            this.storage.setRunExitReason(runId, failureCode),
+          );
+        }
         this.setStatus(runId, "failed");
         break;
       case "cancelled":
@@ -1425,6 +1574,25 @@ export class AgentService {
         this.setStatus(runId, "budget_exceeded");
         break;
     }
+  }
+
+  private failRun(
+    runId: string,
+    error: unknown,
+    fallback: AgentRunFailureCode,
+  ): void {
+    const current = this.storage.getRun(runId);
+    if (!current || isTerminalAgentRunState(current.status)) return;
+    const failureCode = classifyAgentRunFailure(error, fallback);
+    this.addStep(
+      runId,
+      "error",
+      formatAgentRunFailure(failureCode, asMessage(error)),
+    );
+    this.safeRunWrite(() =>
+      this.storage.setRunExitReason(runId, failureCode),
+    );
+    this.setStatus(runId, "failed");
   }
 
   private async buildInitialUserMessage(task: string, ctx: ToolContext): Promise<string> {
@@ -1550,7 +1718,12 @@ export function loopErrorToOutcome(
   finalMessages: LLMMessage[],
 ): ToolLoopOutcome {
   if (aborted) return { state: "cancelled", finalMessages };
-  return { state: "failed", reason: asMessage(err), finalMessages };
+  return {
+    state: "failed",
+    reason: asMessage(err),
+    failureCode: classifyAgentRunFailure(err, "internal_failure"),
+    finalMessages,
+  };
 }
 
 /**
@@ -1602,6 +1775,18 @@ function patchApplied(resultText: string): boolean {
   try {
     const parsed: unknown = JSON.parse(resultText);
     return typeof parsed === "object" && parsed !== null && (parsed as { applied?: unknown }).applied === true;
+  } catch {
+    return false;
+  }
+}
+
+function toolPassesGate(
+  assertToolAllowed: ((toolName: string) => void) | undefined,
+  toolName: string,
+): boolean {
+  try {
+    assertToolAllowed?.(toolName);
+    return true;
   } catch {
     return false;
   }
@@ -1698,75 +1883,22 @@ function truncateStep(text: string): string {
  * exception objects never cross this boundary.
  */
 export function formatDynamicBundleFactoryFailureStep(err: unknown): string {
-  const detail = sanitizeDynamicSourceError(err);
+  const detail = redactSensitiveText(err, {
+    maxLength: 3_500,
+    fallback: "Unknown dynamic source error",
+  })
+    .replace(/\s+/g, " ")
+    .trim();
   return limitStepContent(
     `[security] Dynamic tools disabled: bundle factory failed (${detail}).`,
   );
 }
 
-function sanitizeDynamicSourceError(err: unknown): string {
-  let message: string;
-  try {
-    const raw = err instanceof Error ? err.message : err;
-    message = typeof raw === "string" ? raw : String(raw);
-  } catch {
-    message = "Unknown dynamic source error";
-  }
-
-  let sanitized = message
-    .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!sanitized) sanitized = "Unknown dynamic source error";
-
-  sanitized = redactLocalUserDirectories(sanitized)
-    .replace(
-      /\b([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]+:[^@\s/]+@/gi,
-      "$1[REDACTED]@",
-    )
-    .replace(
-      /([?&](?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password)=)[^&#\s]*/gi,
-      "$1[REDACTED]",
-    )
-    .replace(
-      /\bAuthorization\s*[:=]\s*[^,;]+/gi,
-      "Authorization: [REDACTED]",
-    )
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-    .replace(
-      /\b(api[\s_-]?key|apikey|access[\s_-]?token|auth[\s_-]?token|token|secret|password)\b\s*[:=]\s*[^\s,;]+/gi,
-      "$1=[REDACTED]",
-    );
-
-  return sanitized;
-}
-
-function redactLocalUserDirectories(message: string): string {
-  const candidates = new Set(
-    [homedir(), process.env.USERPROFILE, process.env.HOME].filter(
-      (value): value is string => typeof value === "string" && value.length >= 3,
-    ),
-  );
-  let redacted = message;
-  for (const candidate of candidates) {
-    redacted = replaceLiteralInsensitive(redacted, candidate, "[USER_HOME]");
-    redacted = replaceLiteralInsensitive(
-      redacted,
-      candidate.replaceAll("\\", "/"),
-      "[USER_HOME]",
-    );
-  }
-  return redacted;
-}
-
-function replaceLiteralInsensitive(
-  input: string,
-  literal: string,
-  replacement: string,
-): string {
-  if (!literal) return input;
-  const escaped = literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return input.replace(new RegExp(escaped, "gi"), replacement);
+export function redactToolErrorResult(resultText: string): string {
+  return redactSensitiveText(resultText, {
+    maxLength: MAX_STEP_CONTENT,
+    fallback: "Unknown tool error",
+  });
 }
 
 function limitStepContent(text: string): string {

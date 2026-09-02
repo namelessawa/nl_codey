@@ -111,6 +111,29 @@ afterEach(() => {
 });
 
 describe("buildServices dynamic tool wiring", () => {
+  it("surfaces the runs reconciled before Desktop starts accepting work", () => {
+    const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nlc-services-recovery-"));
+    roots.push(dataRoot);
+    const workspaceRoot = path.join(dataRoot, "workspace");
+    fs.mkdirSync(workspaceRoot);
+    const startupRecoveries = [
+      {
+        runId: "run-interrupted",
+        workspaceId: "workspace-1",
+        previousStatus: "applying_patch" as const,
+        sessionId: "ses_interrupted",
+        sessionFilePath: path.join(dataRoot, "ses_interrupted.json"),
+      },
+    ];
+    const storage = createMemoryStorage(workspaceRoot, startupRecoveries);
+    mocked.makeStorage.mockReturnValue(storage);
+
+    const services = buildServices(vi.fn(), { dataRoot });
+
+    expect(storage.reconcileInterruptedRuns).toHaveBeenCalledOnce();
+    expect(services.startupRecoveries).toEqual(startupRecoveries);
+  });
+
   it("lets AgentService audit a buildPluginBundle factory failure", async () => {
     const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nlc-services-security-"));
     roots.push(dataRoot);
@@ -142,7 +165,48 @@ describe("buildServices dynamic tool wiring", () => {
   });
 });
 
-function createMemoryStorage(workspaceRoot: string): StorageShape {
+describe("semantic freshness host boundary", () => {
+  it("reads mtimes only for real files contained by the workspace", async () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), "nlc-semantic-freshness-"));
+    roots.push(base);
+    const workspaceRoot = path.join(base, "workspace");
+    const outsideRoot = path.join(base, "outside");
+    fs.mkdirSync(workspaceRoot);
+    fs.mkdirSync(outsideRoot);
+    const inside = path.join(workspaceRoot, "inside.ts");
+    fs.writeFileSync(inside, "export const inside = true;\n", "utf8");
+    fs.writeFileSync(
+      path.join(outsideRoot, "private.ts"),
+      "export const privateValue = true;\n",
+      "utf8",
+    );
+    fs.symlinkSync(
+      outsideRoot,
+      path.join(workspaceRoot, "linked"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    const actual = await vi.importActual<
+      typeof import("./extended-ports.js")
+    >("./extended-ports.js");
+    const mtimes = actual.currentMtimesForSemanticHits(workspaceRoot, [
+      { filePath: "inside.ts" },
+      { filePath: "missing.ts" },
+      { filePath: "../outside/private.ts" },
+      { filePath: "linked/private.ts" },
+    ]);
+
+    expect(mtimes.get("inside.ts")).toBe(fs.statSync(inside).mtimeMs);
+    expect([...mtimes.keys()]).toEqual(["inside.ts"]);
+  });
+});
+
+function createMemoryStorage(
+  workspaceRoot: string,
+  startupRecoveries: ReturnType<
+    StorageShape["reconcileInterruptedRuns"]
+  > = [],
+): StorageShape {
   const workspace = { id: "workspace-1", rootPath: workspaceRoot, openedAt: Date.now() };
   let run: AgentRun | null = null;
   const steps: AgentStep[] = [];
@@ -151,6 +215,7 @@ function createMemoryStorage(workspaceRoot: string): StorageShape {
     finetune: {
       getActiveModel: () => null,
     },
+    reconcileInterruptedRuns: vi.fn(() => startupRecoveries),
     getWorkspace: (id: string) => (id === workspace.id ? workspace : null),
     createRun: (workspaceId: string, userTask: string) => {
       const now = Date.now();

@@ -5,7 +5,7 @@ import type {
   AgentStep,
   Workspace,
 } from "@nlc/shared";
-import { isRunActive } from "@nlc/shared";
+import { getAgentRunFailureCode, isRunActive } from "@nlc/shared";
 import { Markdown } from "./Markdown.js";
 import { Icon } from "./Icons.js";
 import { useT } from "../lang-context.js";
@@ -68,6 +68,10 @@ export function ChatRunView({
   const isFailed =
     detail.run.status === "failed" || detail.run.status === "budget_exceeded";
   const isCancelled = detail.run.status === "cancelled";
+  const failureReason =
+    detail.run.status === "failed"
+      ? `[${getAgentRunFailureCode(detail.run)}]`
+      : detail.run.exitReason;
   const hasPendingPatch = Boolean(detail.pendingPatch);
 
   useEffect(() => {
@@ -144,7 +148,7 @@ export function ChatRunView({
                 ? tr("chat.budgetExceeded")
                 : tr("chat.failed")}
             </strong>
-            {detail.run.exitReason ? ` · ${detail.run.exitReason}` : ""}
+            {failureReason ? ` · ${failureReason}` : ""}
           </span>
         </div>
       )}

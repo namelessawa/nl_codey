@@ -9,10 +9,11 @@ const DEFAULT_MAX_FILES = 500;
  * separators) with ignored directories skipped and a hard cap on count.
  */
 export async function scanFiles(root: string, maxFiles = DEFAULT_MAX_FILES): Promise<string[]> {
+  const limit = normalizeMaxFiles(maxFiles);
   const results: string[] = [];
   const queue: string[] = [root];
 
-  while (queue.length > 0 && results.length < maxFiles) {
+  while (queue.length > 0 && results.length < limit) {
     const dir = queue.shift() as string;
     let entries: import("node:fs").Dirent[];
     try {
@@ -20,8 +21,11 @@ export async function scanFiles(root: string, maxFiles = DEFAULT_MAX_FILES): Pro
     } catch {
       continue; // unreadable directory: skip rather than fail the whole scan
     }
+    entries.sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    );
     for (const entry of entries) {
-      if (results.length >= maxFiles) break;
+      if (results.length >= limit) break;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (!isIgnoredDir(entry.name)) queue.push(full);
@@ -36,4 +40,9 @@ export async function scanFiles(root: string, maxFiles = DEFAULT_MAX_FILES): Pro
 
 function toRelativePosix(root: string, full: string): string {
   return path.relative(root, full).split(path.sep).join("/");
+}
+
+function normalizeMaxFiles(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MAX_FILES;
+  return Math.max(0, Math.min(DEFAULT_MAX_FILES, Math.floor(value)));
 }

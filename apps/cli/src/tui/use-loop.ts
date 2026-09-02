@@ -23,11 +23,26 @@
  * subscriber to the same `emit` channel.
  */
 import { useEffect, useMemo, useReducer, useRef } from "react";
+import fs from "node:fs";
 import path from "node:path";
-import { nlcRoot, type AgentEvent } from "@nlc/shared";
-import type { LoadedSession, SessionSummary } from "@nlc/session";
+import {
+  formatAgentRunStatusCode,
+  isTerminalAgentRunState,
+  nlcRoot,
+  type AgentEvent,
+} from "@nlc/shared";
+import type {
+  LoadedSession,
+  SessionFileDiagnostic,
+  SessionMessage,
+  SessionSummary,
+} from "@nlc/session";
 import { renderProjectTree } from "@nlc/session";
-import { buildCliServices, type CliServices } from "../lib/services.js";
+import {
+  buildCliServices,
+  type BuildCliServicesOpts,
+  type CliServices,
+} from "../lib/services.js";
 import { SessionBridge, sessionRootFor } from "./session-bridge.js";
 
 export type RoleKey = "user" | "agent" | "tool" | "verify" | "error" | "system";
@@ -50,6 +65,8 @@ export type TraceItem = {
 type State = {
   /** Finalised messages — routed through `<Static>` into terminal scrollback. */
   stream: StreamItem[];
+  /** Remount key for replaying a non-append stream through Ink Static. */
+  streamVersion: number;
   /** Currently-streaming agent message (mutates on each delta). Null when idle. */
   liveAgent: StreamItem | null;
   trace: TraceItem[];
@@ -62,6 +79,7 @@ type State = {
 
 type Action =
   | { type: "append"; item: StreamItem }
+  | { type: "replace-stream"; items: StreamItem[] }
   | { type: "trace"; item: TraceItem }
   | { type: "delta"; text: string }
   | { type: "flush" }
@@ -70,8 +88,8 @@ type Action =
   | { type: "set-status"; value: string }
   | { type: "clear" };
 
-const MAX_STREAM = 500;
-const MAX_TRACE = 200;
+export const MAX_STREAM_ITEMS = 500;
+export const MAX_TRACE_ITEMS = 200;
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -79,16 +97,27 @@ function reducer(state: State, action: Action): State {
       // Any non-delta event finalises the streaming agent message: push it
       // to the Static stream before the new item so order is preserved.
       const flushed = state.liveAgent
-        ? trimTail(state.stream, state.liveAgent, MAX_STREAM)
+        ? appendBounded(state.stream, state.liveAgent, MAX_STREAM_ITEMS)
         : state.stream;
       return {
         ...state,
-        stream: trimTail(flushed, action.item, MAX_STREAM),
+        stream: appendBounded(flushed, action.item, MAX_STREAM_ITEMS),
         liveAgent: null,
       };
     }
+    case "replace-stream":
+      return {
+        ...state,
+        stream: action.items.slice(-MAX_STREAM_ITEMS),
+        streamVersion: state.streamVersion + 1,
+        liveAgent: null,
+        trace: [],
+      };
     case "trace":
-      return { ...state, trace: trimTail(state.trace, action.item, MAX_TRACE) };
+      return {
+        ...state,
+        trace: appendBounded(state.trace, action.item, MAX_TRACE_ITEMS),
+      };
     case "delta": {
       const live = state.liveAgent;
       const id = live?.id ?? `delta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -102,7 +131,7 @@ function reducer(state: State, action: Action): State {
       if (!state.liveAgent) return state;
       return {
         ...state,
-        stream: trimTail(state.stream, state.liveAgent, MAX_STREAM),
+        stream: appendBounded(state.stream, state.liveAgent, MAX_STREAM_ITEMS),
         liveAgent: null,
       };
     }
@@ -113,11 +142,17 @@ function reducer(state: State, action: Action): State {
     case "set-status":
       return { ...state, status: action.value };
     case "clear":
-      return { ...state, stream: [], trace: [], liveAgent: null };
+      return {
+        ...state,
+        stream: [],
+        streamVersion: state.streamVersion + 1,
+        trace: [],
+        liveAgent: null,
+      };
   }
 }
 
-function trimTail<T>(arr: T[], item: T, max: number): T[] {
+export function appendBounded<T>(arr: readonly T[], item: T, max: number): T[] {
   const next = [...arr, item];
   return next.length > max ? next.slice(next.length - max) : next;
 }
@@ -126,6 +161,8 @@ export type UseLoopOptions = {
   workspaceRoot?: string;
   dataRoot?: string;
   autoApprove?: boolean;
+  /** Explicit embedding/test seam; normal CLI use keeps the production factory. */
+  serviceFactory?: (opts: BuildCliServicesOpts) => CliServices;
 };
 
 export function useLoop(opts: UseLoopOptions = {}) {
@@ -135,6 +172,7 @@ export function useLoop(opts: UseLoopOptions = {}) {
 
   const [state, dispatch] = useReducer(reducer, {
     stream: [],
+    streamVersion: 0,
     liveAgent: null,
     trace: [],
     pendingApproval: null,
@@ -154,16 +192,47 @@ export function useLoop(opts: UseLoopOptions = {}) {
   // Independent of `servicesRef` — works even when SQLite-backed storage
   // fails to open, so the conversation tree is captured regardless.
   const bridgeRef = useRef<SessionBridge | null>(null);
+  const sessionPersistenceDisabledRef = useRef(false);
+
+  const reportSessionFailure = (operation: string, error: unknown): void => {
+    if (sessionPersistenceDisabledRef.current) return;
+    sessionPersistenceDisabledRef.current = true;
+    bridgeRef.current?.abandonActiveWriter();
+    dispatch({
+      type: "append",
+      item: {
+        id: `session-error-${Date.now()}`,
+        role: "error",
+        label: "session",
+        text:
+          `session persistence failed during ${operation} (${sessionErrorCode(error)}); ` +
+          "agent work will continue, but new JSONL history is disabled for this turn.",
+      },
+    });
+  };
 
   const getServices = (): CliServices | null => {
     if (servicesRef.current) return servicesRef.current;
     if (errorRef.current) return null;
     try {
-      servicesRef.current = buildCliServices({
+      const serviceFactory = opts.serviceFactory ?? buildCliServices;
+      servicesRef.current = serviceFactory({
         dataRoot,
         emit: (event) => {
-          bridgeRef.current?.handleAgentEvent(event);
+          if (!sessionPersistenceDisabledRef.current) {
+            try {
+              bridgeRef.current?.handleAgentEvent(event);
+            } catch (error) {
+              reportSessionFailure("agent event write", error);
+            }
+          }
           handleEvent(event, dispatch, autoApprove, servicesRef);
+          if (
+            event.kind === "run_updated" &&
+            isTerminalAgentRunState(event.run.status)
+          ) {
+            sessionPersistenceDisabledRef.current = false;
+          }
         },
       });
       return servicesRef.current;
@@ -192,6 +261,58 @@ export function useLoop(opts: UseLoopOptions = {}) {
   };
 
   useEffect(() => {
+    const dbPath = path.join(dataRoot, "data", "workspace-state.db");
+    const startupServices = fs.existsSync(dbPath) ? getServices() : null;
+    const startupRecoveries =
+      startupServices?.startupRecoveries.filter((recovery) => {
+        const workspace = startupServices.storage.getWorkspace(recovery.workspaceId);
+        return workspace
+          ? sameWorkspacePath(workspace.rootPath, workspaceRoot)
+          : false;
+      }) ?? [];
+    try {
+      const bridge = getBridge();
+      const latest = bridge.listSessions()[0];
+      if (latest) {
+        const { loaded } = bridge.resume(latest.filePath);
+        dispatch({ type: "replace-stream", items: sessionItems(loaded) });
+        dispatch({
+          type: "append",
+          item: {
+            id: `restore-${Date.now()}`,
+            role: "system",
+            label: "resume",
+            text: `restored ${loaded.header.id} (${loaded.messages.length} messages); no tools were re-run.`,
+          },
+        });
+      }
+    } catch (err) {
+      dispatch({
+        type: "append",
+        item: {
+          id: `restore-error-${Date.now()}`,
+          role: "error",
+          label: "system",
+          text: `session restore failed: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      });
+    }
+    if (startupRecoveries.length > 0) {
+      const statuses = [
+        ...new Set(startupRecoveries.map((recovery) => recovery.previousStatus)),
+      ].join(", ");
+      dispatch({
+        type: "append",
+        item: {
+          id: `run-recovery-${Date.now()}`,
+          role: "system",
+          label: "recovery",
+          text:
+            `recovered ${startupRecoveries.length} interrupted run(s) from ${statuses}. ` +
+            "No tools or workspace writes were replayed; /rollback remains available.",
+        },
+      });
+    }
     return () => {
       try {
         servicesRef.current?.storage.close();
@@ -215,10 +336,16 @@ export function useLoop(opts: UseLoopOptions = {}) {
     });
     // Capture the user message in the session BEFORE the agent run so
     // the file always contains the prompt even if the run dies mid-flight.
+    let sessionId: string | null = null;
+    let sessionFilePath: string | null = null;
+    sessionPersistenceDisabledRef.current = false;
     try {
-      getBridge().recordUserMessage(trimmed);
-    } catch {
-      /* best-effort — session capture must never block a run */
+      const bridge = getBridge();
+      bridge.recordUserMessage(trimmed);
+      sessionId = bridge.currentSessionId;
+      sessionFilePath = bridge.currentFilePath;
+    } catch (error) {
+      reportSessionFailure("user message write", error);
     }
     const services = getServices();
     if (!services) return;
@@ -226,7 +353,10 @@ export function useLoop(opts: UseLoopOptions = {}) {
       const workspace = services.storage.upsertWorkspace(workspaceRoot);
       dispatch({ type: "set-running", value: true });
       dispatch({ type: "set-status", value: "tool_use" });
-      const detail = await services.agent.runTask(workspace.id, trimmed);
+      const detail = await services.agent.runTask(workspace.id, trimmed, {
+        ...(sessionId ? { sessionId } : {}),
+        ...(sessionFilePath ? { sessionFilePath } : {}),
+      });
       const runId = detail.run.id;
       await waitTerminal(services, runId, dispatch);
     } catch (err) {
@@ -240,6 +370,7 @@ export function useLoop(opts: UseLoopOptions = {}) {
         },
       });
       dispatch({ type: "set-running", value: false });
+      sessionPersistenceDisabledRef.current = false;
     }
   };
 
@@ -276,8 +407,21 @@ export function useLoop(opts: UseLoopOptions = {}) {
     const ws = services.storage.listWorkspaces(1)[0];
     if (!ws) return;
     for (const r of services.agent.listRuns(ws.id)) {
-      if (!isTerminal(r.status)) services.agent.stop(r.id);
+      if (!isTerminalAgentRunState(r.status)) services.agent.stop(r.id);
     }
+  };
+
+  const rollback = (requestedRunId: string | null): { id: string; status: string } => {
+    const services = getServices();
+    if (!services) throw new Error(errorRef.current ?? "storage is unavailable");
+    const workspace = services.storage.upsertWorkspace(workspaceRoot);
+    const runs = services.agent.listRuns(workspace.id);
+    const run = requestedRunId
+      ? resolveRunPrefix(runs, requestedRunId)
+      : runs[0];
+    if (!run) throw new Error("no run is available to roll back");
+    const detail = services.agent.rollback(run.id);
+    return { id: detail.run.id, status: detail.run.status };
   };
 
   const clear = (): void => dispatch({ type: "clear" });
@@ -308,6 +452,10 @@ export function useLoop(opts: UseLoopOptions = {}) {
   /** Return one summary row per session in this workspace. */
   const listSessions = (): SessionSummary[] => getBridge().listSessions();
 
+  /** Return content-free diagnostics for damaged session files/records. */
+  const listSessionDiagnostics = (): SessionFileDiagnostic[] =>
+    getBridge().listDiagnostics();
+
   /** Load every session in this workspace (for /tree rendering). */
   const loadAllSessions = (): LoadedSession[] => getBridge().loadAllSessions();
 
@@ -328,14 +476,21 @@ export function useLoop(opts: UseLoopOptions = {}) {
   };
 
   /** Resume an existing session as the active writer. Accepts id or absolute path. */
-  const resumeSession = (idOrPath: string): { id: string; filePath: string } => {
+  const resumeSession = (
+    idOrPath: string,
+  ): { id: string; filePath: string; messageCount: number } => {
     const bridge = getBridge();
     const filePath = idOrPath.includes(path.sep) || idOrPath.endsWith(".json")
       ? idOrPath
       : bridge.filePathFor(idOrPath);
     if (!filePath) throw new Error(`unknown session id: ${idOrPath}`);
-    const writer = bridge.resume(filePath);
-    return { id: writer.header.id, filePath: writer.filePath };
+    const { writer, loaded } = bridge.resume(filePath);
+    dispatch({ type: "replace-stream", items: sessionItems(loaded) });
+    return {
+      id: writer.header.id,
+      filePath: writer.filePath,
+      messageCount: loaded.messages.length,
+    };
   };
 
   /** Append a state-change event to the active session file. */
@@ -344,16 +499,18 @@ export function useLoop(opts: UseLoopOptions = {}) {
     from: string | { provider: string; model: string } | null,
     to: string | { provider: string; model: string },
   ): void => {
+    if (sessionPersistenceDisabledRef.current) return;
     try {
       getBridge().recordStateEvent(kind, from, to);
-    } catch {
-      /* best-effort */
+    } catch (error) {
+      reportSessionFailure("state event write", error);
     }
   };
 
   return useMemo(
     () => ({
       stream: state.stream,
+      streamVersion: state.streamVersion,
       liveAgent: state.liveAgent,
       trace: state.trace,
       pendingApproval: state.pendingApproval,
@@ -365,11 +522,13 @@ export function useLoop(opts: UseLoopOptions = {}) {
       approve,
       reject,
       cancel,
+      rollback,
       clear,
       appendSystem,
       // session ops
       currentSessionId,
       listSessions,
+      listSessionDiagnostics,
       loadAllSessions,
       renderTree,
       branchAt,
@@ -452,8 +611,11 @@ function handleEvent(
       }
       break;
     case "run_updated":
-      dispatch({ type: "set-status", value: event.run.status });
-      if (isTerminal(event.run.status)) {
+      dispatch({
+        type: "set-status",
+        value: formatAgentRunStatusCode(event.run),
+      });
+      if (isTerminalAgentRunState(event.run.status)) {
         // Run is over — flush any half-streamed agent text into the
         // Static stream so the row falls into terminal scrollback and
         // the live frame goes idle.
@@ -484,16 +646,82 @@ async function waitTerminal(
 ): Promise<void> {
   while (true) {
     const detail = services.agent.getDetail(runId);
-    if (isTerminal(detail.run.status)) {
+    if (isTerminalAgentRunState(detail.run.status)) {
       dispatch({ type: "flush" });
       dispatch({ type: "set-running", value: false });
-      dispatch({ type: "set-status", value: detail.run.status });
+      dispatch({
+        type: "set-status",
+        value: formatAgentRunStatusCode(detail.run),
+      });
       return;
     }
     await new Promise((r) => setTimeout(r, 80));
   }
 }
 
-function isTerminal(status: string): boolean {
-  return status === "done" || status === "failed" || status === "cancelled" || status === "budget_exceeded";
+function resolveRunPrefix<T extends { id: string }>(runs: T[], prefix: string): T {
+  const exact = runs.find((run) => run.id === prefix);
+  if (exact) return exact;
+  const matches = runs.filter((run) => run.id.startsWith(prefix));
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length === 0) throw new Error(`unknown run id: ${prefix}`);
+  throw new Error(`ambiguous run id prefix: ${prefix}`);
+}
+
+function sessionItems(loaded: LoadedSession): StreamItem[] {
+  const items = loaded.messages.map((message) => sessionItem(message));
+  if (loaded.diagnostics.length === 0) return items;
+  const lines = loaded.diagnostics
+    .map((diagnostic) => diagnostic.line)
+    .join(", ");
+  return [
+    ...items,
+    {
+      id: `session-warning-${loaded.header.id}`,
+      role: "error",
+      label: "session",
+      text:
+        `session recovery warning: ignored ${loaded.diagnostics.length} malformed ` +
+        `JSONL line(s) (${lines}); valid messages were restored and future appends are isolated.`,
+    },
+  ];
+}
+
+function sessionItem(message: SessionMessage): StreamItem {
+  switch (message.role) {
+    case "user":
+      return { id: message.id, role: "user", label: "user", text: message.content };
+    case "assistant":
+      return { id: message.id, role: "agent", label: "agent", text: message.content };
+    case "tool":
+      return {
+        id: message.id,
+        role: "tool",
+        label: `tool:${message.toolCallId ?? "result"}`,
+        text: message.content,
+      };
+    case "system":
+      return { id: message.id, role: "system", label: "system", text: message.content };
+  }
+}
+
+function sameWorkspacePath(left: string, right: string): boolean {
+  const normalize = (value: string): string => {
+    const resolved = path.resolve(value);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  return normalize(left) === normalize(right);
+}
+
+function sessionErrorCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[A-Z0-9_]+$/u.test(error.code)
+  ) {
+    return error.code;
+  }
+  return "SESSION_IO_ERROR";
 }

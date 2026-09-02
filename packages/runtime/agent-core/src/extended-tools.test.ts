@@ -156,7 +156,11 @@ describe("createExtendedDispatcher", () => {
     const { ports, semanticCalls } = makePorts();
     const dispatch = createExtendedDispatcher(ports);
     const result = await dispatch(
-      makeCall("semantic_search", { query: "auth flow", topK: 3 }),
+      makeCall("semantic_search", {
+        query: "auth flow",
+        topK: 3,
+        maxContextTokens: 64,
+      }),
       CTX,
     );
     expect(result?.isError).toBe(false);
@@ -167,8 +171,17 @@ describe("createExtendedDispatcher", () => {
     };
     expect(payload.query).toBe("auth flow");
     expect(payload.hits[0]?.filePath).toBe("src/foo.ts");
+    expect(payload).toMatchObject({
+      budget: {
+        maxTokens: 64,
+        estimator: "ascii_4_non_ascii_1",
+      },
+    });
     expect(semanticCalls[0]?.query).toBe("auth flow");
-    expect((semanticCalls[0]?.opts as { topK?: number })?.topK).toBe(3);
+    expect(semanticCalls[0]?.opts).toMatchObject({
+      topK: 3,
+      maxContextTokens: 64,
+    });
   });
 
   it("rejects semantic_search with no query", async () => {

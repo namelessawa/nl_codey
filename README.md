@@ -24,8 +24,10 @@
 
 ## 演进阶段
 
-项目分四个阶段演进，全部已合入 `main`，并在 0.1.0 之后追加了一个
-独立 CLI 入口与会话树存储：
+仓库按四个历史阶段演进，并在 0.1.0 之后追加了独立 CLI 与会话树。
+“已合入”只表示代码存在，不等于整项能力已经达到生产级。当前逐模块
+证据和等级见
+[`docs/audits/feature-reality-matrix.md`](docs/audits/feature-reality-matrix.md)：
 
 - **Phase 1 — 安全的单轮 MVP。** 路径隔离、命令白名单、超时控制、
   输出截断，写入前必须显式批准。
@@ -34,53 +36,53 @@
   长上下文压缩、对 LLM 瞬时失败的指数退避重试、V4A 上下文补丁格式、
   符号索引以及 eval 测评框架。GUI 中实时显示 trace、迭代时间线、
   预算指示器和项目卡片。
-- **Phase 3 — 长期项目托付。** 跨会话记忆、语义索引、任务规划
+- **Phase 3 — 长期项目托付（可用，但仍属实验性）。** 跨会话记忆、语义索引、任务规划
   （依赖图 + 调度器）、多代理编排（Planner / Coder / Reviewer）、
   Git 集成（分支 / 提交 / PR）、Web 工具、以及 WSL/Docker 沙箱运行器
   —— 通过 "Phase 3" 标签页统一呈现。
-- **Phase 4 — 跨项目自演化 + 团队规模。** 七个新的 workspace 包，
+- **Phase 4 — 跨项目自演化 + 团队规模（实验性/部分原型，默认可关闭）。** 七个 workspace 包，
   让代理从"单项目托付"演进到"可证明的跨项目持续改进 + 可扩展到
   整夜工作"：跨项目知识图谱、风格规范学习器、被动反馈信号收集、
   可选的 LoRA 微调管道（带三规则评估门）、分布式协调器、只读式
-  技术债扫描提案箱、插件 SDK。每项能力都有独立的功能开关，
-  即使全部禁用，系统也能优雅退化为完整的 Phase 3。
+  技术债扫描提案箱、插件 SDK。分布式传输仍是 Scaffold，微调需要用户
+  自备训练脚本，插件权限目前不是 OS 沙箱边界。每项能力都有独立开关。
 - **CLI + 会话树（0.1.0 之后追加）。** `apps/cli` 提供 opencode 风格
   的 Ink TUI（带 `/provider`、`/sessions`、`/tree`、`/branch`、
   `/resume`、`/model`、`/think`、`/theme` 等斜杠命令）；
-  `packages/session` 在 `~/.nlc/agent.session/` 下以 git 风格的可分支
+  `packages/core/session` 在 `~/.nlc/agent.session/` 下以 git 风格的可分支
   JSONL 会话树持久化对话，与现有 SQLite 运行历史并行。两者均与桌面
   GUI 共享同一套 `@nlc/agent-core` 工具循环和 settings 存储。
 
 ## 架构
 
-pnpm monorepo 结构（`apps/*`、`packages/*`）。Workspace 包以原始
+pnpm monorepo 结构（`apps/*`、`packages/*/*`）。Workspace 包以原始
 TypeScript 源码方式发布，由 `electron-vite` **打包**；跨包引用使用
 `@nlc/*` 别名 + `.js` 后缀（NodeNext/Bundler ESM 约定）。
 
 ```
-apps/desktop              Electron 应用（main / preload / React 渲染层）
-apps/cli                  Ink TUI（nlc 命令），与 desktop 共享 agent-core 工具循环
-packages/shared           类型定义 + IPC 契约 —— 所有包都依赖它，是依赖中枢
-packages/sandbox          路径隔离、命令白名单/路由、WSL + Docker 运行器
-packages/storage          SQLite（better-sqlite3）：workspaces/runs/steps/snapshots + Phase 3/4 表
-packages/session          可分支 JSONL 会话树（~/.nlc/agent.session/），与 SQLite 运行历史并行
-packages/project-indexer  文件扫描、忽略规则、项目类型检测
-packages/llm              Provider 抽象：流式 chat() + complete()，OpenAI 兼容 + Anthropic
-packages/tools            代理的工具集（list/read/search/patch/run/git/symbol/web/memory/task）
-packages/agent-core       工具调用循环、预算、verifier、回归守卫、压缩器、eval、rollback
-packages/memory           跨会话记忆：decision/preference/failure/fact 条目 + 检索器
-packages/semantic-index   嵌入器、分块器、余弦向量检索、增量重建索引
-packages/planner          依赖图、DAG 校验、调度波次、LLM 任务分解器
-packages/orchestrator     Planner/Coder/Reviewer 角色、消息总线、锁管理器、worker 池
-packages/git-integration  分支管理、conventional commit 编写器、PR 生成器、diff 摘要
-packages/web-tools        域名白名单、可读性抓取、搜索后端
-packages/global-memory    跨项目知识图谱 + provenance + 隐私范围 + 撤回级联
-packages/style-profile    StyleSpec 数据模型 + 代码风格抽取器 + diff 反馈学习器
-packages/learning         被动信号收集器 + 偏好数据集构建器 + 数据策展
-packages/finetune         可选 LoRA/QLoRA + 三规则评估门 + 模型注册表 + 嵌入 A/B
-packages/distributed      Coordinator + 任务分发器 + 节点恢复 + 单机优雅降级
-packages/proactive        只读技术债扫描 + 提案箱（snooze/dismiss/convert）
-packages/plugin-sdk       Manifest 校验 + 逐次权限重检 + 沙箱路由 + 命令转义
+apps/desktop                              Electron main / preload / React renderer
+apps/cli                                  Ink TUI 与非交互 CLI
+packages/core/shared                      类型定义 + IPC 契约
+packages/core/sandbox                     路径隔离、白名单、WSL/Docker 运行器
+packages/core/storage                     SQLite 运行历史和功能存储
+packages/core/session                     可分支 JSONL 会话树
+packages/runtime/llm                      OpenAI-compatible / Anthropic Provider
+packages/runtime/tools                    代理工具及硬限制
+packages/runtime/agent-core               工具循环、预算、验证、回滚、多代理入口
+packages/intelligence/project-indexer     扫描、忽略、项目检测
+packages/intelligence/memory              跨会话记忆与检索
+packages/intelligence/semantic-index      分块、嵌入、向量检索
+packages/intelligence/planner             DAG 分解与调度
+packages/intelligence/orchestrator        Planner/Coder/Reviewer 编排
+packages/integration/git-integration      Git 分支/提交/PR/diff 辅助
+packages/integration/web-tools            域名白名单、搜索和抓取
+packages/advanced/global-memory           跨项目模式与知识图谱
+packages/advanced/style-profile           风格抽取与反馈
+packages/advanced/learning                偏好数据与策展
+packages/advanced/finetune                外部微调作业与评估门（实验性）
+packages/advanced/distributed             节点/分配模型（Scaffold）
+packages/advanced/proactive               技术债扫描与提案箱
+packages/advanced/plugin-sdk              插件 manifest/授权/host（实验性）
 ```
 
 渲染进程从不直接接触 Node —— 它通过 preload 桥暴露的类型化
@@ -103,10 +105,11 @@ packages/plugin-sdk       Manifest 校验 + 逐次权限重检 + 沙箱路由 + 
 
 ## 安装 Docker（强烈推荐）
 
-应用首次启动时会自动检测 Docker。**没有 Docker 时,代理的工具调用
-(运行测试、应用补丁、写入文件) 会直接在你的宿主机上以你的用户权限执行**
-—— 一个有 bug 的脚本或恶意的生成代码可以删除工作区之外的文件、
-读取你的 SSH 私钥、向外网泄漏数据。
+应用首次启动时会自动检测 Docker。没有 Docker 时，内置命令只能走精确
+白名单，文件工具仍做工作区路径/realpath 校验；如果用户显式跳过安装门，
+允许的命令会在宿主机以当前用户权限执行。实验性插件的 whitelist 模式会
+启动完整 Node 进程，manifest 权限目前不能替代 OS 级隔离，因此不要运行
+不可信插件。
 
 安装 Docker Desktop 可让 `docker` 模式把每条命令都关进一个临时容器,
 工作区以 bind-mount 注入,网络默认关闭。这与 Claude Code 在 Linux/macOS
@@ -282,9 +285,8 @@ SQLite 数据库位于 `<userData>/data/workspace-state.db`。
 
 - **`whitelist`**（默认,最安全）—— 精确匹配的允许列表,会被危险
   模式（命令链、命令替换、重定向、`rm -rf`、`powershell` 等）
-  筛查,最终在宿主机上 spawn,cwd 锁定到工作区根。子进程被分配到一个
-  Windows **Job Object**(`KILL_ON_JOB_CLOSE` + 内存/CPU/进程数上限),
-  Electron 退出或运行取消时整棵进程树原子化销毁。
+  筛查,最终在宿主机上 spawn,cwd 锁定到工作区根。取消或超时时会终止
+  整棵进程树；它仍是宿主进程,没有内存/CPU/系统调用隔离。
 - **`wsl`** —— 在 WSL Ubuntu 实例中运行，针对工作区的副本。
 - **`docker`** —— 在临时容器中运行，工作区以绑定挂载方式注入。
   推荐生产使用,见上节"安装 Docker"。
@@ -303,8 +305,10 @@ WSL/Docker 运行默认 **无网络出口**，除非某条命令明确开启；�
 ## 测试
 
 ```powershell
-pnpm test          # vitest run（所有包）
-pnpm typecheck     # tsc --noEmit 跨所有 workspace 项目
+pnpm test                         # 默认离线单元/桌面/renderer/preload/CLI/TUI 门
+pnpm test:integration             # Storage ABI + 沙箱/Docker 集成门
+pnpm test:sandbox:abort:soak      # Windows 取消：串行与并发压力门
+pnpm typecheck                    # tsc --noEmit 跨所有 workspace 项目
 ```
 
 覆盖范围包括：路径隔离（含 symlink 逃逸）、命令白名单 + 注入拒绝 +
@@ -312,13 +316,14 @@ pnpm typecheck     # tsc --noEmit 跨所有 workspace 项目
 失败不破坏文件）、工具调用循环 / 预算 / verifier / 回归守卫 /
 压缩器 / eval 测评框架、记忆检索器、语义索引、Planner 图/调度器、
 Orchestrator 消息总线 / 锁 / 角色、Git 集成、Web 工具、LLM provider
-（流式 chat、重试），以及存储生命周期。
+（流式 chat、重试），以及真实存储生命周期/迁移、CLI、preload、
+renderer、TUI render 和 Windows ConPTY 生命周期。
 
 > **原生模块注意：** `pnpm test` 在裸 Node 下运行，而 `better-sqlite3`
-> 在 `pnpm dev`/`build` 流程中是按 Electron 的 ABI 重建的。因此唯一
-> 真正打开 DB 的测试（`packages/core/storage/src/storage.test.ts`）在 Node
-> 下会因 ABI 不匹配失败 —— 这是工具链层面的现象,不是代码回归。
-> 详见 `CLAUDE.md`。
+> 在 `pnpm dev`/`build` 流程中是按 Electron 的 ABI 重建的。
+> `pnpm test:storage:abi` 会暂存当前 Electron 二进制、切换到精确 Node ABI
+> 运行真实数据库测试，并在 `finally` 中恢复后再次验证 Electron 加载；
+> 不要绕过这个可恢复矩阵手工覆盖原生模块。
 
 ## 安全模型
 
@@ -337,11 +342,11 @@ Orchestrator 消息总线 / 锁 / 角色、Git 集成、Web 工具、LLM provide
 - **Phase 4 微调** 受三规则评估门保护：候选模型分数 ≥ 基线、零
   per-task 回归、留出集不崩溃；任何一条不满足都不会被晋升。
   模型注册表强制"同时只有一个 active 模型"，可一键回滚到基线。
-- **Phase 4 提案箱** 是只读的：扫描器从不修改文件、从不创建任务、
-  从不运行非只读命令；所有动作必须经人工 convert 才会进入 Planner
-  管道。
+- **Phase 4 提案扫描器** 本身只读；人工 convert 后会创建真实 agent run，
+  并继承现有批准、预算和沙箱门。
 - **Phase 4 插件** 必须经人工逐权限批准（永远不会自动批准），插件
-  调用时每次都重新校验权限；命令参数 shell 转义。
+  调用时每次都重新校验权限；动态工具缺少修改分类、名称冲突或伪造未声明
+  调用会 fail-closed。
 - **动态工具信任边界** 要求每个 bundle 显式提供完整的
   `mutatingNames` 数组（只读 bundle 也必须提供空数组）。Agent Core
   会在暴露 schema 或调用 dispatcher 前做运行时校验：缺失/错误分类、
@@ -354,6 +359,6 @@ Orchestrator 消息总线 / 锁 / 角色、Git 集成、Web 工具、LLM provide
   `[security]` Run Step 前会被限长、单行化，并脱敏凭据、敏感 URL 和
   本地用户目录。
 
-> **插件隔离限制：** 上述修复收紧了注册和 dispatch 边界，但不能隔离
-> 一个已经启动的完整 Node 插件进程。此类进程仍具备宿主用户权限；真正
-> 的进程级文件系统/网络隔离需要独立的受限插件运行器。
+> **插件隔离限制：** 上述动态工具修复收紧了注册和 dispatch 边界，但
+> whitelist 插件仍是完整 Node 进程，声明权限不是对任意 Node syscall 的
+> 强制隔离。插件功能保持实验性且默认应关闭，直到受限运行器落地。

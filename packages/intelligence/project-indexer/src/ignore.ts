@@ -12,5 +12,5 @@ export const IGNORED_DIRS: ReadonlySet<string> = new Set([
 ]);
 
 export function isIgnoredDir(name: string): boolean {
-  return IGNORED_DIRS.has(name);
+  return IGNORED_DIRS.has(name.toLowerCase());
 }

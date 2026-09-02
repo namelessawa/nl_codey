@@ -28,6 +28,7 @@ const FLAG_TAKES_NO_VALUE = new Set([
   "verbose",
   "no-color",
   "json",
+  "host-protocol",
 ]);
 
 export function parseArgv(argv: readonly string[]): ParsedArgs {
@@ -50,7 +51,11 @@ export function parseArgv(argv: readonly string[]): ParsedArgs {
       }
       const name = a.slice(2);
       const next = argv[i + 1];
-      if (FLAG_TAKES_NO_VALUE.has(name) || next === undefined || next.startsWith("-")) {
+      if (
+        FLAG_TAKES_NO_VALUE.has(name) ||
+        next === undefined ||
+        (next.startsWith("-") && !(name === "output" && next === "-"))
+      ) {
         flags.set(name, "true");
         i += 1;
       } else {
@@ -62,7 +67,11 @@ export function parseArgv(argv: readonly string[]): ParsedArgs {
     if (a.startsWith("-") && a.length > 1) {
       const name = a.slice(1);
       const next = argv[i + 1];
-      if (FLAG_TAKES_NO_VALUE.has(name) || next === undefined || next.startsWith("-")) {
+      if (
+        FLAG_TAKES_NO_VALUE.has(name) ||
+        next === undefined ||
+        (next.startsWith("-") && !(name === "output" && next === "-"))
+      ) {
         flags.set(name, "true");
         i += 1;
       } else {

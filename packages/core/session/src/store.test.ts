@@ -55,6 +55,23 @@ describe("SessionStore", () => {
     expect(loaded.messages.map((m) => m.id)).toEqual([a.id, b.id, c.id]);
   });
 
+  it("redacts system errors before JSONL persistence without rewriting user prose", () => {
+    const writer = store.createSession("E:\\proj\\foo");
+    const secret =
+      "error: Authorization: Bearer jsonl-secret\nat C:\\Users\\alice\\.npmrc";
+    const system = writer.appendMessage({ role: "system", content: secret });
+    const userText = "please explain token=example without treating this prose as an error";
+    const user = writer.appendMessage({ role: "user", content: userText });
+    const raw = fs.readFileSync(writer.filePath, "utf8");
+
+    expect(system.content).toContain("[REDACTED]");
+    expect(system.content).toContain("[USER_HOME]");
+    expect(system.content).not.toMatch(/jsonl-secret|alice/);
+    expect(user.content).toBe(userText);
+    expect(raw).not.toContain("jsonl-secret");
+    expect(store.openSession(writer.filePath).messages[1]!.content).toBe(userText);
+  });
+
   it("appends state events without disturbing the message chain", () => {
     const writer = store.createSession("E:\\proj\\foo");
     const a = writer.appendMessage({ role: "user", content: "hi" });
@@ -72,13 +89,66 @@ describe("SessionStore", () => {
     expect(loaded.messages).toHaveLength(2);
   });
 
-  it("survives a truncated trailing line on read", () => {
+  it("reports and isolates a truncated tail before resumed appends", () => {
     const writer = store.createSession("E:\\proj\\foo");
-    writer.appendMessage({ role: "user", content: "hello" });
+    const first = writer.appendMessage({ role: "user", content: "hello" });
     // Simulate a partial write at the tail.
     fs.appendFileSync(writer.filePath, '{"type":"message","id":"msg_x"', "utf8");
-    const loaded = store.openSession(writer.filePath);
-    expect(loaded.messages).toHaveLength(1);
+    const beforeResume = store.openSession(writer.filePath);
+    expect(beforeResume.messages).toHaveLength(1);
+    expect(beforeResume.diagnostics).toEqual([
+      { kind: "malformed_json", line: 3, trailing: true },
+    ]);
+
+    const { writer: resumed, loaded } = store.resumeProjectSession(
+      "E:\\proj\\foo",
+      writer.filePath,
+    );
+    expect(loaded.diagnostics).toEqual(beforeResume.diagnostics);
+    const next = resumed.appendMessage({ role: "assistant", content: "recovered" });
+    const reopened = store.openSession(writer.filePath);
+
+    expect(next.parentId).toBe(first.id);
+    expect(reopened.messages.map((message) => message.content)).toEqual([
+      "hello",
+      "recovered",
+    ]);
+    expect(reopened.diagnostics).toEqual([
+      { kind: "malformed_json", line: 3, trailing: false },
+    ]);
+  });
+
+  it("lists content-free diagnostics for malformed and unreadable files", () => {
+    const cwd = "E:\\proj\\foo";
+    const writer = store.createSession(cwd);
+    fs.appendFileSync(writer.filePath, "not-json\n", "utf8");
+    const invalidPath = path.join(store.projectFolder(cwd), "damaged-session.json");
+    fs.writeFileSync(invalidPath, '{"type":"message","content":"private"}\n', "utf8");
+    let invalidError = "";
+    try {
+      store.openSession(invalidPath);
+    } catch (error) {
+      invalidError = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(invalidError).toContain("damaged-session.json");
+    expect(invalidError).not.toContain(tmp);
+    expect(store.listProjectSessionDiagnostics(cwd)).toEqual([
+      {
+        kind: "unreadable_session",
+        fileName: "damaged-session.json",
+        sessionId: null,
+        line: null,
+        recoverable: false,
+      },
+      {
+        kind: "malformed_json",
+        fileName: path.basename(writer.filePath),
+        sessionId: writer.header.id,
+        line: 2,
+        recoverable: true,
+      },
+    ]);
   });
 
   it("skips unknown record types (forward-compat)", () => {
@@ -144,13 +214,88 @@ describe("SessionStore", () => {
     const m1 = w1.appendMessage({ role: "user", content: "hi" });
     const m2 = w1.appendMessage({ role: "assistant", content: "yo" });
 
-    const { writer: w1b } = store.resumeSession(w1.filePath);
+    const { writer: w1b } = store.resumeProjectSession(cwd, w1.filePath);
     expect(w1b.lastMessageId).toBe(m2.id);
     const m3 = w1b.appendMessage({ role: "user", content: "again" });
     expect(m3.parentId).toBe(m2.id);
 
     const loaded = store.openSession(w1.filePath);
     expect(loaded.messages.map((m) => m.id)).toEqual([m1.id, m2.id, m3.id]);
+  });
+
+  it("resumes only direct files owned by the requested workspace", () => {
+    const cwd = "E:\\proj\\foo";
+    const writer = store.createSession(cwd);
+    writer.appendMessage({ role: "user", content: "inside" });
+
+    const valid = store.resumeProjectSession(cwd, writer.filePath);
+    expect(valid.loaded.header.id).toBe(writer.header.id);
+
+    const outsidePath = path.join(tmp, "outside-private-session.json");
+    fs.copyFileSync(writer.filePath, outsidePath);
+    let outsideError = "";
+    try {
+      store.resumeProjectSession(cwd, outsidePath);
+    } catch (error) {
+      outsideError = error instanceof Error ? error.message : String(error);
+    }
+    expect(outsideError).toContain("outside this project's session folder");
+    expect(outsideError).not.toContain(tmp);
+
+    const nestedFolder = path.join(store.projectFolder(cwd), "nested");
+    fs.mkdirSync(nestedFolder);
+    const nestedPath = path.join(nestedFolder, "nested-session.json");
+    fs.copyFileSync(writer.filePath, nestedPath);
+    expect(() => store.resumeProjectSession(cwd, nestedPath)).toThrow(
+      /outside this project's session folder/,
+    );
+  });
+
+  it("isolates encoded-folder collisions by the session header workspace", () => {
+    const ownerCwd = "C:\\proj?collision";
+    const collidingCwd = "C:\\proj*collision";
+    expect(store.projectFolder(ownerCwd)).toBe(store.projectFolder(collidingCwd));
+
+    const writer = store.createSession(ownerCwd);
+    writer.appendMessage({ role: "user", content: "private owner history" });
+
+    expect(store.listProjectSessions(collidingCwd)).toEqual([]);
+    expect(store.listProjectSessionDiagnostics(collidingCwd)).toEqual([
+      {
+        kind: "workspace_mismatch",
+        fileName: path.basename(writer.filePath),
+        sessionId: writer.header.id,
+        line: 1,
+        recoverable: false,
+      },
+    ]);
+    expect(() =>
+      store.resumeProjectSession(collidingCwd, writer.filePath),
+    ).toThrow(/belongs to a different workspace/);
+  });
+
+  it("does not advance the parent chain when an append write fails", () => {
+    const writer = store.createSession("E:\\proj\\foo");
+    const first = writer.appendMessage({ role: "user", content: "persisted" });
+    const backupPath = `${writer.filePath}.backup`;
+    fs.renameSync(writer.filePath, backupPath);
+    fs.mkdirSync(writer.filePath);
+
+    expect(() =>
+      writer.appendMessage({ role: "assistant", content: "must not persist" }),
+    ).toThrow();
+    expect(writer.lastMessageId).toBe(first.id);
+
+    fs.rmSync(writer.filePath, { recursive: true });
+    fs.renameSync(backupPath, writer.filePath);
+    const recovered = writer.appendMessage({
+      role: "assistant",
+      content: "recovered",
+    });
+    expect(recovered.parentId).toBe(first.id);
+    expect(
+      store.openSession(writer.filePath).messages.map((message) => message.content),
+    ).toEqual(["persisted", "recovered"]);
   });
 
   it("returns an empty list for projects that have no folder yet", () => {

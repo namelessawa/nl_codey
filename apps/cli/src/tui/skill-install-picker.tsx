@@ -6,8 +6,8 @@
  * same slot as the approval card.
  */
 import React from "react";
-import { useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { useRef, useState } from "react";
+import { Box, Text, useInput, type Key } from "ink";
 import { useAnimatedBorder, useTheme } from "./theme-context.js";
 import type { SkillInstallLocation } from "../lib/skill-generator.js";
 
@@ -44,7 +44,10 @@ export function SkillInstallPicker({
   const border = useAnimatedBorder(4);
   const [selected, setSelected] = useState(0);
 
-  useInput((input, key) => {
+  const inputHandlerRef = useRef<(input: string, key: Key) => void>(
+    () => undefined,
+  );
+  inputHandlerRef.current = (input, key) => {
     if (busy) return;
     if (key.escape || input.toLowerCase() === "q") {
       onCancel();
@@ -63,7 +66,11 @@ export function SkillInstallPicker({
       if (choice) onPick(choice.value);
       return;
     }
-  });
+  };
+  const stableInputHandler = useRef(
+    (input: string, key: Key) => inputHandlerRef.current(input, key),
+  ).current;
+  useInput(stableInputHandler);
 
   return (
     <Box

@@ -480,9 +480,17 @@ describe("IPC validators reject malformed payloads", () => {
           }),
         ).toThrow(/contributionMode must be one of/);
       });
+      it("rejects attempts to enable unavailable distributed execution", () => {
+        expect(() =>
+          validateUpdateAdvancedSettings({
+            settings: { ...baseSettings, distributedEnabled: true },
+          }),
+        ).toThrow(/authenticated transport/i);
+      });
       it("accepts a well-formed payload", () => {
         const out = validateUpdateAdvancedSettings({ settings: baseSettings });
         expect(out.settings.proactiveScanIntervalMin).toBe(30);
+        expect(out.settings.distributedEnabled).toBe(false);
       });
     });
   });

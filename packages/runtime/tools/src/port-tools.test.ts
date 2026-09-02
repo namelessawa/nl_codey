@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   ReadMemoryHit,
   SemanticSearchToolHit,
@@ -23,22 +23,53 @@ describe("createSemanticSearchTool", () => {
       snippet: "function foo() {}",
       score: 0.9,
       symbolName: "foo",
-    };
-    const port: SemanticSearchPort = {
-      async search() {
-        return [hit];
+      kind: "code",
+      provenance: {
+        source: "semantic_index",
+        chunkId: "chunk-a",
+        indexedMtime: 10,
+        currentMtime: 11,
+        staleness: "modified",
+        rank: 1,
+        selectionReason: "rank 1 by cosine similarity (0.9000); code symbol foo",
+        truncated: false,
+        originalChars: 17,
+        estimatedTokens: 5,
+        contextTokenBudget: 512,
+        contextTokensUsed: 5,
+        budgetLimited: false,
+        budgetOmittedHits: 0,
+        tokenEstimator: "ascii_4_non_ascii_1",
       },
     };
+    const search = vi.fn(async () => [hit]);
+    const port: SemanticSearchPort = { search };
     const tool = createSemanticSearchTool(port);
 
     const out = await tool.run({ query: "how does foo work" }, ctx);
 
     expect(out.query).toBe("how does foo work");
     expect(out.hits).toEqual([hit]);
+    expect(out.budget).toEqual({
+      maxTokens: 512,
+      usedTokens: 5,
+      limited: false,
+      omittedHits: 0,
+      estimator: "ascii_4_non_ascii_1",
+    });
+    expect(search).toHaveBeenCalledWith("how does foo work", {
+      maxContextTokens: 512,
+    });
   });
 
-  it("forwards topK and kinds options to the port", async () => {
-    let received: { topK?: number; kinds?: ("code" | "doc" | "comment")[] } | undefined;
+  it("forwards ranking, kind, and token-budget options to the port", async () => {
+    let received:
+      | {
+          topK?: number;
+          kinds?: ("code" | "doc" | "comment")[];
+          maxContextTokens?: number;
+        }
+      | undefined;
     const port: SemanticSearchPort = {
       async search(_query, opts) {
         received = opts;
@@ -47,9 +78,19 @@ describe("createSemanticSearchTool", () => {
     };
     const tool = createSemanticSearchTool(port);
 
-    await tool.run({ query: "q", topK: 3, kinds: ["doc"] }, ctx);
+    const output = await tool.run({
+      query: "q",
+      topK: 3,
+      kinds: ["doc"],
+      maxContextTokens: 64,
+    }, ctx);
 
-    expect(received).toEqual({ topK: 3, kinds: ["doc"] });
+    expect(received).toEqual({
+      topK: 3,
+      kinds: ["doc"],
+      maxContextTokens: 64,
+    });
+    expect(output.budget.maxTokens).toBe(64);
   });
 });
 

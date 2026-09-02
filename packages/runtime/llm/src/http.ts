@@ -1,4 +1,5 @@
 /** Shared HTTP helpers for LLM providers: timeout + secret-safe errors. */
+import { redactSensitiveText } from "@nlc/shared";
 
 /**
  * Run a fetch with a timeout, linking an optional external abort signal
@@ -117,9 +118,11 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * it there — defense in depth against accidental leakage.
  */
 export function redactError(prefix: string, detail: unknown, apiKey: string): string {
-  let text = detail instanceof Error ? detail.message : String(detail ?? "");
-  if (apiKey && apiKey.length >= 4) {
-    text = text.split(apiKey).join("***");
-  }
-  return text ? `${prefix}: ${text}` : prefix;
+  const options = {
+    secrets: apiKey ? [apiKey] : [],
+    maxLength: 2_000,
+    fallback: prefix,
+  };
+  const text = redactSensitiveText(detail, { ...options, fallback: "" });
+  return redactSensitiveText(text ? `${prefix}: ${text}` : prefix, options);
 }

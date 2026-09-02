@@ -15,9 +15,12 @@ export async function writeFileTool(
   store: SnapshotStore,
 ): Promise<WriteFileOutput> {
   const abs = assertInsideWorkspace(ctx.workspaceRoot, input.path);
-  const before = existsSync(abs) ? await fs.readFile(abs, "utf8") : "";
+  const existed = existsSync(abs);
+  const before = existed ? await fs.readFile(abs, "utf8") : "";
 
-  const snap = store.addSnapshot(input.runId, input.path, before);
+  const snap = store.addSnapshot(input.runId, input.path, before, {
+    beforeExisted: existed,
+  });
   await fs.mkdir(dirOf(abs), { recursive: true });
   await fs.writeFile(abs, input.content, "utf8");
   store.setSnapshotAfter(snap.id, input.content);

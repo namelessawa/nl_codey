@@ -82,7 +82,9 @@ describe("InstallationGate — recheck flow", () => {
           installed: true,
           version: "Docker version 24.0.0",
           daemonRunning: false,
-          error: "exit 1",
+          error:
+            "Authorization: Bearer probe-secret\n" +
+            "C:\\Users\\alice\\.docker?token=query-secret",
         }),
         openExternal: async () => undefined,
       },
@@ -90,6 +92,9 @@ describe("InstallationGate — recheck flow", () => {
     const status = await gate.recheck();
     expect(status.docker.installed).toBe(true);
     expect(status.docker.daemonRunning).toBe(false);
+    expect(status.docker.error).toContain("[REDACTED]");
+    expect(status.docker.error).toContain("[USER_HOME]");
+    expect(status.docker.error).not.toMatch(/probe-secret|query-secret|alice/);
   });
 });
 
@@ -257,7 +262,12 @@ describe("InstallationGate — startDocker", () => {
     const gate = new InstallationGate(tmpDir(), () => undefined, {
       probeFn: makeProbe({ installed: true, daemonRunning: false, error: "exit 1" }),
       openExternal: async () => undefined,
-      launchDocker: async () => ({ ok: false, error: "not_found" }),
+      launchDocker: async () => ({
+        ok: false,
+        error:
+          "Authorization: Bearer launch-secret\n" +
+          "C:\\Users\\alice\\Docker?token=query-secret",
+      }),
       sleep: async () => undefined,
       pollIntervalMs: 0,
       pollTimeoutMs: 1_000,
@@ -265,7 +275,9 @@ describe("InstallationGate — startDocker", () => {
     await gate.recheck();
     const result = await gate.startDocker();
     expect(result.ok).toBe(false);
-    expect(result.error).toBe("not_found");
+    expect(result.error).toContain("[REDACTED]");
+    expect(result.error).toContain("[USER_HOME]");
+    expect(result.error).not.toMatch(/launch-secret|query-secret|alice/);
   });
 
   it("returns ok=false with timeout when the daemon never comes up", async () => {

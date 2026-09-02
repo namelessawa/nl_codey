@@ -7,18 +7,12 @@
  * `plugin__<pluginName>__<toolName>`. The namespace prevents collisions with
  * built-in tools and makes provenance obvious in the run trace.
  *
- * Sandbox modes:
- * - whitelist  — spawn Node directly with cwd locked to the workspace and a
- *                hard timeout. This bypasses the user-typed-command whitelist
- *                deliberately: plugin commands are structured invocations
- *                whose permissions were already approved at install time.
- * - docker/wsl — return a runtime error. Strong-sandbox plugin execution
- *                requires bundling Node into the sandbox image; that is out
- *                of scope for this iteration and will surface as a clean,
- *                actionable failure to the model instead of a silent retry.
+ * Execution is Docker-only and default-off. The real workspace is copied into
+ * bounded staging, the plugin directory is mounted read-only, and no host-user
+ * Node fallback exists. Staged changes return as a proposed patch; only the
+ * normal apply_patch approval path can write them into the real workspace.
  */
 
-import { spawn } from "node:child_process";
 import path from "node:path";
 import type {
   LLMToolCall,
@@ -29,6 +23,7 @@ import type {
   ToolSchema,
 } from "@nlc/shared";
 import { PluginHost, type SandboxHandle } from "@nlc/plugin-sdk";
+import { RestrictedPluginRunner } from "@nlc/sandbox";
 import type { ExecutedTool } from "@nlc/agent-core";
 import type { Services } from "./services.js";
 
@@ -80,7 +75,10 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
       byQualifiedName.set(qualifiedName, { installation, tool });
       schemas.push({
         name: qualifiedName,
-        description: `[plugin: ${installation.manifest.name}] ${tool.description}`,
+        description:
+          `[plugin: ${installation.manifest.name}] ${tool.description} ` +
+          "Runs in a no-network restricted container. Workspace writes are staged " +
+          "and returned as proposedPatch; call apply_patch to request host writeback.",
         parameters: {
           type: "object",
           properties: parametersToJsonSchemaProperties(tool.parameters),
@@ -93,19 +91,20 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
 
   if (schemas.length === 0) return null;
 
-  const host = new PluginHost(
-    () => services.storage.plugins.listPlugins(),
-    (mode) => makeSandboxHandle(mode),
-  );
+  const restrictedRunner = new RestrictedPluginRunner();
 
   return {
     schemas,
     mutatingNames,
-    dispatch: async (call, _ctx): Promise<ExecutedTool | null> => {
+    dispatch: async (call, ctx): Promise<ExecutedTool | null> => {
       const entry = byQualifiedName.get(call.name);
       if (!entry) return null;
       const args = isRecord(call.args) ? call.args : {};
       try {
+        const host = new PluginHost(
+          () => services.storage.plugins.listPlugins(),
+          (mode) => makeSandboxHandle(mode, ctx, restrictedRunner),
+        );
         const result = await host.invoke({
           installationId: entry.installation.id,
           toolName: entry.tool.name,
@@ -116,6 +115,11 @@ export function buildPluginBundle(services: Services): PluginBundle | null {
           resultText: JSON.stringify({
             output: truncate(result.output),
             exitCode: result.exitCode,
+            ...(result.proposedPatch ? { proposedPatch: result.proposedPatch } : {}),
+            ...(result.binaryConflicts
+              ? { binaryConflicts: result.binaryConflicts }
+              : {}),
+            ...(result.applied === false ? { applied: false } : {}),
           }),
           isError: result.exitCode !== 0,
         };
@@ -154,105 +158,70 @@ function parametersToJsonSchemaProperties(
   return out;
 }
 
-function makeSandboxHandle(mode: PluginInstallation["manifest"]["sandbox"]): SandboxHandle {
-  if (mode === "whitelist") {
+function makeSandboxHandle(
+  mode: PluginInstallation["manifest"]["sandbox"],
+  ctx: ToolContext,
+  runner: RestrictedPluginRunner,
+): SandboxHandle {
+  if (mode !== "docker") {
     return {
-      async runCommand(cmd, env) {
-        return execNode(cmd, env);
+      async runCommand() {
+        throw new Error(
+          `Plugin sandbox mode "${mode}" is disabled: host-user Node and WSL ` +
+            "plugin execution are not production-safe. Reinstall the plugin with " +
+            'manifest sandbox "docker"; plugins are default-off when Docker is unavailable.',
+        );
       },
     };
   }
-  // Strong sandbox plugin execution requires bundling Node into the sandbox
-  // image. Until that lands, fail closed with a clear, actionable message
-  // instead of pretending the call ran.
   return {
-    async runCommand() {
-      throw new Error(
-        `Plugin sandbox mode "${mode}" is not yet supported for plugin invocations. ` +
-          `Switch the plugin manifest to "whitelist" sandbox or wait for the docker/wsl plugin runner.`,
-      );
+    async runCommand(command) {
+      const invocation = parsePluginCommand(command);
+      const result = await runner.run({
+        pluginRoot: invocation.pluginRoot,
+        toolName: invocation.toolName,
+        args: invocation.args,
+        workspaceRoot: ctx.workspaceRoot,
+        runId: ctx.runId,
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
+        timeoutMs: PLUGIN_TIMEOUT_MS,
+      });
+      return {
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        proposedPatch: result.proposedPatch,
+        binaryConflicts: result.binaryConflicts.map((change) => change.path),
+        applied: false,
+      };
     },
   };
 }
 
-/**
- * Execute the plugin's rendered command. Every plugin tool resolves to a
- * `node "<installPath>/tools/<name>.js" --k v ...` invocation (see
- * {@link renderCommand} in `@nlc/plugin-sdk`); we split the command
- * into argv and spawn `process.execPath` directly with `ELECTRON_RUN_AS_NODE=1`
- * so the same binary works in development (where execPath is Node) AND in a
- * packaged Electron build (where execPath is the Electron exe — without the
- * env var it would re-launch the whole app instead of running the script).
- * No shell expansion, no whitelist matching — the structural permission gate
- * already authorised the call.
- */
-function execNode(
-  cmd: string,
-  env?: Record<string, string>,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve, reject) => {
-    const argv = parseArgv(cmd);
-    if (argv.length === 0) {
-      reject(new Error("plugin runtime: empty command"));
-      return;
-    }
-    // Drop the leading `node` token if present — we use process.execPath.
-    if (argv[0] === "node") argv.shift();
-    const scriptPath = argv.shift();
-    if (!scriptPath) {
-      reject(new Error("plugin runtime: missing script path"));
-      return;
-    }
-    // The plugin install path is recorded by the install gate and trusted at
-    // dispatch time. We still resolve to an absolute path so a malformed
-    // manifest can't break out of cwd resolution.
-    const absolute = path.resolve(scriptPath);
-
-    let stdout = "";
-    let stderr = "";
-    const child = spawn(process.execPath, [absolute, ...argv], {
-      cwd: path.dirname(absolute),
-      // Plugins run as full Node processes — declared permissions are
-      // advisory once the script is executing. Scrub the parent
-      // environment so a plugin can't read LLM API keys, Git/NPM tokens,
-      // cloud credentials, etc., from `process.env`. The whitelisted
-      // base preserves what a Node script needs to find its
-      // interpreter / temp dir / user home; the caller-supplied `env`
-      // (rendered by plugin-sdk from approved permissions) wins on top.
-      // ELECTRON_RUN_AS_NODE is appended LAST and is host-controlled — a
-      // plugin must never be able to unset it, or a packaged build would
-      // re-launch the whole Electron app instead of running the script.
-      env: {
-        ...scrubPluginEnv(process.env),
-        ...(env ?? {}),
-        ELECTRON_RUN_AS_NODE: "1",
-      },
-      windowsHide: true,
-    });
-
-    const timer = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {
-        /* ignore */
-      }
-    }, PLUGIN_TIMEOUT_MS);
-
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdout.length < PLUGIN_OUTPUT_CAP) stdout += chunk.toString("utf-8");
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderr.length < PLUGIN_OUTPUT_CAP) stderr += chunk.toString("utf-8");
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
-    });
-  });
+function parsePluginCommand(command: string): {
+  pluginRoot: string;
+  toolName: string;
+  args: string[];
+} {
+  const argv = parseArgv(command);
+  if (argv[0] === "node") argv.shift();
+  const script = argv.shift();
+  if (!script) throw new Error("plugin runtime: missing tool script");
+  const absolute = path.resolve(script);
+  const toolsRoot = path.dirname(absolute);
+  if (path.basename(toolsRoot).toLowerCase() !== "tools") {
+    throw new Error("plugin runtime: tool script must be inside the plugin tools directory");
+  }
+  const extension = path.extname(absolute).toLowerCase();
+  const toolName = path.basename(absolute, extension);
+  if (extension !== ".js" || !/^[a-z][a-z0-9_]*$/.test(toolName)) {
+    throw new Error("plugin runtime: invalid tool script name");
+  }
+  return {
+    pluginRoot: path.dirname(toolsRoot),
+    toolName,
+    args: argv,
+  };
 }
 
 /**
@@ -307,63 +276,6 @@ function declaresMutatingPermission(tool: PluginToolManifest): boolean {
     if (perm === "run_command" || perm === "write_workspace") return true;
   }
   return false;
-}
-
-/**
- * Variables that must NEVER leak into a plugin's process environment.
- * Plugin scripts run as full Node processes with all the power that
- * implies; the declared-permissions model only constrains the host-side
- * SDK helpers. We drop:
- *
- * - LLM provider credentials (every provider's typical env key).
- * - Source-control / package-registry tokens (Git, GitHub, npm).
- * - Cloud credentials (AWS, GCP, Azure).
- * - Database / queue URLs that contain credentials in the string.
- * - Anything whose name looks like a key / token / secret / password.
- *
- * Plus a structural rule: drop every key starting with `npm_config_` —
- * pnpm/yarn/npm CLIs project the full registry credential set into that
- * namespace.
- */
-const PLUGIN_ENV_DENY_NAMES = new Set([
-  "LLM_API_KEY",
-  "LLM_BASE_URL",
-  "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "DEEPSEEK_API_KEY",
-  "GEMINI_API_KEY",
-  "GOOGLE_API_KEY",
-  "GOOGLE_APPLICATION_CREDENTIALS",
-  "OPENROUTER_API_KEY",
-  "MISTRAL_API_KEY",
-  "GROQ_API_KEY",
-  "HUGGINGFACE_API_KEY",
-  "GITHUB_TOKEN",
-  "GH_TOKEN",
-  "GITLAB_TOKEN",
-  "NPM_TOKEN",
-  "NPMRC",
-  "AWS_ACCESS_KEY_ID",
-  "AWS_SECRET_ACCESS_KEY",
-  "AWS_SESSION_TOKEN",
-  "AZURE_CLIENT_SECRET",
-  "GCP_SERVICE_ACCOUNT_KEY",
-  "DATABASE_URL",
-  "REDIS_URL",
-  "MONGODB_URI",
-]);
-const PLUGIN_ENV_DENY_REGEX = /(?:^|_)(api[_-]?key|token|secret|password|passwd|credential)s?(?:$|_)/i;
-
-function scrubPluginEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(source)) {
-    if (value === undefined) continue;
-    if (PLUGIN_ENV_DENY_NAMES.has(key)) continue;
-    if (key.startsWith("npm_config_")) continue;
-    if (PLUGIN_ENV_DENY_REGEX.test(key)) continue;
-    out[key] = value;
-  }
-  return out;
 }
 
 function truncate(text: string): string {

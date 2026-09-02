@@ -7,7 +7,7 @@ import {
 } from "@nlc/shared";
 import { assertNoSandboxEscape } from "./sandbox-policy.js";
 import { truncateOutput, filteredEnv } from "./output.js";
-import { createJobObject } from "./job-object.js";
+import { terminateProcessTree } from "./process-tree.js";
 
 const MAX_OUTPUT_BYTES = 100_000;
 const DEFAULT_DISTRO = "Ubuntu";
@@ -79,17 +79,11 @@ export async function runChild(
     let timedOut = false;
     let aborted = false;
     let settled = false;
-
-    // Defense-in-depth: a Job Object whose KILL_ON_JOB_CLOSE flag guarantees
-    // that closing the job (on resolve, reject, or timeout) tears down the
-    // entire process tree atomically. On non-Windows the job is a no-op.
-    const job = createJobObject({ name: `codey-run-${Date.now()}` });
+    let terminationStarted = false;
 
     // Reject synchronously if the caller already aborted before spawn. We
-    // never even start the child in that case so there's nothing to clean up
-    // beyond the (no-op) job object.
+    // never even start the child in that case.
     if (signal?.aborted) {
-      job.close();
       const err = new Error("Sandbox command aborted before spawn") as Error & { name: string };
       err.name = "AbortError";
       reject(err);
@@ -102,31 +96,38 @@ export async function runChild(
     const child = spawn(bin, argv, {
       windowsHide: true,
       env: filteredEnv(process.env),
+      // A new POSIX process group lets cancellation reach descendants.
+      // Windows uses taskkill's explicit /T process-tree traversal instead.
+      detached: process.platform !== "win32",
     });
 
-    if (typeof child.pid === "number") {
-      job.assignProcess(child.pid);
-    }
+    const terminate = (): void => {
+      if (terminationStarted) return;
+      terminationStarted = true;
+      terminateProcessTree(child);
+    };
 
     const finish = (): void => {
-      job.close();
       if (signal && onAbort) signal.removeEventListener("abort", onAbort);
     };
 
     // Abort listener: on user-initiated Stop, kill the child so the sandbox
     // process tree dies promptly instead of dragging out to the full 60s
-    // timeout. The 'close' handler still fires, settles the promise normally,
-    // and reports the killed result via `aborted: true` (callers in service.ts
-    // already gate further work on ctx.signal.aborted after the await).
+    // timeout. The 'close' handler rejects with AbortError so routed command
+    // writeback cannot inspect or apply a half-finished staging directory.
     const onAbort = (): void => {
       aborted = true;
-      child.kill();
+      terminate();
     };
-    if (signal) signal.addEventListener("abort", onAbort, { once: true });
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+      // Close the small race between the pre-spawn check and listener setup.
+      if (signal.aborted) onAbort();
+    }
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      terminate();
     }, timeoutMs);
 
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -152,9 +153,7 @@ export async function runChild(
       if (aborted) {
         // Surface abort as a rejected promise rather than a normal result so
         // runCommandWithPolicy's writeback diff (which compares staging-to-
-        // workspace) doesn't run against a half-finished mutation. The caller
-        // already classifies this back into `state: 'cancelled'` via
-        // ctx.signal.aborted (see service.ts), or callers can catch directly.
+        // workspace) doesn't run against a half-finished mutation.
         const err = new Error("Sandbox command aborted") as Error & { name: string };
         err.name = "AbortError";
         reject(err);

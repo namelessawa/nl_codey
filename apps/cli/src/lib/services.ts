@@ -9,7 +9,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { AgentService } from "@nlc/agent-core";
+import {
+  AgentService,
+  type DynamicToolBundleFn,
+} from "@nlc/agent-core";
 import { createLLMProvider, createLLMProviderFromEnv } from "@nlc/llm";
 import { Storage } from "@nlc/storage";
 import { nlcRoot, type AgentEvent } from "@nlc/shared";
@@ -19,6 +22,7 @@ export type CliServices = {
   storage: Storage;
   agent: AgentService;
   dataRoot: string;
+  startupRecoveries: ReturnType<Storage["reconcileInterruptedRuns"]>;
 };
 
 export type BuildCliServicesOpts = {
@@ -26,6 +30,12 @@ export type BuildCliServicesOpts = {
   dataRoot?: string;
   /** Receive every AgentEvent — caller wires this to the TUI / stdout. */
   emit: (event: AgentEvent) => void;
+  /**
+   * Optional dynamic-tool source. The shipped CLI currently has no plugin
+   * manager, but this seam lets an embedding host supply the same audited
+   * AgentService boundary used by Desktop without an environment backdoor.
+   */
+  getDynamicTools?: DynamicToolBundleFn;
 };
 
 export function buildCliServices(opts: BuildCliServicesOpts): CliServices {
@@ -33,6 +43,7 @@ export function buildCliServices(opts: BuildCliServicesOpts): CliServices {
   fs.mkdirSync(dataRoot, { recursive: true });
   const dbPath = path.join(dataRoot, "data", "workspace-state.db");
   const storage = new Storage(dbPath);
+  const startupRecoveries = storage.reconcileInterruptedRuns();
 
   const agent = new AgentService({
     storage,
@@ -44,8 +55,9 @@ export function buildCliServices(opts: BuildCliServicesOpts): CliServices {
     },
     getAgentSettings: () => loadCliSettings(dataRoot).appSettings.agent,
     getLanguage: () => loadCliSettings(dataRoot).appSettings.ui.language,
+    ...(opts.getDynamicTools ? { getDynamicTools: opts.getDynamicTools } : {}),
     emit: opts.emit,
   });
 
-  return { storage, agent, dataRoot };
+  return { storage, agent, dataRoot, startupRecoveries };
 }

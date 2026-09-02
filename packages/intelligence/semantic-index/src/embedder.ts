@@ -1,12 +1,14 @@
 /** Embedding providers: OpenAI-compatible (real) and a deterministic mock. */
 
-import type { EmbeddingProvider } from "@nlc/shared";
+import { redactSensitiveText, type EmbeddingProvider } from "@nlc/shared";
 
 const DEFAULT_MODEL = "text-embedding-3-small";
 const DEFAULT_DIMENSIONS = 1536;
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const MOCK_DIMENSIONS = 64;
 const REQUEST_TIMEOUT_SECONDS = 30;
+const MAX_DIMENSIONS = 4_096;
+const MAX_MODEL_LENGTH = 256;
 
 export type EmbedderConfig = {
   apiKey?: string;
@@ -26,13 +28,12 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   private readonly baseUrl: string;
 
   constructor(config: EmbedderConfig) {
-    if (!config.apiKey) {
-      throw new Error("OpenAIEmbeddingProvider requires an apiKey");
-    }
-    this.apiKey = config.apiKey;
-    this.baseUrl = stripTrailingSlashes(config.baseUrl ?? DEFAULT_BASE_URL);
-    this.model = config.model ?? DEFAULT_MODEL;
-    this.dimensions = config.dimensions ?? DEFAULT_DIMENSIONS;
+    this.apiKey = normalizeApiKey(config.apiKey);
+    this.baseUrl = normalizeBaseUrl(config.baseUrl ?? DEFAULT_BASE_URL);
+    this.model = normalizeModel(config.model ?? DEFAULT_MODEL);
+    this.dimensions = normalizeDimensions(
+      config.dimensions ?? DEFAULT_DIMENSIONS,
+    );
   }
 
   async embed(texts: string[]): Promise<number[][]> {
@@ -47,23 +48,37 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
           "content-type": "application/json",
           authorization: `Bearer ${this.apiKey}`,
         },
-        body: JSON.stringify({ model: this.model, input: texts }),
+        body: JSON.stringify({
+          model: this.model,
+          input: texts,
+          dimensions: this.dimensions,
+        }),
         signal: controller.signal,
       });
 
       if (!res.ok) {
         const detail = await res.text().catch(() => "");
-        throw new Error(redact(`Embedding request failed (HTTP ${res.status}): ${detail}`, this.apiKey));
+        throw new Error(
+          redactSensitiveText(
+            `Embedding request failed (HTTP ${res.status}): ${detail}`,
+            { secrets: [this.apiKey], maxLength: 4_000 },
+          ),
+        );
       }
 
       const json = (await res.json()) as EmbeddingResponse;
-      return parseEmbeddingResponse(json, texts.length);
+      return parseEmbeddingResponse(json, texts.length, this.dimensions);
     } catch (err) {
       if (controller.signal.aborted) {
         throw new Error(`Embedding request timed out after ${REQUEST_TIMEOUT_SECONDS}s`);
       }
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(redact(message, this.apiKey));
+      throw new Error(
+        redactSensitiveText(err, {
+          secrets: [this.apiKey],
+          maxLength: 4_000,
+          fallback: "Embedding request failed",
+        }),
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -74,28 +89,58 @@ type EmbeddingResponse = {
   data?: Array<{ embedding?: number[]; index?: number }>;
 };
 
-function parseEmbeddingResponse(json: EmbeddingResponse, expected: number): number[][] {
+function parseEmbeddingResponse(
+  json: EmbeddingResponse,
+  expected: number,
+  dimensions: number,
+): number[][] {
   const data = json.data;
   if (!Array.isArray(data) || data.length !== expected) {
     throw new Error(
       `Embedding response shape invalid: expected ${expected} vectors, got ${data?.length ?? 0}`,
     );
   }
-  // Preserve request order via the index field when present.
-  const ordered = [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const hasIndex = data.some((item) => item.index !== undefined);
+  const ordered = hasIndex
+    ? orderIndexedEmbeddings(data, expected)
+    : data;
   return ordered.map((item) => {
-    if (!Array.isArray(item.embedding)) {
-      throw new Error("Embedding response missing embedding vector");
+    if (
+      !Array.isArray(item.embedding) ||
+      item.embedding.length !== dimensions
+    ) {
+      throw new Error(
+        `Embedding vector dimension invalid: expected ${dimensions}, got ` +
+          `${item.embedding?.length ?? 0}`,
+      );
+    }
+    if (!item.embedding.every(Number.isFinite)) {
+      throw new Error("Embedding response contains a non-finite vector value");
     }
     return item.embedding;
   });
 }
 
-function redact(text: string, apiKey: string): string {
-  if (apiKey && apiKey.length >= 4) {
-    return text.split(apiKey).join("***");
+function orderIndexedEmbeddings(
+  data: NonNullable<EmbeddingResponse["data"]>,
+  expected: number,
+): NonNullable<EmbeddingResponse["data"]> {
+  const ordered = new Array<(typeof data)[number] | undefined>(expected);
+  for (const item of data) {
+    if (
+      !Number.isInteger(item.index) ||
+      (item.index as number) < 0 ||
+      (item.index as number) >= expected ||
+      ordered[item.index as number] !== undefined
+    ) {
+      throw new Error("Embedding response contains invalid or duplicate indices");
+    }
+    ordered[item.index as number] = item;
   }
-  return text;
+  if (ordered.some((item) => item === undefined)) {
+    throw new Error("Embedding response indices are incomplete");
+  }
+  return ordered as NonNullable<EmbeddingResponse["data"]>;
 }
 
 /**
@@ -106,6 +151,59 @@ function stripTrailingSlashes(url: string): string {
   let end = url.length;
   while (end > 0 && url.charCodeAt(end - 1) === 47) end -= 1;
   return end === url.length ? url : url.slice(0, end);
+}
+
+function normalizeBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("Embedding baseUrl must be a valid http(s) URL");
+  }
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error(
+      "Embedding baseUrl must be an http(s) URL without credentials, query, or fragment",
+    );
+  }
+  return stripTrailingSlashes(parsed.toString());
+}
+
+function normalizeApiKey(value: string | undefined): string {
+  if (!value || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new Error("OpenAIEmbeddingProvider requires a valid apiKey");
+  }
+  return value;
+}
+
+function normalizeModel(value: string): string {
+  const model = value.trim();
+  if (
+    !model ||
+    model.length > MAX_MODEL_LENGTH ||
+    /[\u0000-\u001f\u007f]/.test(model)
+  ) {
+    throw new Error("Embedding model name is invalid");
+  }
+  return model;
+}
+
+function normalizeDimensions(value: number): number {
+  if (
+    !Number.isInteger(value) ||
+    value <= 0 ||
+    value > MAX_DIMENSIONS
+  ) {
+    throw new Error(
+      `Embedding dimensions must be an integer between 1 and ${MAX_DIMENSIONS}`,
+    );
+  }
+  return value;
 }
 
 /**

@@ -152,6 +152,24 @@ export function isStateEvent(line: unknown): line is StateEvent {
   );
 }
 
+/** A recoverable record-level problem found while reading append-only JSONL. */
+export type SessionDiagnostic = {
+  kind: "malformed_json";
+  /** One-based line number in the session file. */
+  line: number;
+  /** True when the malformed record was an unterminated final line. */
+  trailing: boolean;
+};
+
+/** Project-level diagnostic safe to surface without raw content or paths. */
+export type SessionFileDiagnostic = {
+  kind: "malformed_json" | "unreadable_session" | "workspace_mismatch";
+  fileName: string;
+  sessionId: string | null;
+  line: number | null;
+  recoverable: boolean;
+};
+
 /** In-memory shape returned by {@link SessionStore.readSession}. */
 export type LoadedSession = {
   header: SessionHeader;
@@ -161,6 +179,8 @@ export type LoadedSession = {
   messages: SessionMessage[];
   /** Convenience: state events only, in file order. */
   events: StateEvent[];
+  /** Malformed records skipped while preserving the valid session content. */
+  diagnostics: SessionDiagnostic[];
   /** Absolute path of the file on disk. */
   filePath: string;
 };

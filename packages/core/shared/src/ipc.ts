@@ -54,6 +54,7 @@ export const IPC = {
   getAgentRun: "agent:getAgentRun",
   listAgentRuns: "agent:listAgentRuns",
   clearAgentRuns: "agent:clearAgentRuns",
+  exportRunDiagnostics: "agent:exportRunDiagnostics",
   getSettings: "settings:get",
   updateSettings: "settings:update",
   resetSettings: "settings:reset",
@@ -199,6 +200,11 @@ export interface AgentApi {
   getAgentRun(args: RunIdArgs): Promise<IpcResult<AgentRunDetail>>;
   listAgentRuns(workspaceId: string): Promise<IpcResult<AgentRun[]>>;
   clearAgentRuns(args: WorkspaceIdArgs): Promise<IpcResult<{ deleted: number }>>;
+  /**
+   * Export a content-minimized Run bundle. Main owns the native save dialog;
+   * the renderer supplies only the Run id and never a host filesystem path.
+   */
+  exportRunDiagnostics(args: RunIdArgs): Promise<IpcResult<{ filePath: string | null }>>;
   getSettings(): Promise<IpcResult<SettingsPayload>>;
   updateSettings(settings: AppSettings): Promise<IpcResult<SettingsPayload>>;
   resetSettings(): Promise<IpcResult<SettingsPayload>>;

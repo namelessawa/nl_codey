@@ -32,6 +32,18 @@ export {
   type ToolExecutorOptions,
 } from "./tools-registry.js";
 export {
+  AgentMutationAuthorizer,
+  MUTATING_AGENT_TOOL_NAMES,
+  RESERVED_MUTATING_TOOL_NAMES,
+  authorizeMutation,
+  type AgentMutationDecision,
+  type AgentMutationPolicyOptions,
+  type MutationAuthorizationProof,
+  type MutationAuthorizationResult,
+  type MutationCapability,
+  type MutationControl,
+} from "./mutation-policy.js";
+export {
   SYSTEM_PROMPT,
   READONLY_SYSTEM_PROMPT,
   getReadonlySystemPrompt,
@@ -65,6 +77,16 @@ export {
   type EvalAgentRunner,
 } from "./eval/eval.js";
 export { EVAL_TASKS } from "./eval/tasks.js";
+export {
+  BENCHMARK_THRESHOLDS,
+  HEADLESS_BENCHMARK_CATEGORIES,
+  RecordedResponseProvider,
+  scoreHeadlessBenchmark,
+  type HeadlessBenchmarkCategory,
+  type HeadlessBenchmarkResult,
+  type HeadlessBenchmarkScore,
+  type RecordedTurn,
+} from "./eval/benchmark.js";
 export {
   analyzeRegressions,
   regressionNote,

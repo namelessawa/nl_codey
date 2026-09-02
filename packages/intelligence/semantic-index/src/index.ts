@@ -8,6 +8,7 @@ export {
 } from "./embedder.js";
 export { chunkFile } from "./chunker.js";
 export {
+  annotateSemanticHitStaleness,
   cosineSimilarity,
   searchChunks,
   type ChunkStore,

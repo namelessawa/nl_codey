@@ -14,6 +14,7 @@ Usage:
   nlc sessions [list]       List session JSON files for the current workspace.
   nlc sessions tree         Render the project's conversation tree (git-style).
   nlc sessions show <id>    Dump one session file as raw JSONL.
+  nlc diagnostics <run-id>  Export sanitized Run diagnostics without source content.
   nlc help                  Show this help.
   nlc --version             Print the CLI version.
 
@@ -23,6 +24,9 @@ Options:
   --yes, -y                 Auto-approve patches (use with care).
   --no-color                Disable ANSI colours.
   --json                    Emit JSON to stdout instead of human prose.
+  --output <path>           Diagnostics output path; '-' writes to stdout.
+  --host-protocol           Host-adapter NDJSON mode; requires --json and
+                            accepts explicit approval messages on stdin.
 
 Data:
   Everything persistent — settings.json, apikey.bin, the SQLite run

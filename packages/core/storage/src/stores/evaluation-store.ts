@@ -9,6 +9,7 @@ import type {
   EvalTask,
   FrozenSuiteSnapshot,
 } from "@nlc/shared";
+import { redactSensitiveText } from "@nlc/shared";
 import {
   toCheckpoint,
   toEvalRunResult,
@@ -112,6 +113,13 @@ export class EvaluationStore {
   recordEvalRun(input: Omit<EvalRunResult, "id" | "createdAt">): EvalRunResult {
     const id = randomUUID();
     const now = Date.now();
+    const errorMessage =
+      input.errorMessage === null
+        ? null
+        : redactSensitiveText(input.errorMessage, {
+            maxLength: 4_000,
+            fallback: "Unknown evaluation error",
+          });
     this.db
       .prepare(
         `INSERT INTO eval_runs (id, task_id, model_id, pass, corrections, transfer_hits, cost_usd, duration_ms, error_message, created_at)
@@ -126,10 +134,10 @@ export class EvaluationStore {
         input.transferHits,
         input.costUsd,
         input.durationMs,
-        input.errorMessage,
+        errorMessage,
         now,
       );
-    return { ...input, id, createdAt: now };
+    return { ...input, errorMessage, id, createdAt: now };
   }
 
   listEvalRuns(taskId?: string, modelId?: string): EvalRunResult[] {

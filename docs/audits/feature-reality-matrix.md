@@ -1,39 +1,124 @@
-# Dynamic-tool P0 reality matrix — 2026-07-28
+# Feature reality matrix - production-complete baseline
 
-This matrix covers only the security slice changed in this branch. It is not a
-whole-repository feature inventory. Ratings are based on the clean
-`origin/main` source plus this P0, production callers, and tests actually run.
+Baseline: `origin/main@11aa6486c904c393d3948b4b4f8d75a9b094591f`,
+audited 2026-07-29 and continuously updated by the stacked batches in
+`docs/execution/nightly-status.md`.
 
-Ratings:
+Ratings use source, production callers, committed tests, persistence, failure
+paths and runnable build artifacts. Package presence is not production
+evidence.
 
-- **Functional** — real runtime path exists and the tested behavior works, but
-  broader end-to-end/recovery or process-isolation evidence is incomplete.
-- **Partial** — an implementation exists, but a material security property is
-  not enforced.
+- **Production**: the complete supported surface has integration/recovery/
+  release evidence.
+- **Functional**: a real runtime path and meaningful tests exist, but broader
+  production evidence is incomplete.
+- **Partial**: implementation exists but a material advertised path, boundary
+  or quality gate is broken/unproved.
+- **Scaffold**: types/local logic exist without a production transport/path.
 
-| Capability | Production entry | Runtime path | Test evidence | Visible/persisted failure | Rating |
-| --- | --- | --- | --- | --- | --- |
-| Mandatory mutation classification | `DynamicToolBundle` and `validateDynamicToolBundle` in `packages/runtime/agent-core/src/service.ts` | Every non-null factory result is validated before schema exposure or dispatcher retention | Missing field, non-array value, unknown name, duplicate name | Invalid bundle is disabled and recorded as `[security]` | Functional |
-| Schema namespace integrity | `validateDynamicToolBundle` and `HOST_RESERVED_TOOL_NAMES` | Rejects duplicate schemas and collisions with Agent, extended, orchestrator, file-mutating, and degraded-dangerous host names | Duplicate schema, `run_command`, and `write_file` collision tests | Whole bundle is disabled; no partial registration | Functional |
-| Declared-call dispatch boundary | Validated dispatcher wrapper | Only declared dynamic names reach the source dispatcher; built-ins fall through; other fabricated names return an error | Undeclared-call test proves source dispatcher is untouched | Structured tool error in the run trace | Functional |
-| Single-agent integration | `AgentService.driveLoop` | Shared validated bundle feeds `agentToolSchemas` and `createToolExecutor` | Real `runTask` executes a declared read-only dynamic tool | Factory/validation denial is a persisted Run Step | Functional |
-| Multi-agent role boundary | `runPlanner`, `runCoder`, and `runReviewer` | Each role derives visible schemas and `allowedToolNames` from one filtered schema set; dynamic tools belong to no role by default; denied calls stop before the shared executor | Real `runTask` paths forge Planner read/mutate, Coder read, and Reviewer mutate calls; every test proves the schema was absent, source dispatch was untouched, and `role_tool_denied` was returned | Structured tool result identifies role and tool; the attempted call remains in the run trace | Functional |
-| Read-only enforcement | `filterDynamicBundleForReadOnly` | Classified mutating schemas are hidden; fabricated calls are rejected before source dispatch | Pure boundary test plus real `runTask` path | Structured read-only error; dispatcher not called | Functional |
-| Degraded-mode enforcement | `wrapAssertForDynamicPlugins` plus executor gate | Mutating dynamic names inherit the installation gate through the built-in unsafe probe | Real `runTask` degraded-path test | Structured degraded-mode error; dispatcher not called | Functional |
-| Desktop factory error propagation | `apps/desktop/src/main/services.ts` | `buildServices` lets `buildPluginBundle` throw into AgentService's audited resolver | `services.test.ts` calls real `buildServices` and real `AgentService.runTask` | Bounded, normalized, credential/user-home-redacted `[security]` Step; run continues on base tools | Functional |
-| Full Node plugin process isolation | `apps/desktop/src/main/plugin-runtime.ts` | Plugin command runs as a Node process under the host user in the whitelist path | No OS-sandbox isolation test exists | Registration controls cannot contain direct Node filesystem/network syscalls | Partial |
+## Summary
 
-## Evidence boundaries
+```text
+Production: 0
+Functional: 21
+Partial: 2
+Scaffold: 1
+Dead: 0
+Unknown: 0
+```
 
-- The Agent Core file contains 26 security tests, including true single-agent,
-  role-specific multi-agent, read-only, factory-failure redaction, reserved
-  namespace, and degraded-mode run paths.
-- The Desktop test mocks native storage/settings/plugin construction at the
-  boundary to avoid Electron-vs-Node ABI loading, but it uses the actual
-  `buildServices` closure and actual `AgentService.runTask`; it does not invoke
-  an AgentService private method.
-- The P0-specific suites passed. The requested non-Storage full-suite command
-  remained red on an existing Windows Sandbox abort-timing assertion under
-  full-suite load; its isolated 4-test file passed. Storage remained excluded
-  for the separately documented native ABI split.
-- No conclusion here is derived from the preserved mixed branch.
+No whole module is rated Production. That is an evidence statement, not a claim
+that the functional modules are unusable.
+
+## Apps
+
+| Module | Runtime and entry | Test/build evidence | Material gap | Rating |
+| --- | --- | --- | --- | --- |
+| `apps/desktop` | Electron main/sandboxed preload/React renderer; main constructs shared Storage, AgentService and LLM provider | Main, preload, renderer, recovery, packaged main/preload/renderer launch and Windows installer gates pass | Full public workflow E2E remains incomplete | Functional |
+| `apps/cli` | Non-interactive CLI and Ink TUI use shared Agent Core and JSONL session store | Bundle/help/version, generated input inventory and acceptance matrices, PageUp/PageDown safe-no-op input contract, explicit Experimental mouse boundary, terminal-size matrix, read-only refusal, corrected-provider new Run, native safe-settings/Skill install, redacted failures, visible Session write failure, contained resume/show, corrupt/partial recovery, multilevel/cross-parent/invalid-target lineage, bounded output/native scrollback, real ConPTY workflows and crash soak pass | Release-candidate manual verification remains incomplete | Functional |
+| `apps/vscode` | Command Palette run/stop adapter spawns the existing CLI host protocol with `shell: false`; exact-Run modal approval feeds the shared AgentService/policy/storage/recovery chain | Nine command-registration/lifecycle, spawn-boundary, NDJSON framing, approval, malformed/oversized event and redaction assertions plus typecheck/build, versioned VSIX audit and isolated VS Code CLI install | Interactive Extension Host evidence is absent; multi-root, Session browsing and rollback UI are explicit gaps | Partial |
+
+## Core
+
+| Module | Runtime and entry | Test evidence | Material gap | Rating |
+| --- | --- | --- | --- | --- |
+| `packages/core/shared` | Shared models, IPC, settings and policy contracts; conditional exports split browser-safe types/runtime helpers from Node paths | Nine suites including the browser export boundary, plus packaged renderer/preload startup | Broader public-contract compatibility/versioning evidence remains incomplete | Functional |
+| `packages/core/sandbox` | Workspace containment, command whitelist/router, WSL/Docker staging and verified cross-platform process-tree termination | Six suites including Docker-gated and descendant-cleanup paths | Host whitelist has no OS resource/syscall isolation; native Job Object/AppContainer host remains unimplemented | Functional |
+| `packages/core/storage` | SQLite workspaces/runs/steps/snapshots plus advanced stores | Ten Node lifecycle/migration tests, historical backup/failure fixtures, rollback recovery and Electron native-load checks pass through restorative ABI matrices | Automated backup-retention policy and longer-duration corruption drills remain incomplete | Functional |
+| `packages/core/session` | Branchable JSONL conversation store used by CLI | Store/tree/path plus native multilevel/cross-parent branch/resume/restart, invalid-target continuity, malformed-header/partial-tail diagnostics, write-failure chain safety, lossy-folder collision isolation, contained resume/show and Run-linkage E2E pass | Desktop interoperability and longer-duration/high-volume history drills remain incomplete | Functional |
+
+## Runtime
+
+| Module | Runtime and entry | Test evidence | Material gap | Rating |
+| --- | --- | --- | --- | --- |
+| `packages/runtime/llm` | OpenAI-compatible and Anthropic streaming providers, timeout/retry/redaction | Six suites plus explicit opt-in smoke definitions | Live provider compatibility/release evidence is incomplete | Functional |
+| `packages/runtime/tools` | Bounded file/search/patch/command/git/symbol/port tools | Eight suites plus the generated 31-path mutation inventory | Supported mutation paths share single-use approval/capability enforcement; OS-level host whitelist isolation remains limited | Functional |
+| `packages/runtime/agent-core` | Shared autonomous loop, budget, verify/repair, rollback, compression and multi-agent entry | Unit/recovery suites, 13/13 deterministic/recorded fixtures, a 12/13 approved live benchmark and shared FSM/error-code tests pass | Multi-agent restart recovery and broader host-adapter parity remain incomplete | Functional |
+
+## Intelligence
+
+| Module | Runtime and entry | Test evidence | Material gap | Rating |
+| --- | --- | --- | --- | --- |
+| `packages/intelligence/project-indexer` | Deterministic capped repository scan/fixed-ignore handling and Node/Python/Go/Rust project detection feed AgentService and tools | Three dedicated suites cover limits/order, ignored names/case variants, internal/external link non-traversal, binary enumeration, missing roots, package-manager commands, malformed manifests and polyglot precedence | Custom `.gitignore` patterns and richer monorepo/multi-root language detection remain incomplete | Functional |
+| `packages/intelligence/memory` | Cross-session facts/preferences/failures and retrieval | Five suites | Cross-process recovery and privacy lifecycle evidence is thin | Functional |
+| `packages/intelligence/semantic-index` | Chunk/embed/vector search and incremental index service wired to Desktop rebuild/search; explicit OpenAI settings select the real embedding protocol while every other chat provider stays on the local deterministic fallback | Package suites plus Desktop IPC/factory coverage prove local HTTP request shape/auth/dimensions/order, configuration and response validation, provider-scoped credential routing, incremental changed-file refresh, missing/blank-source eviction, rank/selection provenance, explicit context budgets, snippet truncation and fresh/modified/missing mtime states | Separate embedding credentials/model selection and non-OpenAI remote embedding providers remain unsupported by design | Functional |
+| `packages/intelligence/planner` | DAG decomposition, dependency validation and waves | Four suites | Benchmark success and restart persistence are incomplete | Functional |
+| `packages/intelligence/orchestrator` | Planner/Coder/Reviewer roles, locks, bus, worker pool | Five suites plus Agent Core role-boundary tests | Restart recovery and distributed execution contract incomplete | Functional |
+
+## Integration
+
+| Module | Runtime and entry | Test evidence | Material gap | Rating |
+| --- | --- | --- | --- | --- |
+| `packages/integration/git-integration` | Branch/commit/PR/diff helpers exposed by Desktop paths | Four suites | No real remote/credential/approval E2E and no TUI workflow evidence | Functional |
+| `packages/integration/web-tools` | Domain-whitelisted fetch/search ports | Three suites | Prompt-injection/provenance display and network-policy E2E incomplete | Functional |
+
+## Advanced/experimental
+
+| Module | Runtime and entry | Test evidence | Material gap | Rating |
+| --- | --- | --- | --- | --- |
+| `packages/advanced/global-memory` | Desktop IPC and prompt augmentation over persistent knowledge graph | Two suites | Cross-project privacy/recovery integration incomplete | Functional |
+| `packages/advanced/style-profile` | Desktop style extraction and feedback paths | One suite | Lifecycle/UI recovery evidence limited | Functional |
+| `packages/advanced/learning` | Feedback signal and preference dataset IPC | One suite | Dataset lifecycle/privacy integration limited | Functional |
+| `packages/advanced/proactive` | Read-only scan, proposal inbox and scheduler | One suite | Scheduler errors can be skipped and mutation handoff is not in the unified approval inventory | Functional |
+| `packages/advanced/plugin-sdk` | Manifest/install/grant/host logic used by Desktop's default-off plugin runtime | SDK, Desktop adapter, restricted-runner unit and real Docker adversarial gates | Docker Desktop and the pinned image must be pre-provisioned; non-Docker manifests intentionally fail closed | Functional |
+| `packages/advanced/finetune` | Desktop job/model registry and external runner hooks | One suite | No bundled complete trainer/evaluator or production job isolation | Partial |
+| `packages/advanced/distributed` | Internal coordinator/node/assignment algorithms only; Desktop forces the persisted setting off, rejects enablement and both cluster IPC calls, and removes the node-registration tab | Package logic plus Desktop migration/validator/IPC boundary suites | No authenticated remote transport or production dispatch path; intentionally unavailable in production | Scaffold |
+
+## Cross-cutting evidence
+
+- Desktop and CLI source both construct the shared Storage, AgentService and LLM
+  factory; the root build now emits both Desktop and CLI artifacts.
+- Renderer builds resolve a browser-only shared barrel; sandboxed preload uses
+  the same explicit subpath as CJS. The packaged Windows smoke proves React
+  mount, `agentApi` exposure and absence of renderer Node globals.
+- Dynamic tool bundles now require complete mutation classification, reject
+  reserved/undeclared calls, keep multi-agent role schemas and allowlists
+  aligned, and persist bounded/redacted security failures.
+- Plugin dispatch has no host-user Node fallback. Docker-only execution receives
+  a credential-filtered staging copy under an OS-enforced resource/network
+  boundary and can return only an unapplied proposed patch.
+- SQLite is the Run-state store and JSONL is the CLI conversation store.
+  Stable Run/session linkage, dead-owner reconciliation, restart idempotency
+  and no-write replay are proved by Storage and native ConPTY recovery gates.
+- The root build and default offline test gate pass. The explicit integration
+  gate passes with a restorative Node/Electron Storage ABI matrix. Windows
+  abort has a named 12-run isolated plus 8-way loaded soak, preserves
+  `AbortError`, and proves descendant cleanup without timeout inflation.
+- TUI discovery currently finds 19 catalogued slash commands, 25 keyboard/input
+  actions, three modal routes, no mouse implementation and eight committed
+  CLI/TUI Vitest files. All 25 input rows have committed identifiers. Four
+  native lifecycle/prompt journeys, 12 core E2E workflows and a separate
+  five-cycle crash soak pass. Stream and trace state are bounded to 500 and
+  200 items; persisted Tool Output is capped at 4,000 characters. See
+  `docs/tui/action-inventory.md`.
+- Requested cross-cutting product names and their narrower supported
+  alternatives are tracked in
+  `docs/audits/product-feature-surface-matrix.md`; unsupported router/MCP/remote
+  Git claims are not inferred from provider, dynamic-tool or local Git helpers.
+
+## Production-rating gate
+
+A module can move to Production only after its supported public operations,
+security policy, persistence/recovery behavior, error redaction, supported
+platforms and release artifact have named reproducible evidence. This audit
+must be updated when those gates land; README wording must never outrun it.

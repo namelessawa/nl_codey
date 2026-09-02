@@ -13,6 +13,7 @@
  */
 
 import path from "node:path";
+import { DISTRIBUTED_PRODUCTION_AVAILABLE } from "@nlc/shared";
 import type {
   ContinueAgentTaskArgs,
   CreateMemoryArgs,
@@ -706,13 +707,22 @@ export function validateListEvalRuns(raw: unknown): { taskId?: string; modelId?:
 export function validateUpdateAdvancedSettings(raw: unknown): { settings: AdvancedSettings } {
   const r = requireRecord(raw, "args");
   const s = requireRecord(r.settings, "settings");
+  const distributedEnabled = requireBoolean(
+    s.distributedEnabled,
+    "settings.distributedEnabled",
+  );
+  if (distributedEnabled && !DISTRIBUTED_PRODUCTION_AVAILABLE) {
+    throw new IPCValidationError(
+      "distributed execution is unavailable until an authenticated transport exists",
+    );
+  }
   return {
     settings: {
       globalMemoryEnabled: requireBoolean(s.globalMemoryEnabled, "settings.globalMemoryEnabled"),
       styleProfileEnabled: requireBoolean(s.styleProfileEnabled, "settings.styleProfileEnabled"),
       learningEnabled: requireBoolean(s.learningEnabled, "settings.learningEnabled"),
       finetuneEnabled: requireBoolean(s.finetuneEnabled, "settings.finetuneEnabled"),
-      distributedEnabled: requireBoolean(s.distributedEnabled, "settings.distributedEnabled"),
+      distributedEnabled: false,
       proactiveEnabled: requireBoolean(s.proactiveEnabled, "settings.proactiveEnabled"),
       pluginsEnabled: requireBoolean(s.pluginsEnabled, "settings.pluginsEnabled"),
       contributionMode: requireEnum(

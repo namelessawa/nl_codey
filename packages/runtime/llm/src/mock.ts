@@ -25,6 +25,20 @@ const MOCK_MODEL = "mock-model";
  * - Turn 2: if a prior tool result reported a failing command, emit a repair
  *   `apply_patch` (drives the verifier loop); otherwise finish with a summary.
  * - Later turns: finish with a summary.
+ *
+ * Deterministic test scenarios can opt in through `NLC_MOCK_SCENARIO`.
+ * `command-confirmation` requests one whitelisted command and then stops,
+ * allowing approval surfaces to prove both execution and rejection offline.
+ * `redacted-error` emits one raw, synthetic credential-bearing provider error
+ * so downstream persistence and display boundaries can prove redaction.
+ * `large-output` emits 80 numbered lines and stops without tools so a native
+ * terminal can prove scrollback retention and navigation.
+ * `large-tool-output` reads one oversized fixture, then emits 320 numbered
+ * message rows so persistence truncation and bounded TUI scrollback can be
+ * proved together.
+ * `read-only-analysis` reads, searches, then deliberately forges an
+ * unadvertised apply_patch call so the runtime's hard read-only dispatch guard
+ * can be exercised through the real TUI.
  */
 export class MockLLMProvider implements ChatLLMProvider {
   readonly name = "mock";
@@ -48,7 +62,7 @@ export class MockLLMProvider implements ChatLLMProvider {
   async *chat(input: LLMChatInput): AsyncIterable<LLMChunk> {
     const hasTools = (input.tools?.length ?? 0) > 0;
     if (!hasTools) {
-      yield* emitText("Mock response (no tools available).");
+      yield* emitText("Mock response (no tools available).", input.signal);
       yield finish("stop", input.messages, "Mock response (no tools available).");
       return;
     }
@@ -56,9 +70,119 @@ export class MockLLMProvider implements ChatLLMProvider {
     const task = firstUserText(input.messages);
     const turn = input.messages.filter((m) => m.role === "assistant").length;
 
+    if (process.env["NLC_MOCK_SCENARIO"] === "redacted-error") {
+      const secret =
+        process.env["NLC_MOCK_ERROR_SECRET"] ?? "sk-missing-redaction-fixture";
+      yield {
+        type: "error",
+        message:
+          `Mock provider failure\nAuthorization: Bearer ${secret}\n` +
+          `at C:\\Users\\redaction-user\\.nlc\\config.json?token=${secret}`,
+      };
+      return;
+    }
+
+    if (process.env["NLC_MOCK_SCENARIO"] === "large-output") {
+      const text = largeOutputFixture();
+      yield* emitText(text, input.signal);
+      yield finish("stop", input.messages, text);
+      return;
+    }
+
+    if (process.env["NLC_MOCK_SCENARIO"] === "large-tool-output") {
+      if (turn === 0) {
+        const text = "Reading a deliberately long tool-output fixture.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_large_tool_output",
+          name: "read_file",
+          args: { path: "LONG_TOOL_OUTPUT.txt" },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      const text = largeMessageFixture();
+      yield* emitText(text, input.signal);
+      yield finish("stop", input.messages, text);
+      return;
+    }
+
+    if (process.env["NLC_MOCK_SCENARIO"] === "read-only-analysis") {
+      if (turn === 0) {
+        const text = "Reading the requested project evidence.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_read_only_read",
+          name: "read_file",
+          args: { path: "README.md" },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      if (turn === 1) {
+        const text = "Searching for the analysis marker.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_read_only_search",
+          name: "search_text",
+          args: { query: "READ_ONLY_ANALYSIS_MARKER" },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      if (turn === 2) {
+        const text = "Attempting a forged write that the runtime must refuse.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_read_only_forged_write",
+          name: "apply_patch",
+          args: {
+            patch: notesPatch(
+              "READ_ONLY_VIOLATION.md",
+              "Read-only violation",
+              task,
+            ),
+          },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      const summary =
+        "Read-only analysis complete. The forged apply_patch was refused; workspace unchanged.";
+      yield* emitText(summary, input.signal);
+      yield finish("stop", input.messages, summary);
+      return;
+    }
+
+    if (
+      process.env["NLC_MOCK_SCENARIO"] === "command-confirmation" &&
+      input.tools?.some((tool) => tool.name === "run_command")
+    ) {
+      if (turn === 0) {
+        const text = "Requesting a deterministic validation command.";
+        yield* emitText(text, input.signal);
+        yield {
+          type: "tool_call",
+          id: "call_command_1",
+          name: "run_command",
+          args: { command: "tsc --noEmit" },
+        };
+        yield finish("tool_use", input.messages, text);
+        return;
+      }
+      const summary = "Command confirmation scenario completed.";
+      yield* emitText(summary, input.signal);
+      yield finish("stop", input.messages, summary);
+      return;
+    }
+
     if (turn === 0) {
       const text = `Exploring the project for task: ${firstLine(task)}`;
-      yield* emitText(text);
+      yield* emitText(text, input.signal);
       yield { type: "tool_call", id: "call_list", name: "list_files", args: {} };
       yield finish("tool_use", input.messages, text);
       return;
@@ -66,7 +190,7 @@ export class MockLLMProvider implements ChatLLMProvider {
 
     if (turn === 1) {
       const text = "Applying a minimal change.";
-      yield* emitText(text);
+      yield* emitText(text, input.signal);
       yield {
         type: "tool_call",
         id: "call_patch_1",
@@ -79,7 +203,7 @@ export class MockLLMProvider implements ChatLLMProvider {
 
     if (turn === 2 && hasFailingCommand(input.messages)) {
       const text = "A check failed; applying a repair.";
-      yield* emitText(text);
+      yield* emitText(text, input.signal);
       yield {
         type: "tool_call",
         id: "call_patch_2",
@@ -91,7 +215,7 @@ export class MockLLMProvider implements ChatLLMProvider {
     }
 
     const summary = `Done. Task handled by MockLLMProvider: ${firstLine(task)}`;
-    yield* emitText(summary);
+    yield* emitText(summary, input.signal);
     yield finish("stop", input.messages, summary);
   }
 
@@ -125,13 +249,53 @@ function notesPatch(file: string, heading: string, task: string): string {
   return ["--- /dev/null", `+++ b/${file}`, `@@ -0,0 +1,${body.length} @@`, lines, ""].join("\n");
 }
 
-async function* emitText(text: string): AsyncGenerator<LLMChunk> {
+function largeOutputFixture(): string {
+  return Array.from(
+    { length: 80 },
+    (_, index) =>
+      `scrollback-line-${String(index + 1).padStart(3, "0")} retained output`,
+  ).join("\n");
+}
+
+function largeMessageFixture(): string {
+  return Array.from(
+    { length: 320 },
+    (_, index) =>
+      `bulk-message-row-${String(index + 1).padStart(3, "0")} retained`,
+  ).join("\n");
+}
+
+async function* emitText(
+  text: string,
+  signal?: AbortSignal,
+): AsyncGenerator<LLMChunk> {
   // Simulate streaming by chunking the text into a few deltas.
   const mid = Math.ceil(text.length / 2);
   const parts = [text.slice(0, mid), text.slice(mid)].filter((p) => p.length > 0);
   for (const part of parts) {
+    await waitForMockDelay(signal);
     yield { type: "text_delta", text: part };
   }
+}
+
+async function waitForMockDelay(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  const raw = Number.parseInt(process.env["NLC_MOCK_CHUNK_DELAY_MS"] ?? "0", 10);
+  const delayMs = Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 5_000) : 0;
+  if (delayMs === 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const finish = (): void => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    };
+    const abort = (): void => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(finish, delayMs);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
 }
 
 function finish(
@@ -164,7 +328,10 @@ function hasFailingCommand(messages: LLMMessage[]): boolean {
 }
 
 function firstUserText(messages: LLMMessage[]): string {
-  return messages.find((m) => m.role === "user")?.content ?? "";
+  const content = messages.find((m) => m.role === "user")?.content ?? "";
+  const taggedPrefix = "用户任务：\n";
+  if (!content.startsWith(taggedPrefix)) return content;
+  return content.slice(taggedPrefix.length).split("\n")[0]?.trim() ?? "";
 }
 
 function firstLine(text: string): string {

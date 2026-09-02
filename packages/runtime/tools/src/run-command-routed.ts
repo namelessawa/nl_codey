@@ -260,14 +260,18 @@ async function applyChanges(
   for (const change of changes) {
     const abs = path.join(root, change.path);
     if (change.kind === "deleted") {
-      const snap = store.addSnapshot(ctx.runId, change.path, change.before);
+      const snap = store.addSnapshot(ctx.runId, change.path, change.before, {
+        beforeExisted: true,
+      });
       await fsp.rm(abs, { force: true });
-      store.setSnapshotAfter(snap.id, "");
+      store.setSnapshotAfter(snap.id, "", false);
       continue;
     }
     const before = change.kind === "modified" ? change.before : "";
     const after = change.kind === "modified" ? change.after : change.content;
-    const snap = store.addSnapshot(ctx.runId, change.path, before);
+    const snap = store.addSnapshot(ctx.runId, change.path, before, {
+      beforeExisted: change.kind === "modified",
+    });
     await fsp.mkdir(path.dirname(abs), { recursive: true });
     await fsp.writeFile(abs, after, "utf8");
     store.setSnapshotAfter(snap.id, after);

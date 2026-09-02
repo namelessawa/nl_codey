@@ -15,6 +15,7 @@ export type CommandEffect =
   | { kind: "exit" }
   | { kind: "clear" }
   | { kind: "show-help" }
+  | { kind: "show-trace"; position: number | null }
   | { kind: "list-workspaces" }
   | { kind: "show-settings" }
   | { kind: "switch-workspace"; path: string }
@@ -26,6 +27,7 @@ export type CommandEffect =
   | { kind: "tree" }
   | { kind: "branch"; messageId: string; sessionId: string | null }
   | { kind: "resume"; target: string }
+  | { kind: "rollback"; runId: string | null }
   | { kind: "model"; spec: string | null }
   | { kind: "think"; level: string | null }
   | { kind: "provider" }
@@ -37,8 +39,12 @@ export type CommandSpec = {
   hint: string;
 };
 
+export const MOUSE_SUPPORT_NOTICE =
+  "Mouse: Experimental - terminal scrollback wheel only; clicks and input capture are unsupported.";
+
 export const COMMANDS: readonly CommandSpec[] = [
   { name: "/help", hint: "Show this command catalogue." },
+  { name: "/trace [<n>]", hint: "Expand the latest (or nth-latest) tool result with provenance." },
   { name: "/init", hint: "Scaffold .nlc/ in the current workspace (--force to overwrite)." },
   { name: "/skills", hint: "List skills the agent loop currently sees." },
   { name: "/skills-generate <desc>", hint: "Use the LLM to author a new skill, then pick where to install." },
@@ -50,6 +56,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "/tree", hint: "Render the project's conversation tree (git-style)." },
   { name: "/branch <msg> [<session>]", hint: "Start a new session branched from a message id." },
   { name: "/resume <session>", hint: "Switch the active session to an existing file." },
+  { name: "/rollback [<run>]", hint: "Restore snapshots from the latest (or selected) run." },
   { name: "/provider", hint: "Open the provider picker (presets + 5 custom slots)." },
   { name: "/model [<provider/model>]", hint: "Show or change the active LLM and log the swap." },
   { name: "/think [<level>]", hint: "Show or change the thinking level and log the swap." },
@@ -90,17 +97,31 @@ export function parseCommand(line: string): CommandEffect | null {
     case "exit":
     case "quit":
     case "q":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "exit" };
     case "clear":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "clear" };
     case "help":
     case "?":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "show-help" };
+    case "trace": {
+      const raw = parts[1]?.trim() ?? "";
+      if (!raw) return { kind: "show-trace", position: null };
+      const position = Number(raw);
+      if (!Number.isInteger(position) || position < 1 || parts.length > 2) {
+        return { kind: "unknown", raw: trimmed };
+      }
+      return { kind: "show-trace", position };
+    }
     case "workspaces":
     case "ws":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "list-workspaces" };
     case "settings":
     case "set":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "show-settings" };
     case "cd": {
       const target = parts.slice(1).join(" ").trim();
@@ -108,11 +129,19 @@ export function parseCommand(line: string): CommandEffect | null {
       return { kind: "switch-workspace", path: target };
     }
     case "init": {
-      const force = parts.slice(1).some((p) => p === "--force" || p === "-f");
+      const options = parts.slice(1);
+      if (
+        options.length > 1 ||
+        options.some((option) => option !== "--force" && option !== "-f")
+      ) {
+        return { kind: "unknown", raw: trimmed };
+      }
+      const force = options.length === 1;
       return { kind: "init", force };
     }
     case "skills":
     case "sk":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "list-skills" };
     case "skills-generate":
     case "skill-gen":
@@ -127,14 +156,18 @@ export function parseCommand(line: string): CommandEffect | null {
     }
     case "sessions":
     case "list-sessions":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "sessions" };
     case "tree":
     case "log":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "tree" };
     case "branch": {
       const messageId = parts[1]?.trim() ?? "";
       const sessionId = parts[2]?.trim() ?? "";
-      if (!messageId) return { kind: "unknown", raw: trimmed };
+      if (!messageId || parts.length > 3) {
+        return { kind: "unknown", raw: trimmed };
+      }
       return { kind: "branch", messageId, sessionId: sessionId.length > 0 ? sessionId : null };
     }
     case "resume":
@@ -142,6 +175,12 @@ export function parseCommand(line: string): CommandEffect | null {
       const target = parts.slice(1).join(" ").trim();
       if (!target) return { kind: "unknown", raw: trimmed };
       return { kind: "resume", target };
+    }
+    case "rollback":
+    case "undo": {
+      if (parts.length > 2) return { kind: "unknown", raw: trimmed };
+      const runId = parts[1]?.trim() ?? "";
+      return { kind: "rollback", runId: runId.length > 0 ? runId : null };
     }
     case "model":
     case "mdl": {
@@ -156,6 +195,7 @@ export function parseCommand(line: string): CommandEffect | null {
     case "provider":
     case "providers":
     case "p":
+      if (parts.length > 1) return { kind: "unknown", raw: trimmed };
       return { kind: "provider" };
     default:
       return { kind: "unknown", raw: trimmed };
@@ -165,7 +205,8 @@ export function parseCommand(line: string): CommandEffect | null {
 /** Multi-line help text rendered when `:help` fires. */
 export function renderHelp(): string {
   const widest = COMMANDS.reduce((n, c) => Math.max(n, c.name.length), 0);
-  return COMMANDS.map(
+  const catalogue = COMMANDS.map(
     (c) => `  ${c.name.padEnd(widest + 2)}${c.hint}`,
-  ).join("\n");
+  );
+  return [...catalogue, "", MOUSE_SUPPORT_NOTICE].join("\n");
 }

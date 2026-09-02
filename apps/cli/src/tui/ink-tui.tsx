@@ -33,22 +33,20 @@
  * prompt row stays anchored even as new trace items arrive.
  */
 import React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import path from "node:path";
-import { Box, Text, render, useApp, useInput, useStdout } from "ink";
-import { nlcRoot } from "@nlc/shared";
+import { Box, render, useApp, useInput, useStdout } from "ink";
+import { nlcRoot, redactSensitiveText } from "@nlc/shared";
 import { loadSkills } from "@nlc/agent-core";
-import { ThemeProvider, useAnimatedBorder, useTheme } from "./theme-context.js";
+import { ThemeProvider, useTheme } from "./theme-context.js";
 import { THEMES, type ThemeName } from "./theme.js";
-import { Header } from "./header.js";
 import { MessageStream } from "./message-stream.js";
-import { LiveAgent } from "./live-agent.js";
-import { Trace } from "./trace.js";
 import { Prompt } from "./prompt.js";
 import { Approval } from "./approval.js";
 import { Footer } from "./footer.js";
-import { useLoop } from "./use-loop.js";
+import { useLoop, type UseLoopOptions } from "./use-loop.js";
 import { renderHelp, type CommandEffect } from "./commands.js";
+import { renderTraceDetail } from "./trace.js";
 import { loadCliSettings } from "../lib/settings.js";
 import { initProjectSkeleton, renderInitOutcome } from "../lib/init-project.js";
 import {
@@ -64,15 +62,15 @@ import {
   upsertProvider,
   type StoredProvider,
 } from "../lib/provider-store.js";
-
-const NARROW_BREAKPOINT = 80;
-/** Live-frame body height — keeps the prompt row anchored. */
-const LIVE_BODY_HEIGHT = 14;
+import { TerminalFrame } from "./terminal-frame.js";
+import { deriveTerminalLayout } from "./terminal-layout.js";
 
 export type TuiOptions = {
   workspaceRoot?: string;
   dataRoot?: string;
   autoApprove?: boolean;
+  /** Optional service composition for an embedding host. */
+  serviceFactory?: UseLoopOptions["serviceFactory"];
   /** Initial theme. Defaults to the registry's DEFAULT_THEME (teal). */
   theme?: ThemeName;
 };
@@ -80,15 +78,17 @@ export type TuiOptions = {
 function InnerApp(opts: TuiOptions) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const { setThemeName, themeName, palette } = useTheme();
-  const headerBorder = useAnimatedBorder(0);
-  const liveBorder = useAnimatedBorder(1);
+  const { setThemeName, themeName } = useTheme();
   const loop = useLoop({
     ...(opts.workspaceRoot !== undefined ? { workspaceRoot: opts.workspaceRoot } : {}),
     ...(opts.dataRoot !== undefined ? { dataRoot: opts.dataRoot } : {}),
     ...(opts.autoApprove !== undefined ? { autoApprove: opts.autoApprove } : {}),
+    ...(opts.serviceFactory !== undefined ? { serviceFactory: opts.serviceFactory } : {}),
   });
-  const [width, setWidth] = useState(stdout.columns ?? 100);
+  const [terminalSize, setTerminalSize] = useState(() => ({
+    columns: stdout.columns,
+    rows: stdout.rows,
+  }));
   const [pendingSkill, setPendingSkill] = useState<PendingSkill | null>(null);
   const [skillBusy, setSkillBusy] = useState(false);
   // Provider picker — `null` means closed; non-null means the modal is mounted
@@ -99,7 +99,8 @@ function InnerApp(opts: TuiOptions) {
   } | null>(null);
 
   useEffect(() => {
-    const update = (): void => setWidth(stdout.columns ?? 100);
+    const update = (): void =>
+      setTerminalSize({ columns: stdout.columns, rows: stdout.rows });
     stdout.on("resize", update);
     return () => {
       stdout.off("resize", update);
@@ -108,10 +109,7 @@ function InnerApp(opts: TuiOptions) {
 
   useInput((input, key) => {
     if (loop.pendingApproval || pendingSkill || providerOpen) return;
-    if (key.ctrl && input === "c") {
-      if (loop.isRunning) loop.cancel();
-      else exit();
-    }
+    if (key.ctrl && input === "c" && loop.isRunning) loop.cancel();
   });
 
   const handleCommand = (effect: CommandEffect): void => {
@@ -126,6 +124,12 @@ function InnerApp(opts: TuiOptions) {
         return;
       case "show-help":
         loop.appendSystem(`commands\n${renderHelp()}`, "help");
+        return;
+      case "show-trace":
+        loop.appendSystem(
+          renderTraceDetail(loop.trace, effect.position),
+          "trace",
+        );
         return;
       case "list-workspaces":
         loop.appendSystem(
@@ -265,7 +269,8 @@ function InnerApp(opts: TuiOptions) {
       case "sessions": {
         try {
           const summaries = loop.listSessions();
-          if (summaries.length === 0) {
+          const diagnostics = loop.listSessionDiagnostics();
+          if (summaries.length === 0 && diagnostics.length === 0) {
             loop.appendSystem(
               "no sessions on disk yet — submit a task to open one.",
               "sessions",
@@ -274,7 +279,7 @@ function InnerApp(opts: TuiOptions) {
           }
           const widest = summaries.reduce((n, s) => Math.max(n, s.id.length), 0);
           const lines: string[] = [
-            `${summaries.length} session${summaries.length === 1 ? "" : "s"} in this project`,
+            `${summaries.length} readable session${summaries.length === 1 ? "" : "s"} in this project`,
             "",
           ];
           const active = loop.currentSessionId();
@@ -285,6 +290,29 @@ function InnerApp(opts: TuiOptions) {
               `  ${marker} ${s.id.padEnd(widest + 2)}${s.messageCount.toString().padStart(3)} msg  ` +
                 `${s.title}${branched}`,
             );
+          }
+          if (diagnostics.length > 0) {
+            const visible = diagnostics.slice(0, 20);
+            lines.push(
+              "",
+              `warning: ${diagnostics.length} session file issue${diagnostics.length === 1 ? "" : "s"} detected; raw content was not displayed.`,
+            );
+            for (const diagnostic of visible) {
+              const fileName = redactSensitiveText(diagnostic.fileName, {
+                maxLength: 80,
+                fallback: "session file",
+              });
+              lines.push(
+                diagnostic.kind === "malformed_json"
+                  ? `  ! ${fileName} line ${diagnostic.line}: malformed JSON skipped (recoverable)`
+                  : diagnostic.kind === "workspace_mismatch"
+                    ? `  ! ${fileName}: belongs to a different workspace and was ignored`
+                    : `  ! ${fileName}: unreadable or missing a valid session header`,
+              );
+            }
+            if (visible.length < diagnostics.length) {
+              lines.push(`  … ${diagnostics.length - visible.length} more issue(s)`);
+            }
           }
           loop.appendSystem(lines.join("\n"), "sessions");
         } catch (err) {
@@ -336,14 +364,30 @@ function InnerApp(opts: TuiOptions) {
       }
       case "resume": {
         try {
-          const { id, filePath } = loop.resumeSession(effect.target);
+          const { id, filePath, messageCount } = loop.resumeSession(effect.target);
           loop.appendSystem(
-            `resumed ${id}\n  ${filePath}\nnew messages will append to this session.`,
+            `resumed ${id}; replayed ${messageCount} messages without running tools.\n` +
+              `  ${filePath}\nnew messages will append to this session.`,
             "resume",
           );
         } catch (err) {
           loop.appendSystem(
             `/resume failed: ${err instanceof Error ? err.message : String(err)}`,
+            "system",
+          );
+        }
+        return;
+      }
+      case "rollback": {
+        try {
+          const result = loop.rollback(effect.runId);
+          loop.appendSystem(
+            `rolled back ${result.id}\nworkspace snapshots restored; run status is ${result.status}.`,
+            "rollback",
+          );
+        } catch (err) {
+          loop.appendSystem(
+            `/rollback failed: ${err instanceof Error ? err.message : String(err)}`,
             "system",
           );
         }
@@ -450,53 +494,36 @@ function InnerApp(opts: TuiOptions) {
     loop.appendSystem("/skills-generate cancelled.", "skills");
   };
 
-  const isNarrow = width < NARROW_BREAKPOINT;
-  const showLiveAgent = !!loop.liveAgent;
+  const terminalLayout = deriveTerminalLayout(
+    terminalSize.columns,
+    terminalSize.rows,
+  );
+  const readOnly = useMemo(
+    () => loadCliSettings(loop.dataRoot).appSettings.agent.readOnly,
+    [loop.dataRoot],
+  );
   const showIdleHint = loop.stream.length === 0 && !loop.liveAgent && !loop.isRunning;
+  const hasBlockingModal = !!loop.pendingApproval || !!pendingSkill || !!providerOpen;
 
   return (
     <Box flexDirection="column" width="100%">
       {/* SCROLLBACK — Static items, owned by the OS terminal.
           Mouse wheel scrolls this region. Each finalised message lands
           here once and is never repainted. */}
-      <MessageStream items={loop.stream} />
+      <MessageStream key={loop.streamVersion} items={loop.stream} />
 
       {/* LIVE FRAME — Ink repaints this region on every state change. */}
-      <Box
-        borderStyle="single"
-        borderLeft={false}
-        borderRight={false}
-        borderColor={headerBorder}
-      >
-        <Header
-          workspaceRoot={loop.workspaceRoot}
-          dataRoot={loop.dataRoot}
-          status={loop.status}
-          isRunning={loop.isRunning}
-        />
-      </Box>
-
-      <Box
-        flexDirection="row"
-        height={LIVE_BODY_HEIGHT}
-        borderStyle="single"
-        borderLeft={false}
-        borderRight={false}
-        borderColor={liveBorder}
-      >
-        <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-          {showLiveAgent ? (
-            <LiveAgent item={loop.liveAgent} />
-          ) : showIdleHint ? (
-            <Box paddingX={1} paddingY={1}>
-              <Text color={palette.textDim}>
-                (no messages yet — type a task below, or `/help` for commands)
-              </Text>
-            </Box>
-          ) : null}
-        </Box>
-        <Trace items={loop.trace} visible={!isNarrow} />
-      </Box>
+      <TerminalFrame
+        layout={terminalLayout}
+        workspaceRoot={loop.workspaceRoot}
+        dataRoot={loop.dataRoot}
+        status={loop.status}
+        isRunning={loop.isRunning}
+        readOnly={readOnly}
+        liveAgent={loop.liveAgent}
+        trace={loop.trace}
+        showIdleHint={showIdleHint}
+      />
 
       {loop.pendingApproval ? (
         <Approval
@@ -556,13 +583,14 @@ function InnerApp(opts: TuiOptions) {
             }
           }}
         />
-      ) : (
-        <Prompt
-          disabled={loop.isRunning}
-          onSubmit={loop.submit}
-          onCommand={handleCommand}
-        />
-      )}
+      ) : null}
+      <Prompt
+        disabled={loop.isRunning || hasBlockingModal}
+        hidden={hasBlockingModal}
+        onSubmit={loop.submit}
+        onCommand={handleCommand}
+        onCancel={exit}
+      />
       <Footer isRunning={loop.isRunning} awaitingApproval={!!loop.pendingApproval} />
     </Box>
   );

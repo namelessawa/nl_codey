@@ -17,12 +17,14 @@
  */
 import React, { memo } from "react";
 import { Box, Text } from "ink";
+import { redactSensitiveText } from "@nlc/shared";
 import { useAnimatedBorder, useTheme } from "./theme-context.js";
 import type { TraceItem } from "./use-loop.js";
 
 const PANEL_WIDTH = 30;
 /** Visible body rows — header + rule together take 2 rows. */
 const VISIBLE_ROWS = 12;
+const MAX_TRACE_DETAIL_CHARS = 12_000;
 
 export type TraceProps = {
   items: readonly TraceItem[];
@@ -69,6 +71,48 @@ export const Trace = memo(function Trace({ items, visible }: TraceProps) {
     </Box>
   );
 });
+
+/**
+ * Expand a bounded, redacted tool result into terminal scrollback.
+ * Position is one-based from newest so `/trace 1` is stable and explicit.
+ */
+export function renderTraceDetail(
+  items: readonly TraceItem[],
+  requestedPosition: number | null,
+): string {
+  const resultIndexes = items.flatMap((item, index) =>
+    item.kind === "tool_result" ? [index] : [],
+  );
+  if (resultIndexes.length === 0) {
+    return "trace detail unavailable: no tool result has been recorded in this TUI run.";
+  }
+  const position = requestedPosition ?? 1;
+  if (position < 1 || position > resultIndexes.length) {
+    return `trace detail unavailable: choose 1-${resultIndexes.length} (1 is newest).`;
+  }
+  const selectedIndex = resultIndexes[resultIndexes.length - position] as number;
+  const selected = items[selectedIndex] as TraceItem;
+  const request = items
+    .slice(0, selectedIndex)
+    .reverse()
+    .find((item) => item.kind === "tool_call");
+  const requestText = redactSensitiveText(request?.label ?? "(request unavailable)", {
+    maxLength: 1_000,
+    fallback: "(request unavailable)",
+  });
+  const resultText = redactSensitiveText(selected.detail, {
+    maxLength: MAX_TRACE_DETAIL_CHARS,
+    fallback: "(empty tool result)",
+  });
+  return [
+    `trace detail ${position}/${resultIndexes.length} (1 is newest)`,
+    `request: ${requestText}`,
+    "context source: recorded tool trace",
+    `TUI detail truncated: ${selected.detail.length > MAX_TRACE_DETAIL_CHARS ? "yes" : "no"}`,
+    "",
+    resultText,
+  ].join("\n");
+}
 
 function Row({ item }: { item: TraceItem }) {
   const { palette } = useTheme();

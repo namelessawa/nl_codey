@@ -40,7 +40,7 @@
     "@nlc/style-profile": "workspace:*",
     "@nlc/tools": "workspace:*",
     "@nlc/web-tools": "workspace:*",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.11.1",
     "diff": "^7.0.0",
     "@vscode/ripgrep": "^1.15.9",
     "bindings": "^1.5.0",
